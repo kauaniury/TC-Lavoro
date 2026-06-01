@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Análise de Limites - Lavoro Seguros</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link rel="stylesheet" href="assets/css/variables.css">
+<link rel="stylesheet" href="assets/css/base.css">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="app-body">
+
+<header class="topbar" role="banner">
+  <div class="topbar-inner">
+    <a class="topbar-brand" href="#page-upload" aria-label="Lavoro Seguros">
+      <img src="assets/img/lavoro-logo.png" alt="Lavoro Seguros" class="topbar-logo">
+    </a>
+    <nav class="topbar-tabs topbar-nav" aria-label="Navegação principal">
+      <button type="button" class="topbar-tab tab-btn active" data-page="upload" aria-current="page" onclick="switchTab('upload')">Importar</button>
+      <button type="button" class="topbar-tab tab-btn" id="tab-dashboard" data-page="dashboard" aria-disabled="true" disabled title="Importe uma planilha primeiro" onclick="switchTab('dashboard')">Dashboard</button>
+    </nav>
+    <div class="topbar-actions">
+      <button type="button" class="btn-secondary btn-download topbar-download" id="btnDownloadTop" onclick="downloadComparativo()" aria-label="Exportar dashboard em PDF" hidden>
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 1v9M5 7l3 3 3-3M2 12v1a1 1 0 001 1h10a1 1 0 001-1v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"/></svg>
+        Exportar PDF
+      </button>
+    </div>
+  </div>
+</header>
+
+<main class="page page-upload active" id="page-upload" aria-label="Importar planilha">
+  <div class="page-container upload-page">
+    <section class="upload-section">
+      <div class="upload-header">
+        <p class="upload-header-eyebrow">Análise de Limites</p>
+        <h1 class="upload-header-title">Importe sua planilha de cotações</h1>
+        <p class="upload-header-sub">Carregue o arquivo Excel com as respostas das seguradoras para gerar o dashboard executivo.</p>
+      </div>
+
+      <div class="upload-card card">
+        <div class="upload-card-header">
+          <p class="upload-card-title">Selecione o arquivo</p>
+        </div>
+        <div class="upload-card-body">
+          <div class="drop-zone" id="dropZone" role="button" tabindex="0" aria-label="Clique ou arraste um arquivo Excel para fazer upload">
+            <input type="file" id="fileInput" accept=".xlsx,.xls" onchange="handleFile(this.files[0])" tabindex="-1">
+            <svg class="drop-icon" viewBox="0 0 48 48" fill="none" aria-hidden="true"><rect x="6" y="4" width="28" height="36" rx="2" stroke="currentColor" stroke-width="2.5"/><path d="M28 4v10h10" stroke="currentColor" stroke-width="2.5" stroke-linecap="square"/><path d="M16 26l8-8 8 8M24 18v16" stroke="currentColor" stroke-width="2.5" stroke-linecap="square" stroke-linejoin="miter"/></svg>
+            <p class="drop-title">Arraste o arquivo aqui</p>
+            <p class="drop-sub">ou <span>clique para selecionar</span></p>
+            <p class="drop-hint">Aceita .xlsx e .xls</p>
+          </div>
+
+          <div class="file-selected" id="fileSelected" aria-live="polite">
+            <div class="file-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 4h5v7h7v9H6V4z"/></svg></div>
+            <div>
+              <p class="file-name" id="fileName">-</p>
+              <p class="file-size" id="fileSize">-</p>
+            </div>
+          </div>
+
+          <div class="error-msg" id="errorMsg" role="alert" aria-live="polite">
+            <p id="errorText">Erro ao processar.</p>
+          </div>
+
+          <button type="button" class="btn-primary btn-generate" id="btnGenerate" disabled onclick="generateDashboard()">
+            <span class="btn-label">Gerar Dashboard</span>
+          </button>
+
+          <div class="upload-instructions">
+            <h2 class="instr-title">Como usar</h2>
+            <ol class="instr-list">
+              <li class="instr-item"><span class="instr-num">01</span><span class="instr-text">Importe o arquivo .xlsx com os dados das seguradoras.</span></li>
+              <li class="instr-item"><span class="instr-num">02</span><span class="instr-text">O sistema identificará tomador, status, limites, modalidades e taxas.</span></li>
+              <li class="instr-item"><span class="instr-num">03</span><span class="instr-text">Clique em <strong>Gerar Dashboard</strong> para processar os dados.</span></li>
+              <li class="instr-item"><span class="instr-num">04</span><span class="instr-text">Exporte o relatório em PDF pelo botão no dashboard.</span></li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<main class="page page-dashboard" id="page-dashboard" aria-label="Dashboard de limites">
+  <section class="hero dashboard-hero">
+    <div class="hero-inner">
+      <div class="hero-left hero-content">
+        <p class="hero-label hero-eyebrow">Análise de Limites</p>
+        <h1 class="hero-title" id="dTomador">-</h1>
+      </div>
+      <div class="hero-right hero-meta">
+        <img src="assets/img/lavoro-logo.png" alt="Lavoro Seguros" class="print-hero-logo" aria-hidden="true">
+        <p class="hero-cnpj" id="dCnpj">CNPJ -</p>
+        <p class="hero-date" id="dDate"></p>
+      </div>
+    </div>
+  </section>
+
+  <div class="content dashboard-body">
+    <section class="dashboard-section kpis-section" aria-labelledby="kpisTitle">
+      <h2 class="sec section-title" id="kpisTitle">Indicadores</h2>
+      <div class="kpis kpi-grid">
+        <article class="kpi kpi-card kpi-card--aprovado" aria-label="Seguradoras com limite aprovado"><div class="kpi-indicator" aria-hidden="true"></div><p class="kpi-label">Com Limite Aprovado</p><p class="kpi-value" id="kAprov">-</p><p class="kpi-sub">com apetite ativo</p></article>
+        <article class="kpi kpi-card kpi-card--declinado" aria-label="Seguradoras declinadas"><div class="kpi-indicator" aria-hidden="true"></div><p class="kpi-label">Sem Limite Declinado</p><p class="kpi-value" id="kDecl">-</p><p class="kpi-sub">sem disponibilidade</p></article>
+        <article class="kpi kpi-card kpi-card--concorrente" aria-label="Seguradoras nomeadas por outro corretor"><div class="kpi-indicator" aria-hidden="true"></div><p class="kpi-label">Nomeadas por Outro Corretor</p><p class="kpi-value" id="kConc">-</p><p class="kpi-sub">outro corretor</p></article>
+        <article class="kpi kpi-card kpi-card--capacidade" aria-label="Capacidade total aprovada"><div class="kpi-indicator" aria-hidden="true"></div><p class="kpi-label">Capacidade Total Aprovada</p><p class="kpi-value kpi-value--mono mono" id="kSum">-</p><p class="kpi-sub" id="kSumFull">-</p></article>
+        <article class="kpi kpi-card kpi-card--maior" aria-label="Maior limite individual"><div class="kpi-indicator" aria-hidden="true"></div><p class="kpi-label">Maior Limite Individual</p><p class="kpi-value kpi-value--mono mono" id="kMax">-</p><p class="kpi-sub" id="kMaxSub">-</p></article>
+      </div>
+    </section>
+
+    <section class="dashboard-section charts-section overview-section" aria-labelledby="chartsTitle">
+      <h2 class="sec section-title" id="chartsTitle">Visão Geral</h2>
+      <div class="grid-main charts-row">
+        <article class="card chart-card">
+          <p class="card-title chart-title">Capacidade por Seguradora - Aprovadas</p>
+          <div class="chart-container chart-container--bar"><canvas id="chartBar"></canvas></div>
+        </article>
+        <article class="card chart-card">
+          <p class="card-title chart-title">Status</p>
+          <div class="chart-container chart-container--doughnut"><canvas id="chartDoughnut"></canvas></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="dashboard-section comparison-section" id="modalSearchSection" aria-labelledby="searchTitle">
+      <h2 class="sec section-title section-label" id="searchTitle">Comparativo por Modalidade</h2>
+      <div class="search-bar-wrap">
+        <label for="modalSearchInput" class="sr-only">Buscar modalidade</label>
+        <span class="search-icon" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none"><circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" stroke-width="1.6"/><path d="M13 13l4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="square"/></svg></span>
+        <input type="text" id="modalSearchInput" class="search-input form-input" placeholder="Digite uma modalidade - ex: Judicial, Recursal..." oninput="handleModalSearch(this.value)" autocomplete="off" role="combobox" aria-expanded="false" aria-haspopup="listbox" aria-autocomplete="list" aria-controls="searchSuggestions">
+        <div id="searchSuggestions" class="search-suggestions" role="listbox" aria-label="Sugestões de modalidade"></div>
+      </div>
+
+      <div id="modalSearchEmpty" class="search-empty empty-state" role="status" aria-live="polite">
+        <div class="search-empty-icon" aria-hidden="true">⌕</div>
+        <p class="search-empty-title">Busque uma modalidade</p>
+        <p class="search-empty-sub">Compare limites e taxas entre seguradoras aprovadas.</p>
+      </div>
+
+      <div id="modalSearchResults" class="search-result">
+        <div class="search-result-header">
+          <p class="search-result-label" id="searchResultLabel"></p>
+          <button type="button" class="btn-secondary btn-download" id="btnDownload" onclick="downloadComparativoOnly()"><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 1v9M5 7l3 3 3-3M2 12v1a1 1 0 001 1h10a1 1 0 001-1v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"/></svg>Baixar PDF</button>
+        </div>
+        <div class="winner-cards winner-cards-grid" id="winnerCards"></div>
+        <div class="modal-row modal-charts-grid">
+          <article class="card chart-card"><p class="card-title chart-title" id="chartModalLimiteTitle">Maior Limite</p><div class="chart-container chart-container--modal"><canvas id="chartModalLimite"></canvas></div></article>
+          <article class="card chart-card"><p class="card-title chart-title" id="chartModalTaxaTitle">Menor Taxa</p><div class="chart-container chart-container--modal"><canvas id="chartModalTaxa"></canvas></div></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="dashboard-section executive-table-section" aria-labelledby="tableTitle">
+      <h2 class="sec section-title section-label" id="tableTitle">Tabela Executiva</h2>
+      <div class="tbl-wrap table-card card">
+        <div class="table-toolbar">
+          <p class="table-count" id="tableCount">0 seguradoras</p>
+        </div>
+        <div class="table-scroll-wrapper" role="region" aria-label="Tabela de seguradoras" tabindex="0">
+          <table class="data-table" aria-label="Resultado por seguradora">
+            <thead>
+              <tr>
+                <th scope="col" class="col-seguradora">Seguradora</th>
+                <th scope="col" class="col-status">Status</th>
+                <th scope="col" class="col-modalidade">Modalidade</th>
+                <th scope="col" class="col-limite">Limite</th>
+                <th scope="col" class="col-taxa">Taxa</th>
+              </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+          </table>
+        </div>
+        <div class="empty-state table-empty" id="tableEmpty" hidden>
+          <p class="empty-state-title">Nenhum resultado encontrado</p>
+          <p class="empty-state-text">Importe uma planilha com dados de seguradoras para visualizar o resultado.</p>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <footer class="footer app-footer" role="contentinfo">
+    <div class="footer-brand">
+      <img src="assets/img/lavoro-logo.png" alt="" class="footer-logo" aria-hidden="true">
+    </div>
+    <p class="footer-right">Gerado em <span id="dFooterDate"></span></p>
+  </footer>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
