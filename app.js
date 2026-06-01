@@ -418,27 +418,48 @@ function generateDashboard() {
   switchTab('dashboard');
 }
 
-// Download full dashboard (table + comparison if active) — max 2 pages
-function downloadComparativo() {
-  document.body.classList.add('pdf-report');
-  const cleanup = () => {
-    document.body.classList.remove('pdf-report');
-    window.removeEventListener('afterprint', cleanup);
-  };
-  window.addEventListener('afterprint', cleanup);
-  window.print();
+// Captura o #page-dashboard e cria página com altura exata do conteúdo
+async function gerarPdf(filename) {
+  const el = document.getElementById('page-dashboard');
+
+  const canvas = await html2canvas(el, {
+    scale: 2,
+    useCORS: true,
+    allowTaint: false,
+    logging: false,
+    scrollX: 0,
+    scrollY: 0
+  });
+
+  const imgData = canvas.toDataURL('image/jpeg', 0.98);
+  const { jsPDF } = window.jspdf;
+
+  // Largura fixa = 297mm (A4 landscape); altura proporcional ao conteúdo
+  const pW = 297;
+  const pH = parseFloat(((canvas.height / canvas.width) * pW).toFixed(2));
+
+  const pdf = new jsPDF({ unit: 'mm', format: [pW, pH] });
+  pdf.addImage(imgData, 'JPEG', 0, 0, pW, pH);
+  pdf.save(filename);
 }
 
-// Download comparison-only (header + winner cards + charts) — 1 page
-function downloadComparativoOnly() {
-  document.body.classList.add('pdf-comparison-only');
-  const cleanup = () => {
-    document.body.classList.remove('pdf-comparison-only');
-    window.removeEventListener('afterprint', cleanup);
-  };
-  window.addEventListener('afterprint', cleanup);
-  window.print();
+// Download full dashboard (tabela + comparativo se ativo) — 1 página
+async function downloadComparativo() {
+  const btn = document.getElementById('btnDownloadTop');
+  const saved = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Gerando PDF…'; }
+
+  document.body.classList.add('pdf-generating');
+  await new Promise(r => setTimeout(r, 150));
+
+  try {
+    await gerarPdf('relatorio-lavoro.pdf');
+  } finally {
+    document.body.classList.remove('pdf-generating');
+    if (btn) { btn.disabled = false; btn.innerHTML = saved; }
+  }
 }
+
 
 let chartModalLimiteInst = null, chartModalTaxaInst = null;
 let searchSuggActive = -1;

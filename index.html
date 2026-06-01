@@ -6,6 +6,8 @@
 <title>Análise de Limites - Lavoro Seguros</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <link rel="stylesheet" href="assets/css/variables.css">
 <link rel="stylesheet" href="assets/css/base.css">
 <link rel="stylesheet" href="styles.css">
@@ -15,16 +17,16 @@
 <header class="topbar" role="banner">
   <div class="topbar-inner">
     <a class="topbar-brand" href="#page-upload" aria-label="Lavoro Seguros">
-      <img src="assets/img/lavoro-logo.png" alt="Lavoro Seguros" class="topbar-logo">
+      <img src="assets/img/lavoro_logo_sem_fundo.png" alt="Lavoro Seguros" class="topbar-logo">
     </a>
     <nav class="topbar-tabs topbar-nav" aria-label="Navegação principal">
       <button type="button" class="topbar-tab tab-btn active" data-page="upload" aria-current="page" onclick="switchTab('upload')">Importar</button>
       <button type="button" class="topbar-tab tab-btn" id="tab-dashboard" data-page="dashboard" aria-disabled="true" disabled title="Importe uma planilha primeiro" onclick="switchTab('dashboard')">Dashboard</button>
     </nav>
     <div class="topbar-actions">
-      <button type="button" class="btn-secondary btn-download topbar-download" id="btnDownloadTop" onclick="downloadComparativo()" aria-label="Exportar dashboard em PDF" hidden>
+      <button type="button" class="btn-secondary btn-download topbar-download" id="btnDownloadTop" onclick="downloadComparativo()" aria-label="Exportar relatório em PDF" hidden>
         <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 1v9M5 7l3 3 3-3M2 12v1a1 1 0 001 1h10a1 1 0 001-1v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"/></svg>
-        Exportar PDF
+        Exportar relatório
       </button>
     </div>
   </div>
@@ -91,7 +93,7 @@
         <h1 class="hero-title" id="dTomador">-</h1>
       </div>
       <div class="hero-right hero-meta">
-        <img src="assets/img/lavoro-logo.png" alt="Lavoro Seguros" class="print-hero-logo" aria-hidden="true">
+        <img src="assets/img/Lavoro-logo_branca.png" alt="Lavoro Seguros" class="print-hero-logo" aria-hidden="true">
         <p class="hero-cnpj" id="dCnpj">CNPJ -</p>
         <p class="hero-date" id="dDate"></p>
       </div>
@@ -142,7 +144,6 @@
       <div id="modalSearchResults" class="search-result">
         <div class="search-result-header">
           <p class="search-result-label" id="searchResultLabel"></p>
-          <button type="button" class="btn-secondary btn-download" id="btnDownload" onclick="downloadComparativoOnly()"><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 1v9M5 7l3 3 3-3M2 12v1a1 1 0 001 1h10a1 1 0 001-1v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"/></svg>Baixar PDF</button>
         </div>
         <div class="winner-cards winner-cards-grid" id="winnerCards"></div>
         <div class="modal-row modal-charts-grid">

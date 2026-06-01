@@ -935,8 +935,17 @@ tbody tr:hover td {
   text-transform: uppercase;
 }
 
-.row-last-in-group td {
-  border-bottom: 2px solid var(--color-border-strong);
+/* Separador inferior em todas as colunas de cada grupo de seguradora */
+.row-last-in-group td,
+.data-table td.cell-seguradora,
+.data-table td.cell-status {
+  border-bottom: 2px solid #9ca3af;
+}
+
+/* Alinhamento central do badge de status dentro do rowspan */
+.data-table td.cell-status {
+  text-align: center;
+  vertical-align: middle;
 }
 
 .badge {
@@ -1212,6 +1221,40 @@ tbody tr:hover td {
   .kpi-value.mono {
     font-size: var(--text-md);
   }
+}
+
+/* ── Modo de captura PDF (html2canvas + jsPDF) ───────────────────── */
+body.pdf-generating .topbar,
+body.pdf-generating .overview-section,
+body.pdf-generating .search-bar-wrap,
+body.pdf-generating .search-empty,
+body.pdf-generating .btn-download,
+body.pdf-generating .topbar-download,
+body.pdf-generating .table-toolbar,
+body.pdf-generating .footer,
+body.pdf-generating .app-footer,
+body.pdf-generating .comparison-section {
+  display: none !important;
+}
+
+body.pdf-generating #page-dashboard {
+  flex: none !important;
+  height: auto !important;
+}
+
+body.pdf-generating .print-hero-logo {
+  display: block !important;
+}
+
+/* Ordem no PDF: indicadores → tabela → comparativo */
+body.pdf-generating .kpis-section        { order: 1; }
+body.pdf-generating .executive-table-section { order: 2; }
+
+body.pdf-generating.has-comparison .comparison-section {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 16px;
+  order: 3;
 }
 
 @media print {
