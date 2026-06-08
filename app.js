@@ -1,8 +1,8 @@
-﻿// â”€â”€ State
+﻿// â"€â"€ State
 let chartBarInst, chartDoughnutInst;
 let parsedData = null;
 
-// â”€â”€ Tab switching
+// â"€â"€ Tab switching
 function switchTab(tab) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-' + tab).classList.add('active');
@@ -14,7 +14,7 @@ function switchTab(tab) {
   });
 }
 
-// â”€â”€ Drag & drop
+// â"€â"€ Drag & drop
 const dz = document.getElementById('dropZone');
 dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over', 'drop-zone--over'); });
 dz.addEventListener('dragleave', () => dz.classList.remove('drag-over', 'drop-zone--over'));
@@ -30,7 +30,7 @@ dz.addEventListener('keydown', e => {
   }
 });
 
-// â”€â”€ Handle file selection
+// â"€â"€ Handle file selection
 function handleFile(file) {
   if (!file) return;
   const allowed = ['.xlsx', '.xls'];
@@ -61,7 +61,7 @@ function handleFile(file) {
   reader.readAsArrayBuffer(file);
 }
 
-// â”€â”€ Parse workbook â€” handles the T&C Garantia specific format
+// â"€â"€ Parse workbook â€" handles the T&C Garantia specific format
 // Structure: header row contains SEGURADORAS / CAPACIDADE TOTAL / MODALIDADE / LIMITE / TAXA / OBSERVAÃ‡ÃƒO
 // Status is in OBSERVAÃ‡ÃƒO column. Sub-rows (no seguradora name) = additional modalidades for previous insurer.
 // Tomador is in row with label "TOMADOR"
@@ -73,7 +73,7 @@ function parseWorkbook(wb) {
 
   if (!raw.length) return null;
 
-  // â”€â”€ Extract tomador / CNPJ from early rows
+  // â"€â"€ Extract tomador / CNPJ from early rows
   let tomador = null;
   let cnpj = null;
   for (let i = 0; i < Math.min(raw.length, 10); i++) {
@@ -91,7 +91,7 @@ function parseWorkbook(wb) {
     if (tomador && cnpj) break;
   }
 
-  // â”€â”€ Find header row (contains "SEGURADORAS" or "SEGURADORA")
+  // â"€â"€ Find header row (contains "SEGURADORAS" or "SEGURADORA")
   let headerRowIdx = -1;
   let colIdxSeg = -1, colIdxCapTotal = -1, colIdxModal = -1, colIdxLimite = -1;
   let colIdxTaxa = -1, colIdxObs = -1, colIdxVenc = -1;
@@ -139,7 +139,7 @@ function parseWorkbook(wb) {
     return { rows, tomador, cnpj };
   }
 
-  // â”€â”€ Parse data rows
+  // â"€â"€ Parse data rows
   const rows = [];
   let currentSeg = null;
   let currentStatus = 'vazio';
@@ -191,7 +191,7 @@ function parseWorkbook(wb) {
     }
   }
 
-  // â”€â”€ Build final list: consolidate modalidades under each seguradora
+  // â"€â"€ Build final list: consolidate modalidades under each seguradora
   const consolidated = [];
   const seen = {};
 
@@ -244,12 +244,12 @@ function parseNum(val) {
   const s = String(val).trim();
   if (!s) return 0;
   let cleaned = s.replace(/[R$\s]/g,'');
-  // If contains comma, it's BR format: "1.234,56" â†’ strip dots, replace comma with dot
+  // If contains comma, it's BR format: "1.234,56" â†' strip dots, replace comma with dot
   if (cleaned.includes(',')) {
     cleaned = cleaned.replace(/\./g,'').replace(',','.');
   }
   // Else: could be "1234.56" (US/raw) or "1.500" (BR thousand). Heuristic:
-  // if exactly one dot followed by 1-2 digits at the end â†’ decimal; else thousands
+  // if exactly one dot followed by 1-2 digits at the end â†' decimal; else thousands
   else if (cleaned.includes('.')) {
     const parts = cleaned.split('.');
     if (parts.length === 2 && parts[1].length <= 2) {
@@ -261,7 +261,7 @@ function parseNum(val) {
   return parseFloat(cleaned) || 0;
 }
 
-// â”€â”€ Generate dashboard
+// â"€â"€ Generate dashboard
 function generateDashboard() {
   if (!parsedData) return;
   const generateButton = document.getElementById('btnGenerate');
@@ -345,7 +345,7 @@ function generateDashboard() {
       });
 
     } else {
-      // Concorrente / Declinado â€” single row, no modalidade data
+      // Concorrente / Declinado â€" single row, no modalidade data
       const tr = document.createElement('tr');
       tr.classList.add('row-last-in-group');
       tr.innerHTML = `<td class="cell-seguradora">${esc(r.seguradora)}</td><td class="cell-status">${badge}</td><td class="cell-modalidade cell-empty">—</td><td class="cell-limite cell-empty">—</td><td class="cell-taxa cell-taxa--empty">—</td>`;
@@ -399,7 +399,7 @@ function generateDashboard() {
     }
   });
 
-  // â”€â”€ Build modalidades index for search (from approved rows only)
+  // â"€â"€ Build modalidades index for search (from approved rows only)
   buildModalIndex(aprovadas);
 
   // Switch to dashboard tab
@@ -477,7 +477,7 @@ function buildModalIndex(aprovadas) {
       allModalidades.push({ label: label.toUpperCase().trim(), seguradora: seg.seguradora, value, taxa });
     };
 
-    // Use ONLY the consolidated modalidades array â€” these have the per-modality values from LIMITE column.
+    // Use ONLY the consolidated modalidades array â€" these have the per-modality values from LIMITE column.
     // Do NOT use seg.limite (CAPACIDADE TOTAL) as it represents the sum, not a single modality value.
     if (seg.modalidades && seg.modalidades.length > 0) {
       seg.modalidades.forEach(m => addEntry(m.label, m.value, m.taxa));
@@ -689,7 +689,7 @@ function renderModalComparison(label) {
       }
     });
   } else {
-    // No taxa data â€” show placeholder
+    // No taxa data â€" show placeholder
     const ctx = document.getElementById('chartModalTaxa').getContext('2d');
     ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
     ctx.font = '12px Inter, sans-serif';
@@ -699,7 +699,7 @@ function renderModalComparison(label) {
   }
 }
 
-// â”€â”€ Helpers
+// â"€â"€ Helpers
 function fmtBRL(v) {
   return 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
@@ -727,8 +727,245 @@ function showError(msg) {
 }
 function hideError() { document.getElementById('errorMsg').classList.remove('show'); }
 
-// â”€â”€ Chart defaults
+// -- Chart defaults
 Chart.defaults.font.family = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
 Chart.defaults.font.size = 11;
 Chart.defaults.color = '#4b5563';
+
+// -- Financial Analysis State
+let financialFiles = [];
+const MAX_FINANCIAL_FILES = 6;
+const FINANCIAL_EXTENSIONS = ['xlsx', 'xls', 'csv', 'pdf', 'png', 'jpg', 'jpeg'];
+
+// Drop zone for financial files
+const dzFin = document.getElementById('dropZoneFinancial');
+const fileInputFin = document.getElementById('fileInputFinancial');
+
+if (fileInputFin) {
+  fileInputFin.addEventListener('change', function() {
+    handleFinancialFiles(Array.from(this.files));
+    this.value = '';
+  });
+}
+
+if (dzFin) {
+  dzFin.addEventListener('dragover', e => { e.preventDefault(); dzFin.classList.add('drop-zone--over'); });
+  dzFin.addEventListener('dragleave', () => dzFin.classList.remove('drop-zone--over'));
+  dzFin.addEventListener('drop', e => {
+    e.preventDefault();
+    dzFin.classList.remove('drop-zone--over');
+    handleFinancialFiles(Array.from(e.dataTransfer.files));
+  });
+}
+
+function handleFinancialInputChange(fileList) {
+  handleFinancialFiles(Array.from(fileList));
+}
+
+function handleFinancialFiles(files) {
+  hideFinancialError();
+  let adicionados = 0;
+
+  for (const file of files) {
+    if (financialFiles.length >= MAX_FINANCIAL_FILES) {
+      showFinancialError(`Limite de ${MAX_FINANCIAL_FILES} arquivos atingido. Remova um arquivo para adicionar outro.`);
+      break;
+    }
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (!FINANCIAL_EXTENSIONS.includes(ext)) {
+      showFinancialError(`Formato não suportado: .${ext}. Use .xlsx, .xls, .csv, .pdf, .png, .jpg ou .jpeg.`);
+      continue;
+    }
+    const duplicado = financialFiles.some(f => f.name === file.name && f.size === file.size);
+    if (duplicado) continue;
+
+    financialFiles.push(file);
+    adicionados++;
+  }
+
+  renderFinancialFileList();
+  document.getElementById('btnAnalyze').disabled = financialFiles.length === 0;
+}
+
+function removeFinancialFile(index) {
+  financialFiles.splice(index, 1);
+  renderFinancialFileList();
+  document.getElementById('btnAnalyze').disabled = financialFiles.length === 0;
+  hideFinancialError();
+}
+
+function getFileIconClass(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (['xlsx', 'xls'].includes(ext)) return 'financial-file-icon--xlsx';
+  if (ext === 'pdf') return 'financial-file-icon--pdf';
+  if (ext === 'csv') return 'financial-file-icon--csv';
+  return 'financial-file-icon--img';
+}
+
+function getFileIconLabel(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (['xlsx', 'xls'].includes(ext)) return 'XLS';
+  if (ext === 'pdf') return 'PDF';
+  if (ext === 'csv') return 'CSV';
+  return 'IMG';
+}
+
+function renderFinancialFileList() {
+  const list = document.getElementById('financialFileList');
+  if (!list) return;
+
+  if (financialFiles.length === 0) {
+    list.innerHTML = '';
+    return;
+  }
+
+  list.innerHTML = financialFiles.map((file, i) => `
+    <div class="financial-file-item">
+      <div class="financial-file-icon ${getFileIconClass(file)}">${getFileIconLabel(file)}</div>
+      <div class="financial-file-info">
+        <p class="financial-file-name" title="${esc(file.name)}">${esc(file.name)}</p>
+        <p class="financial-file-meta">${(file.size / 1024).toFixed(1)} KB</p>
+      </div>
+      <button type="button" class="financial-file-remove" onclick="removeFinancialFile(${i})" aria-label="Remover ${esc(file.name)}">
+        <svg viewBox="0 0 16 16" fill="none"><path d="M2 2l12 12M14 2L2 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+  `).join('');
+}
+
+function showFinancialError(msg) {
+  const el = document.getElementById('errorMsgFinancial');
+  const txt = document.getElementById('errorTextFinancial');
+  if (el && txt) { txt.textContent = msg; el.classList.add('show'); }
+}
+
+function hideFinancialError() {
+  const el = document.getElementById('errorMsgFinancial');
+  if (el) el.classList.remove('show');
+}
+
+// -- Process financial analysis
+async function processarAnaliseFinanceira() {
+  if (financialFiles.length === 0) return;
+
+  const btn = document.getElementById('btnAnalyze');
+  btn.disabled = true;
+  btn.querySelector('.btn-label').textContent = 'Analisando…';
+  hideFinancialError();
+
+  // Show loading page
+  const tabAF = document.getElementById('tab-analise-financeira');
+  tabAF.disabled = false;
+  tabAF.setAttribute('aria-disabled', 'false');
+  tabAF.removeAttribute('title');
+  switchTab('analise-financeira');
+
+  document.getElementById('afLoading').hidden = false;
+  document.getElementById('afHero').hidden = true;
+  document.getElementById('afContent').hidden = true;
+  document.getElementById('afFooter').hidden = true;
+
+  try {
+    const analise = await analisarDocumentosFinanceiros(financialFiles);
+    renderAnaliseFinanceira(analise);
+  } catch (err) {
+    document.getElementById('afLoading').hidden = true;
+    switchTab('upload');
+    showFinancialError('Erro ao analisar: ' + err.message);
+    tabAF.disabled = true;
+    tabAF.setAttribute('aria-disabled', 'true');
+    tabAF.title = 'Anexe documentos financeiros primeiro';
+  } finally {
+    btn.disabled = false;
+    btn.querySelector('.btn-label').textContent = 'Analisar com IA';
+  }
+}
+
+// -- Render financial analysis result
+function renderAnaliseFinanceira(data) {
+  document.getElementById('afLoading').hidden = true;
+  document.getElementById('afHero').hidden = false;
+  document.getElementById('afContent').hidden = false;
+  document.getElementById('afFooter').hidden = false;
+
+  // Hero
+  document.getElementById('afEmpresa').textContent = data.empresa || 'Empresa não identificada';
+  document.getElementById('afPeriodo').textContent = data.periodo ? 'Período: ' + data.periodo : '';
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+  document.getElementById('afDataGeracao').textContent = 'Gerado em ' + dateStr;
+  document.getElementById('afFooterDate').textContent = dateStr;
+
+  // Tipo doc badge
+  document.getElementById('afTipoDoc').textContent = data.tipo_documento || '—';
+
+  // Risco badge
+  const riscoBadge = document.getElementById('afRiscoBadge');
+  const risco = (data.classificacao_risco || '').toLowerCase();
+  riscoBadge.textContent = 'Risco ' + (data.classificacao_risco || '—');
+  riscoBadge.className = 'af-risco-badge';
+  if (risco.includes('baixo'))    riscoBadge.classList.add('af-risco-badge--baixo');
+  else if (risco.includes('moderado')) riscoBadge.classList.add('af-risco-badge--moderado');
+  else if (risco.includes('alto') && !risco.includes('cr')) riscoBadge.classList.add('af-risco-badge--alto');
+  else if (risco.includes('cr'))  riscoBadge.classList.add('af-risco-badge--critico');
+
+  // KPIs
+  const ind = data.indicadores || {};
+  const kpisConfig = [
+    { label: 'Receita Bruta',       key: 'receita_bruta',       format: 'brl' },
+    { label: 'Receita Líquida',     key: 'receita_liquida',     format: 'brl' },
+    { label: 'Lucro Bruto',         key: 'lucro_bruto',         format: 'brl' },
+    { label: 'Lucro Líquido',       key: 'lucro_liquido',       format: 'brl' },
+    { label: 'EBITDA',              key: 'ebitda',              format: 'brl' },
+    { label: 'Margem Bruta',        key: 'margem_bruta',        format: 'pct' },
+    { label: 'Margem Líquida',      key: 'margem_liquida',      format: 'pct' },
+    { label: 'Ativo Total',         key: 'ativo_total',         format: 'brl' },
+    { label: 'Passivo Total',       key: 'passivo_total',       format: 'brl' },
+    { label: 'Patrimônio Líquido',  key: 'patrimonio_liquido',  format: 'brl' },
+    { label: 'Liquidez Corrente',   key: 'liquidez_corrente',   format: 'dec' },
+    { label: 'Liquidez Geral',      key: 'liquidez_geral',      format: 'dec' },
+    { label: 'Endividamento Geral', key: 'endividamento_geral', format: 'pct' },
+    { label: 'Rentabilidade PL',    key: 'rentabilidade_pl',    format: 'pct' },
+  ].filter(k => ind[k.key] !== null && ind[k.key] !== undefined);
+
+  const kpisEl = document.getElementById('afKpis');
+  kpisEl.innerHTML = kpisConfig.map(cfg => {
+    const val = ind[cfg.key];
+    let display = '—';
+    if (val !== null && val !== undefined) {
+      if (cfg.format === 'brl') display = fmtBRL(val);
+      else if (cfg.format === 'pct') display = Number(val).toFixed(2).replace('.', ',') + '%';
+      else display = Number(val).toFixed(2).replace('.', ',');
+    }
+    const isNeg = typeof val === 'number' && val < 0;
+    return `
+      <article class="kpi kpi-card ${isNeg ? 'kpi-card--declinado' : 'kpi-card--capacidade'}">
+        <div class="kpi-indicator" aria-hidden="true"></div>
+        <p class="kpi-label">${esc(cfg.label)}</p>
+        <p class="kpi-value kpi-value--mono mono">${display}</p>
+      </article>`;
+  }).join('');
+
+  if (kpisConfig.length === 0) {
+    kpisEl.innerHTML = '<p style="color:var(--color-text-muted);font-size:var(--text-sm);grid-column:1/-1">Indicadores numéricos não identificados nos documentos.</p>';
+  }
+
+  // Resumo
+  document.getElementById('afResumo').textContent = data.resumo_executivo || '—';
+
+  // Pontos positivos
+  const posEl = document.getElementById('afPositivos');
+  posEl.innerHTML = (data.pontos_positivos || []).map(p => `<li>${esc(p)}</li>`).join('') || '<li>Não identificados.</li>';
+
+  // Pontos de atenção
+  const atEl = document.getElementById('afAtencao');
+  atEl.innerHTML = (data.pontos_atencao || []).map(p => `<li>${esc(p)}</li>`).join('') || '<li>Não identificados.</li>';
+
+  // Recomendação
+  document.getElementById('afRecomendacao').textContent = data.recomendacao || '—';
+
+  // Show export button
+  const btnDownload = document.getElementById('btnDownloadTop');
+  if (btnDownload) btnDownload.hidden = false;
+}
 

@@ -8,6 +8,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>if(typeof pdfjsLib!=='undefined') pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
 <link rel="stylesheet" href="assets/css/variables.css">
 <link rel="stylesheet" href="assets/css/base.css">
 <link rel="stylesheet" href="styles.css">
@@ -22,6 +24,7 @@
     <nav class="topbar-tabs topbar-nav" aria-label="Navegação principal">
       <button type="button" class="topbar-tab tab-btn active" data-page="upload" aria-current="page" onclick="switchTab('upload')">Importar</button>
       <button type="button" class="topbar-tab tab-btn" id="tab-dashboard" data-page="dashboard" aria-disabled="true" disabled title="Importe uma planilha primeiro" onclick="switchTab('dashboard')">Dashboard</button>
+      <button type="button" class="topbar-tab tab-btn" id="tab-analise-financeira" data-page="analise-financeira" aria-disabled="true" disabled title="Anexe documentos financeiros primeiro" onclick="switchTab('analise-financeira')">Análise Financeira</button>
     </nav>
     <div class="topbar-actions">
       <button type="button" class="btn-secondary btn-download topbar-download" id="btnDownloadTop" onclick="downloadComparativo()" aria-label="Exportar relatório em PDF" hidden>
@@ -77,6 +80,50 @@
               <li class="instr-item"><span class="instr-num">02</span><span class="instr-text">O sistema identificará tomador, status, limites, modalidades e taxas.</span></li>
               <li class="instr-item"><span class="instr-num">03</span><span class="instr-text">Clique em <strong>Gerar Dashboard</strong> para processar os dados.</span></li>
               <li class="instr-item"><span class="instr-num">04</span><span class="instr-text">Exporte o relatório em PDF pelo botão no dashboard.</span></li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="upload-section upload-section--financial">
+      <div class="upload-header">
+        <p class="upload-header-eyebrow">Inteligência Artificial</p>
+        <h1 class="upload-header-title">Análise de Balanços com IA</h1>
+        <p class="upload-header-sub">Anexe DRE, Balanço Patrimonial ou Balancete. A IA analisa e gera um relatório financeiro completo. Até 6 arquivos.</p>
+      </div>
+
+      <div class="upload-card card upload-card--financial">
+        <div class="upload-card-header">
+          <p class="upload-card-title">Documentos Financeiros</p>
+          <span class="badge-ia-tag">DeepSeek IA</span>
+        </div>
+        <div class="upload-card-body">
+          <label class="drop-zone drop-zone--financial" id="dropZoneFinancial" tabindex="0" aria-label="Clique ou arraste documentos financeiros para fazer upload">
+            <input type="file" id="fileInputFinancial" accept=".xlsx,.xls,.csv,.pdf,.png,.jpg,.jpeg" multiple>
+            <svg class="drop-icon" viewBox="0 0 48 48" fill="none" aria-hidden="true"><rect x="4" y="6" width="26" height="34" rx="2" stroke="currentColor" stroke-width="2.5"/><path d="M26 6v10h10" stroke="currentColor" stroke-width="2.5" stroke-linecap="square"/><rect x="26" y="28" width="16" height="14" rx="2" stroke="currentColor" stroke-width="2"/><path d="M34 32v6M31 35h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            <p class="drop-title">Arraste os arquivos aqui</p>
+            <p class="drop-sub">ou <span>clique para selecionar</span></p>
+            <p class="drop-hint">DRE · Balanço · Balancete &nbsp;|&nbsp; .xlsx .pdf .csv .jpg .png &nbsp;|&nbsp; Máx. 6 arquivos</p>
+          </label>
+
+          <div class="financial-file-list" id="financialFileList" aria-live="polite"></div>
+
+          <div class="error-msg" id="errorMsgFinancial" role="alert" aria-live="polite">
+            <p id="errorTextFinancial">Erro.</p>
+          </div>
+
+          <button type="button" class="btn-primary btn-generate btn-analyze" id="btnAnalyze" disabled onclick="processarAnaliseFinanceira()">
+            <span class="btn-label">Analisar com IA</span>
+          </button>
+
+          <div class="upload-instructions">
+            <h2 class="instr-title">Como usar</h2>
+            <ol class="instr-list">
+              <li class="instr-item"><span class="instr-num">01</span><span class="instr-text">Anexe até 6 arquivos: DRE, Balanço ou Balancete (.xlsx, .pdf, .csv, .jpg).</span></li>
+              <li class="instr-item"><span class="instr-num">02</span><span class="instr-text">A IA identifica automaticamente o tipo de documento.</span></li>
+              <li class="instr-item"><span class="instr-num">03</span><span class="instr-text">Clique em <strong>Analisar com IA</strong> para gerar o relatório.</span></li>
+              <li class="instr-item"><span class="instr-num">04</span><span class="instr-text">Exporte o relatório financeiro em PDF.</span></li>
             </ol>
           </div>
         </div>
@@ -183,12 +230,83 @@
 
   <footer class="footer app-footer" role="contentinfo">
     <div class="footer-brand">
-      <img src="assets/img/lavoro-logo.png" alt="" class="footer-logo" aria-hidden="true">
+      <img src="assets/img/lavoro_logo_sem_fundo.png" alt="" class="footer-logo" aria-hidden="true">
     </div>
     <p class="footer-right">Gerado em <span id="dFooterDate"></span></p>
   </footer>
 </main>
 
+<main class="page page-analise-financeira" id="page-analise-financeira" aria-label="Análise Financeira IA">
+
+  <div class="af-loading" id="afLoading" hidden>
+    <div class="af-spinner" aria-hidden="true"></div>
+    <p class="af-loading-text">Analisando documentos com IA…</p>
+    <p class="af-loading-sub">Isso pode levar alguns segundos.</p>
+  </div>
+
+  <section class="hero dashboard-hero" id="afHero" hidden>
+    <div class="hero-inner">
+      <div class="hero-left hero-content">
+        <p class="hero-label hero-eyebrow">Análise Financeira IA</p>
+        <h1 class="hero-title" id="afEmpresa">—</h1>
+      </div>
+      <div class="hero-right hero-meta">
+        <img src="assets/img/Lavoro-logo_branca.png" alt="Lavoro Seguros" class="print-hero-logo" aria-hidden="true">
+        <p class="hero-cnpj" id="afPeriodo">—</p>
+        <p class="hero-date" id="afDataGeracao"></p>
+      </div>
+    </div>
+  </section>
+
+  <div class="content dashboard-body" id="afContent" hidden>
+
+    <section class="dashboard-section af-badges-section" aria-label="Classificação">
+      <div class="af-badges-row">
+        <span class="af-tipo-badge" id="afTipoDoc">—</span>
+        <span class="af-risco-badge" id="afRiscoBadge">—</span>
+      </div>
+    </section>
+
+    <section class="dashboard-section kpis-section" aria-labelledby="afKpisTitle">
+      <h2 class="sec section-title" id="afKpisTitle">Indicadores Financeiros</h2>
+      <div class="kpis kpi-grid af-kpi-grid" id="afKpis"></div>
+    </section>
+
+    <section class="dashboard-section af-analise-section" aria-labelledby="afAnaliseTitle">
+      <h2 class="sec section-title" id="afAnaliseTitle">Análise da IA</h2>
+
+      <div class="af-resumo-card card">
+        <p class="af-card-label">Resumo Executivo</p>
+        <p class="af-resumo-text" id="afResumo">—</p>
+      </div>
+
+      <div class="af-pontos-grid">
+        <div class="af-pontos-card af-pontos-card--pos card">
+          <p class="af-card-label">Pontos Positivos</p>
+          <ul class="af-pontos-list" id="afPositivos"></ul>
+        </div>
+        <div class="af-pontos-card af-pontos-card--atencao card">
+          <p class="af-card-label">Pontos de Atenção</p>
+          <ul class="af-pontos-list" id="afAtencao"></ul>
+        </div>
+      </div>
+
+      <div class="af-recomendacao-card card">
+        <p class="af-card-label">Recomendação</p>
+        <p class="af-recomendacao-text" id="afRecomendacao">—</p>
+      </div>
+    </section>
+  </div>
+
+  <footer class="footer app-footer" id="afFooter" hidden role="contentinfo">
+    <div class="footer-brand">
+      <img src="assets/img/lavoro_logo_sem_fundo.png" alt="" class="footer-logo" aria-hidden="true">
+    </div>
+    <p class="footer-right">Gerado em <span id="afFooterDate"></span></p>
+  </footer>
+</main>
+
+<script src="deepseek.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
