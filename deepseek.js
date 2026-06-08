@@ -1,25 +1,66 @@
 const DEEPSEEK_WORKER_URL = 'https://lucky-hat-b241.kyuri887.workers.dev/';
+const DEEPSEEK_JOBS_URL = DEEPSEEK_WORKER_URL.replace(/\/+$/, '') + '/v1/analysis-jobs';
+const MAX_PDF_PAGES = 250;
+const TEXT_CHUNK_SIZE = 12000;
+const MAX_JOB_ITERATIONS = 400;
 
 function parseDeepSeekContent(data) {
-  const msg = data.choices[0].message;
-  // Para deepseek-v4-pro o thinking pode vir em msg.thinking ou inline no content com tags
-  let raw = (msg.content || '').trim();
-  // Remove blocos de thinking/reasoning que alguns modelos embutem no content
+  const msg = data && data.choices && data.choices[0] && data.choices[0].message;
+  let raw = msg && msg.content ? String(msg.content).trim() : '';
   raw = raw.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
   raw = raw.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim();
-  // Remove fences de markdown
   raw = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
   if (!raw) throw new Error('Resposta vazia da API. Tente novamente.');
   return raw;
 }
 
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function quebrarTextoEmPartes(texto, maxChars, metaBase = {}) {
+  const clean = String(texto || '').replace(/\r\n/g, '\n').trim();
+  if (!clean) return [];
+
+  const partes = [];
+  let offset = 0;
+  let indice = 1;
+
+  while (offset < clean.length) {
+    let end = Math.min(offset + maxChars, clean.length);
+    if (end < clean.length) {
+      const lastBreak = Math.max(
+        clean.lastIndexOf('\n\n', end),
+        clean.lastIndexOf('\n', end),
+        clean.lastIndexOf('. ', end),
+        clean.lastIndexOf('; ', end),
+        clean.lastIndexOf(' ', end)
+      );
+      if (lastBreak > offset + Math.floor(maxChars * 0.6)) end = lastBreak + 1;
+    }
+
+    const conteudo = clean.slice(offset, end).trim();
+    if (conteudo) {
+      partes.push({
+        indice,
+        conteudo,
+        ...metaBase,
+      });
+      indice += 1;
+    }
+    offset = end;
+  }
+
+  return partes;
+}
+
 async function extrairConteudoArquivo(file) {
   const ext = file.name.split('.').pop().toLowerCase();
   if (['xlsx', 'xls'].includes(ext)) return extrairExcel(file);
-  if (ext === 'csv') return extrairTexto(file);
+  if (ext === 'csv' || ext === 'txt') return extrairTexto(file);
   if (ext === 'pdf') return extrairPDF(file);
   if (['png', 'jpg', 'jpeg'].includes(ext)) return extrairImagem(file);
-  return { tipo: 'texto', conteudo: '' };
+  return { tipo: 'texto', conteudo: '', partes: [] };
 }
 
 function extrairExcel(file) {
@@ -28,14 +69,31 @@ function extrairExcel(file) {
     reader.onload = e => {
       try {
         const wb = XLSX.read(e.target.result, { type: 'array' });
-        let texto = '';
+        let textoCompleto = '';
+        const partes = [];
+
         wb.SheetNames.forEach(nome => {
           const ws = wb.Sheets[nome];
-          texto += `[Aba: ${nome}]\n${XLSX.utils.sheet_to_csv(ws)}\n\n`;
+          const csv = XLSX.utils.sheet_to_csv(ws);
+          textoCompleto += `[Aba: ${nome}]\n${csv}\n\n`;
+          const chunks = quebrarTextoEmPartes(csv, TEXT_CHUNK_SIZE, { origem: `Aba ${nome}` });
+          chunks.forEach((chunk, idx) => {
+            partes.push({
+              indice: partes.length + 1,
+              rotulo: `${nome} - parte ${idx + 1}`,
+              conteudo: `[Aba: ${nome}]\n${chunk.conteudo}`,
+            });
+          });
         });
-        resolve({ tipo: 'texto', conteudo: texto.slice(0, 10000) });
+
+        resolve({
+          tipo: 'texto',
+          conteudo: textoCompleto.trim(),
+          partes,
+          meta: { origem: 'excel', totalPartes: partes.length },
+        });
       } catch (err) {
-        resolve({ tipo: 'texto', conteudo: '[Erro ao ler Excel: ' + err.message + ']' });
+        resolve({ tipo: 'texto', conteudo: '[Erro ao ler Excel: ' + err.message + ']', partes: [] });
       }
     };
     reader.readAsArrayBuffer(file);
@@ -45,7 +103,20 @@ function extrairExcel(file) {
 function extrairTexto(file) {
   return new Promise(resolve => {
     const reader = new FileReader();
-    reader.onload = e => resolve({ tipo: 'texto', conteudo: e.target.result.slice(0, 10000) });
+    reader.onload = e => {
+      const texto = String(e.target.result || '');
+      const partes = quebrarTextoEmPartes(texto, TEXT_CHUNK_SIZE).map((chunk, idx) => ({
+        indice: idx + 1,
+        rotulo: `Parte ${idx + 1}`,
+        conteudo: chunk.conteudo,
+      }));
+      resolve({
+        tipo: 'texto',
+        conteudo: texto,
+        partes,
+        meta: { origem: 'texto', totalPartes: partes.length },
+      });
+    };
     reader.readAsText(file, 'UTF-8');
   });
 }
@@ -54,16 +125,36 @@ async function extrairPDF(file) {
   try {
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    let texto = '';
-    const maxPaginas = Math.min(pdf.numPages, 40);
-    for (let i = 1; i <= maxPaginas; i++) {
+    const totalPaginas = Math.min(pdf.numPages, MAX_PDF_PAGES);
+    let textoCompleto = '';
+    const partes = [];
+
+    for (let i = 1; i <= totalPaginas; i++) {
       const page = await pdf.getPage(i);
       const content = await page.getTextContent();
-      texto += content.items.map(item => item.str).join(' ') + '\n';
+      const pageText = content.items.map(item => item.str).join(' ').replace(/\s+/g, ' ').trim();
+      if (!pageText) continue;
+
+      textoCompleto += `[Pagina ${i}]\n${pageText}\n\n`;
+      const chunks = quebrarTextoEmPartes(pageText, TEXT_CHUNK_SIZE, { pagina: i });
+      chunks.forEach((chunk, idx) => {
+        partes.push({
+          indice: partes.length + 1,
+          pagina: i,
+          rotulo: `Pagina ${i}${chunks.length > 1 ? ` - parte ${idx + 1}` : ''}`,
+          conteudo: `[Pagina ${i}]\n${chunk.conteudo}`,
+        });
+      });
     }
-    return { tipo: 'texto', conteudo: texto.trim().slice(0, 50000) };
+
+    return {
+      tipo: 'texto',
+      conteudo: textoCompleto.trim(),
+      partes,
+      meta: { origem: 'pdf', totalPaginas, totalPartes: partes.length },
+    };
   } catch (err) {
-    return { tipo: 'texto', conteudo: '[PDF não pôde ser lido: ' + err.message + ']' };
+    return { tipo: 'texto', conteudo: '[PDF nao pode ser lido: ' + err.message + ']', partes: [] };
   }
 }
 
@@ -75,19 +166,8 @@ function extrairImagem(file) {
   });
 }
 
-// ── Seguro Garantia — extrai conteudo dos arquivos e monta historico inicial
-async function iniciarChatSeguroGarantia(arquivos) {
-  const extraidos = await Promise.all(
-    arquivos.map(async file => ({ nome: file.name, ...await extrairConteudoArquivo(file) }))
-  );
-  const textuais = extraidos.filter(a => a.tipo === 'texto');
-  const imagens  = extraidos.filter(a => a.tipo === 'imagem');
-  const nomesArquivos = arquivos.map(f => f.name).join(', ');
-  const blocoTexto = textuais.length
-    ? textuais.map((a, i) => `--- DOCUMENTO ${i + 1}: ${a.nome} ---\n${a.conteudo}`).join('\n\n')
-    : '';
-
-  const instrucao = `Voce e um especialista senior em subscricao de SEGURO GARANTIA para seguradoras brasileiras. Analise COMPLETAMENTE os documentos enviados (edital, contrato, aditivo, apostilamento, termo de referencia ou similares) e produza uma analise tecnica detalhada em portugues brasileiro.
+function buildSeguroGarantiaInstruction(nomesArquivos, blocoTexto) {
+  return `Voce e um especialista senior em subscricao de SEGURO GARANTIA para seguradoras brasileiras. Analise COMPLETAMENTE os documentos enviados (edital, contrato, aditivo, apostilamento, termo de referencia ou similares) e produza uma analise tecnica detalhada em portugues brasileiro.
 
 Para cada informacao extraida, informe a fonte exata no documento (clausula, item, artigo, pagina). Omita campos nao encontrados em vez de escrever "nao encontrado" ou similar.
 
@@ -108,159 +188,269 @@ Liste as clausulas que impactam o risco da seguradora (penalidades, rescisao, re
 Liste riscos Alto / Medio / Baixo com descricao objetiva e fonte no documento.
 
 ## Parecer Geral de Emissao
-Recomendacao: Emitir, Emitir com ressalvas ou Declinar — com justificativa tecnica abrangente e condicoes se houver.
+Recomendacao: Emitir, Emitir com ressalvas ou Declinar, com justificativa tecnica abrangente e condicoes se houver.
 
 ## Resumo Executivo
 4-5 frases resumindo objeto, partes, modalidades aplicaveis e parecer.
 
 Documentos analisados: ${nomesArquivos}${blocoTexto ? '\n\nDOCUMENTOS PARA ANALISE:\n' + blocoTexto : ''}`;
-
-  const primeiraMsg = imagens.length > 0
-    ? { role: 'user', content: [{ type: 'text', text: instrucao }, ...imagens.map(img => ({ type: 'image_url', image_url: { url: img.conteudo } }))] }
-    : { role: 'user', content: instrucao };
-
-  return [primeiraMsg];
 }
 
-// ── Envia mensagens para o chat e retorna resposta em texto
-async function chatSeguroGarantia(history) {
-  const resp = await fetch(DEEPSEEK_WORKER_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'deepseek-chat', messages: history, max_tokens: 8192 }),
-  });
-  if (!resp.ok) throw new Error('Erro na API: ' + await resp.text());
-  const data = await resp.json();
-  let raw = (data.choices[0].message.content || '').trim();
-  raw = raw.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-  raw = raw.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim();
-  if (!raw) throw new Error('Resposta vazia da API. Tente novamente.');
-  return raw;
-}
+function buildFiancaInstruction(nomesArquivos, blocoTexto) {
+  return `Voce e um especialista em subscricao de FIANCA LOCATICIA para seguradoras brasileiras. Analise os documentos fornecidos (contrato de locacao, aditivos, laudos, termos de apostilamento ou similares) e extraia todas as informacoes necessarias para emissao do seguro.
 
-// ── Fianca Locaticia
-async function analisarFiancaLocaticia(arquivos) {
-  const extraidos = await Promise.all(
-    arquivos.map(async file => ({ nome: file.name, ...await extrairConteudoArquivo(file) }))
-  );
-  const textuais = extraidos.filter(a => a.tipo === 'texto');
-  const imagens  = extraidos.filter(a => a.tipo === 'imagem');
-  const nomesArquivos = arquivos.map(f => f.name).join(', ');
-  const blocoTexto = textuais.length
-    ? textuais.map((a, i) => `--- DOCUMENTO ${i + 1}: ${a.nome} ---\n${a.conteudo}`).join('\n\n')
-    : '';
+REGRA FUNDAMENTAL: Para CADA campo extraido, informe OBRIGATORIAMENTE a fonte exata no documento, clausula, artigo, item, paragrafo, pagina ou secao onde a informacao aparece. Se nao encontrar a informacao, use null. NUNCA invente ou estime valores.
 
-  const instrucao = `Você é um especialista em subscrição de FIANÇA LOCATÍCIA para seguradoras brasileiras. Analise os documentos fornecidos (contrato de locação, aditivos, laudos, termos de apostilamento ou similares) e extraia todas as informações necessárias para emissão do seguro.
+REGRA SOBRE NULL: Use sempre JSON null, NUNCA a string "null", "N/A", "nao informado" ou similar.
 
-REGRA FUNDAMENTAL: Para CADA campo extraído, informe OBRIGATORIAMENTE a fonte exata no documento — cláusula, artigo, item, parágrafo, página ou seção onde a informação aparece. Se não encontrar a informação, use null. NUNCA invente ou estime valores.
-
-REGRA SOBRE NULL: Use sempre JSON null — NUNCA a string "null", "N/A", "não informado" ou similar.
-
-ONDE ENCONTRAR CADA CAMPO NO CONTRATO DE LOCAÇÃO:
-• imovel → endereço no preâmbulo ou cláusula 1ª: "imóvel situado em", "objeto da locação", "logradouro"
-• locatario → "LOCATÁRIO", "ARRENDATÁRIO", nome/razão social da pessoa ou empresa que aluga, geralmente no preâmbulo
-• locador → "LOCADOR", "PROPRIETÁRIO", nome do dono do imóvel, geralmente no preâmbulo
-• finalidade → "FINALIDADE", "destinado a", "uso residencial", "uso comercial", "atividade"
-• valor_aluguel → "valor do aluguel", "aluguel mensal de R$", "contraprestação mensal", "prestação mensal"
-• encargos_mensais → "encargos", "condomínio", "IPTU", "taxas condominiais", "demais encargos"
-• valor_garantia → "valor da garantia", "importância segurada", "valor do seguro fiança", "cobertura máxima"
-• vigencia_inicio / vigencia_fim → datas explícitas de início e término, ou prazo em meses a partir de data base
-• indice_reajuste → "IGPM", "IPCA", "índice de reajuste", "correção anual por"
-• multa_rescisao → "multa contratual", "penalidade", "cláusula penal", "multa de X aluguéis"
-• sub_rogacao → "sub-rogação", "direito de regresso", "ressarcimento", cláusula sobre direito da seguradora
-• foro → "FORO", "comarca", "eleito o foro de", geralmente última cláusula
+ONDE ENCONTRAR CADA CAMPO NO CONTRATO DE LOCACAO:
+- imovel -> endereco no preambulo ou clausula 1a: "imovel situado em", "objeto da locacao", "logradouro"
+- locatario -> "LOCATARIO", "ARRENDATARIO", nome/razao social da pessoa ou empresa que aluga, geralmente no preambulo
+- locador -> "LOCADOR", "PROPRIETARIO", nome do dono do imovel, geralmente no preambulo
+- finalidade -> "FINALIDADE", "destinado a", "uso residencial", "uso comercial", "atividade"
+- valor_aluguel -> "valor do aluguel", "aluguel mensal de R$", "contraprestacao mensal", "prestacao mensal"
+- encargos_mensais -> "encargos", "condominio", "IPTU", "taxas condominiais", "demais encargos"
+- valor_garantia -> "valor da garantia", "importancia segurada", "valor do seguro fianca", "cobertura maxima"
+- vigencia_inicio / vigencia_fim -> datas explicitas de inicio e termino, ou prazo em meses a partir de data base
+- indice_reajuste -> "IGPM", "IPCA", "indice de reajuste", "correcao anual por"
+- multa_rescisao -> "multa contratual", "penalidade", "clausula penal", "multa de X alugueis"
+- sub_rogacao -> "sub-rogacao", "direito de regresso", "ressarcimento", clausula sobre direito da seguradora
+- foro -> "FORO", "comarca", "eleito o foro de", geralmente ultima clausula
 
 DOCUMENTOS ENVIADOS: ${nomesArquivos}
 
 Retorne APENAS este JSON (sem markdown, sem texto antes ou depois):
-{"tipo":"Fiança Locatícia","documentos_analisados":["nomes dos arquivos"],"dados_gerais":{"imovel":{"valor":"endereço completo do imóvel ou null","fonte":"ex: Cláusula 1ª do Contrato"},"locatario":{"valor":"nome completo do locatário ou null","fonte":"..."},"locador":{"valor":"nome completo do locador ou null","fonte":"..."},"finalidade":{"valor":"Residencial | Comercial | Misto ou null","fonte":"..."},"valor_aluguel":{"valor":0.00,"fonte":"..."},"encargos_mensais":{"valor":"descrição dos encargos (condomínio, IPTU, etc.) ou null","fonte":"..."},"valor_garantia":{"valor":0.00,"fonte":"..."},"vigencia_inicio":{"valor":"DD/MM/AAAA ou null","fonte":"..."},"vigencia_fim":{"valor":"DD/MM/AAAA ou null","fonte":"..."},"indice_reajuste":{"valor":"IGPM | IPCA | outro ou null","fonte":"..."},"multa_rescisao":{"valor":"valor ou fórmula da multa ou null","fonte":"..."},"sub_rogacao":{"valor":"Sim | Não | Não mencionado","fonte":"..."},"foro":{"valor":"foro de eleição ou null","fonte":"..."}},"clausulas_criticas":[{"titulo":"nome da cláusula","descricao":"transcrição ou resumo fiel do texto da cláusula","fonte":"ex: Cláusula 8ª do Contrato de Locação","impacto":"Alto"}],"riscos":[{"descricao":"descrição objetiva do risco identificado","fonte":"localização exata no documento","nivel":"Alto"}],"parecer":{"recomendacao":"Emitir | Emitir com ressalvas | Declinar","justificativa":"justificativa técnica detalhada","condicoes":["condição 1","condição 2"]},"resumo":"resumo executivo de 3-4 frases sobre o contrato de locação e a análise"}
+{"tipo":"Fianca Locaticia","documentos_analisados":["nomes dos arquivos"],"dados_gerais":{"imovel":{"valor":"endereco completo do imovel ou null","fonte":"ex: Clausula 1a do Contrato"},"locatario":{"valor":"nome completo do locatario ou null","fonte":"..."},"locador":{"valor":"nome completo do locador ou null","fonte":"..."},"finalidade":{"valor":"Residencial | Comercial | Misto ou null","fonte":"..."},"valor_aluguel":{"valor":0.00,"fonte":"..."},"encargos_mensais":{"valor":"descricao dos encargos (condominio, IPTU, etc.) ou null","fonte":"..."},"valor_garantia":{"valor":0.00,"fonte":"..."},"vigencia_inicio":{"valor":"DD/MM/AAAA ou null","fonte":"..."},"vigencia_fim":{"valor":"DD/MM/AAAA ou null","fonte":"..."},"indice_reajuste":{"valor":"IGPM | IPCA | outro ou null","fonte":"..."},"multa_rescisao":{"valor":"valor ou formula da multa ou null","fonte":"..."},"sub_rogacao":{"valor":"Sim | Nao | Nao mencionado","fonte":"..."},"foro":{"valor":"foro de eleicao ou null","fonte":"..."}},"clausulas_criticas":[{"titulo":"nome da clausula","descricao":"transcricao ou resumo fiel do texto da clausula","fonte":"ex: Clausula 8a do Contrato de Locacao","impacto":"Alto"}],"riscos":[{"descricao":"descricao objetiva do risco identificado","fonte":"localizacao exata no documento","nivel":"Alto"}],"parecer":{"recomendacao":"Emitir | Emitir com ressalvas | Declinar","justificativa":"justificativa tecnica detalhada","condicoes":["condicao 1","condicao 2"]},"resumo":"resumo executivo de 3-4 frases sobre o contrato de locacao e a analise"}
 
-Regras: monetários como número puro em reais (ex: 2500.00), null quando não encontrado. Identifique TODAS as cláusulas que impactam o risco da seguradora. Responda em português brasileiro.${blocoTexto ? '\n\nDOCUMENTOS PARA ANALISE:\n' + blocoTexto : ''}`;
+Regras: monetarios como numero puro em reais (ex: 2500.00), null quando nao encontrado. Identifique TODAS as clausulas que impactam o risco da seguradora. Responda em portugues brasileiro.${blocoTexto ? '\n\nDOCUMENTOS PARA ANALISE:\n' + blocoTexto : ''}`;
+}
 
+function buildFinanceInstruction(blocoTexto) {
+  return `Voce e um analista financeiro senior especializado em analise de credito para seguradoras brasileiras. Sua tarefa e analisar documentos financeiros com foco em subscricao de SEGURO GARANTIA e FIANCA LOCATICIA.
+
+REGRAS ABSOLUTAS - NUNCA VIOLE:
+1. Se houver documentos de empresas DIFERENTES, crie uma entrada separada para cada empresa no array "empresas". JAMAIS misture dados de empresas distintas.
+2. Se houver DRE ou balancos de PERIODOS DIFERENTES da mesma empresa, crie um objeto separado em "documentos" para cada periodo. NUNCA some ou consolide valores entre periodos.
+3. Extraia APENAS valores explicitamente presentes nos documentos. Use JSON null (nunca a string "null") para qualquer dado ausente. NUNCA estime ou interpole valores.
+4. Identifique a empresa pelo nome no cabecalho, rodape ou CNPJ do documento.
+5. Retorne APENAS o JSON, sem markdown, sem texto antes ou depois.
+
+INDICADORES PRIORITARIOS PARA SEGURO GARANTIA E FIANCA LOCATICIA:
+- Patrimonio Liquido (principal colateral e capacidade de garantia)
+- Liquidez Corrente e Geral (capacidade de pagamento imediato)
+- Endividamento Geral e composicao (risco de inadimplencia)
+- EBITDA e Margem EBITDA (geracao de caixa operacional)
+- Receita Bruta/Liquida e tendencia (solidez operacional)
+- Lucro/Prejuizo Liquido (resultado final)
+- Divida Liquida / EBITDA (alavancagem real)
+- Capital de Giro Liquido (folga operacional)
+- Cobertura de Juros (risco de default financeiro)
+- Rentabilidade sobre PL (retorno aos socios)
+
+CRITERIOS DE CLASSIFICACAO DE RISCO (para seguradora):
+- Baixo: PL positivo e robusto, liquidez > 1,5, endividamento < 40%, lucro consistente
+- Moderado: PL positivo, liquidez entre 1,0-1,5, endividamento 40-60%, resultado oscilante
+- Alto: PL reduzido ou negativo recente, liquidez < 1,0, endividamento > 60%, prejuizo recente
+- Critico: PL negativo, insolvencia tecnica, multiplos exercicios com prejuizo, liquidez critica
+
+Retorne APENAS este JSON:
+{"empresas":[{"empresa":"Nome exato da empresa","cnpj":"XX.XXX.XXX/XXXX-XX ou null","documentos":[{"tipo":"DRE|Balanco Patrimonial|Balancete","periodo":"periodo identificado","indicadores":{"receita_bruta":null,"receita_liquida":null,"lucro_bruto":null,"lucro_liquido":null,"ebitda":null,"margem_ebitda":null,"margem_liquida":null,"ativo_total":null,"ativo_circulante":null,"passivo_total":null,"passivo_circulante":null,"patrimonio_liquido":null,"divida_liquida":null,"capital_giro_liquido":null,"liquidez_corrente":null,"liquidez_geral":null,"endividamento_geral":null,"cobertura_juros":null,"divida_ebitda":null,"rentabilidade_pl":null},"observacoes":"observacoes relevantes sobre este documento"}],"analise_credito":{"classificacao_risco":"Baixo|Moderado|Alto|Critico","resumo_executivo":"analise objetiva da saude financeira em 3-4 frases","capacidade_seguro_garantia":"Alta|Moderada|Baixa|Inapta","justificativa_garantia":"justificativa tecnica para seguro garantia","capacidade_fianca_locaticia":"Alta|Moderada|Baixa|Inapta","justificativa_fianca":"justificativa tecnica para fianca locaticia","pontos_positivos":["ponto 1","ponto 2"],"pontos_atencao":["ponto 1","ponto 2"],"recomendacao_seguradora":"recomendacao tecnica objetiva para a seguradora"}}]}
+
+Regras de valores: monetarios como numero puro em reais (ex: 1500000.50), percentuais como decimal (ex: 25.5 para 25,5%), indices como decimal (ex: 1.45), null quando ausente. Responda sempre em portugues brasileiro.${blocoTexto ? '\n\nDOCUMENTOS PARA ANALISE:\n' + blocoTexto : ''}`;
+}
+
+function mapArquivosParaJob(arquivosExtraidos) {
+  return arquivosExtraidos.map(item => {
+    if (item.tipo === 'imagem') {
+      return { nome: item.nome, tipo: 'imagem', conteudo: item.conteudo };
+    }
+
+    return {
+      nome: item.nome,
+      tipo: 'texto',
+      conteudo: item.conteudo || '',
+      partes: (item.partes || []).map((parte, idx) => ({
+        indice: parte.indice || idx + 1,
+        rotulo: parte.rotulo || `Parte ${idx + 1}`,
+        pagina: parte.pagina || null,
+        conteudo: parte.conteudo,
+      })),
+      meta: item.meta || {},
+    };
+  });
+}
+
+async function postJson(url, body) {
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text();
+    const error = new Error(text || `Erro HTTP ${resp.status}`);
+    error.status = resp.status;
+    throw error;
+  }
+
+  return resp.json();
+}
+
+function shouldFallbackToLegacy(err) {
+  return err && (err.status === 404 || err.status === 405 || err.status === 501);
+}
+
+async function executarAnaliseEmLotes(flow, arquivos) {
+  const extraidos = await Promise.all(
+    arquivos.map(async file => ({ nome: file.name, ...await extrairConteudoArquivo(file) }))
+  );
+
+  const payload = {
+    flow,
+    files: mapArquivosParaJob(extraidos),
+  };
+
+  const start = await postJson(DEEPSEEK_JOBS_URL, payload);
+  const jobId = start && start.jobId;
+  if (!jobId) throw new Error('O Worker nao retornou um jobId valido.');
+
+  for (let i = 0; i < MAX_JOB_ITERATIONS; i++) {
+    const data = await postJson(`${DEEPSEEK_JOBS_URL}/${encodeURIComponent(jobId)}/run`, {});
+    if (data.status === 'completed') return data.result;
+    if (data.status === 'failed') throw new Error(data.error || 'Falha na analise em lotes.');
+    await sleep(data.retryAfterMs || 250);
+  }
+
+  throw new Error('A analise excedeu o numero maximo de iteracoes. Revise o Worker.');
+}
+
+async function chamarWorkerDireto(messages, maxTokens = 8192) {
+  const resp = await fetch(DEEPSEEK_WORKER_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'deepseek-chat', messages, max_tokens: maxTokens }),
+  });
+  if (!resp.ok) throw new Error('Erro na API: ' + await resp.text());
+  return resp.json();
+}
+
+function parseJsonResult(raw) {
+  if (raw && typeof raw === 'object') return raw;
+  return JSON.parse(String(raw));
+}
+
+async function analisarSeguroGarantiaLegacy(arquivos) {
+  const extraidos = await Promise.all(
+    arquivos.map(async file => ({ nome: file.name, ...await extrairConteudoArquivo(file) }))
+  );
+  const textuais = extraidos.filter(a => a.tipo === 'texto');
+  const imagens = extraidos.filter(a => a.tipo === 'imagem');
+  const nomesArquivos = arquivos.map(f => f.name).join(', ');
+  const blocoTexto = textuais.length
+    ? textuais.map((a, i) => `--- DOCUMENTO ${i + 1}: ${a.nome} ---\n${String(a.conteudo || '').slice(0, 50000)}`).join('\n\n')
+    : '';
+
+  const instrucao = buildSeguroGarantiaInstruction(nomesArquivos, blocoTexto);
   const mensagens = imagens.length > 0
     ? [{ role: 'user', content: [{ type: 'text', text: instrucao }, ...imagens.map(img => ({ type: 'image_url', image_url: { url: img.conteudo } }))] }]
     : [{ role: 'user', content: instrucao }];
 
-  const resp = await fetch(DEEPSEEK_WORKER_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'deepseek-chat', messages: mensagens, max_tokens: 8192 }),
-  });
-  if (!resp.ok) throw new Error('Erro na API: ' + await resp.text());
-  const data = await resp.json();
-  let raw = parseDeepSeekContent(data);
-  return JSON.parse(raw);
+  const data = await chamarWorkerDireto(mensagens, 8192);
+  return parseDeepSeekContent(data);
 }
 
-async function analisarDocumentosFinanceiros(arquivos) {
+async function analisarFiancaLocaticiaLegacy(arquivos) {
+  const extraidos = await Promise.all(
+    arquivos.map(async file => ({ nome: file.name, ...await extrairConteudoArquivo(file) }))
+  );
+  const textuais = extraidos.filter(a => a.tipo === 'texto');
+  const imagens = extraidos.filter(a => a.tipo === 'imagem');
+  const nomesArquivos = arquivos.map(f => f.name).join(', ');
+  const blocoTexto = textuais.length
+    ? textuais.map((a, i) => `--- DOCUMENTO ${i + 1}: ${a.nome} ---\n${String(a.conteudo || '').slice(0, 50000)}`).join('\n\n')
+    : '';
+
+  const instrucao = buildFiancaInstruction(nomesArquivos, blocoTexto);
+  const mensagens = imagens.length > 0
+    ? [{ role: 'user', content: [{ type: 'text', text: instrucao }, ...imagens.map(img => ({ type: 'image_url', image_url: { url: img.conteudo } }))] }]
+    : [{ role: 'user', content: instrucao }];
+
+  const data = await chamarWorkerDireto(mensagens, 8192);
+  return parseJsonResult(parseDeepSeekContent(data));
+}
+
+async function analisarDocumentosFinanceirosLegacy(arquivos) {
   const extraidos = await Promise.all(
     arquivos.map(async file => ({ nome: file.name, ...await extrairConteudoArquivo(file) }))
   );
 
   const textuais = extraidos.filter(a => a.tipo === 'texto');
-  const imagens  = extraidos.filter(a => a.tipo === 'imagem');
-
+  const imagens = extraidos.filter(a => a.tipo === 'imagem');
   const blocoTexto = textuais.length
-    ? textuais.map((a, i) => `--- ARQUIVO ${i + 1}: ${a.nome} ---\n${a.conteudo}`).join('\n\n')
+    ? textuais.map((a, i) => `--- ARQUIVO ${i + 1}: ${a.nome} ---\n${String(a.conteudo || '').slice(0, 50000)}`).join('\n\n')
     : '';
 
-  const instrucao = `Você é um analista financeiro sênior especializado em análise de crédito para seguradoras brasileiras. Sua tarefa é analisar documentos financeiros com foco em subscrição de SEGURO GARANTIA e FIANÇA LOCATÍCIA.
+  const instrucao = buildFinanceInstruction(blocoTexto);
+  const mensagens = imagens.length > 0
+    ? [{
+        role: 'user',
+        content: [
+          { type: 'text', text: instrucao },
+          ...imagens.map(img => ({ type: 'image_url', image_url: { url: img.conteudo } })),
+        ],
+      }]
+    : [{ role: 'user', content: instrucao }];
 
-REGRAS ABSOLUTAS — NUNCA VIOLE:
-1. Se houver documentos de empresas DIFERENTES, crie uma entrada separada para cada empresa no array "empresas". JAMAIS misture dados de empresas distintas.
-2. Se houver DRE ou balanços de PERÍODOS DIFERENTES da mesma empresa, crie um objeto separado em "documentos" para cada período. NUNCA some ou consolide valores entre períodos.
-3. Extraia APENAS valores explicitamente presentes nos documentos. Use JSON null (nunca a string "null") para qualquer dado ausente. NUNCA estime ou interpole valores.
-4. Identifique a empresa pelo nome no cabeçalho, rodapé ou CNPJ do documento.
-5. Retorne APENAS o JSON, sem markdown, sem texto antes ou depois.
+  const data = await chamarWorkerDireto(mensagens, 8192);
+  return parseJsonResult(parseDeepSeekContent(data));
+}
 
-INDICADORES PRIORITÁRIOS PARA SEGURO GARANTIA E FIANÇA LOCATÍCIA:
-- Patrimônio Líquido (principal colateral e capacidade de garantia)
-- Liquidez Corrente e Geral (capacidade de pagamento imediato)
-- Endividamento Geral e composição (risco de inadimplência)
-- EBITDA e Margem EBITDA (geração de caixa operacional)
-- Receita Bruta/Líquida e tendência (solidez operacional)
-- Lucro/Prejuízo Líquido (resultado final)
-- Dívida Líquida / EBITDA (alavancagem real)
-- Capital de Giro Líquido (folga operacional)
-- Cobertura de Juros (risco de default financeiro)
-- Rentabilidade sobre PL (retorno aos sócios)
+async function analisarSeguroGarantia(arquivos) {
+  try {
+    const result = await executarAnaliseEmLotes('seguro-garantia', arquivos);
+    return typeof result === 'string' ? result : String(result && result.resultado ? result.resultado : '');
+  } catch (err) {
+    if (!shouldFallbackToLegacy(err)) throw err;
+    return analisarSeguroGarantiaLegacy(arquivos);
+  }
+}
 
-CRITÉRIOS DE CLASSIFICAÇÃO DE RISCO (para seguradora):
-- Baixo: PL positivo e robusto, liquidez > 1,5, endividamento < 40%, lucro consistente
-- Moderado: PL positivo, liquidez entre 1,0-1,5, endividamento 40-60%, resultado oscilante
-- Alto: PL reduzido ou negativo recente, liquidez < 1,0, endividamento > 60%, prejuízo recente
-- Crítico: PL negativo, insolvência técnica, múltiplos exercícios com prejuízo, liquidez crítica
-
-Retorne APENAS este JSON:
-{"empresas":[{"empresa":"Nome exato da empresa","cnpj":"XX.XXX.XXX/XXXX-XX ou null","documentos":[{"tipo":"DRE|Balanço Patrimonial|Balancete","periodo":"período identificado","indicadores":{"receita_bruta":null,"receita_liquida":null,"lucro_bruto":null,"lucro_liquido":null,"ebitda":null,"margem_ebitda":null,"margem_liquida":null,"ativo_total":null,"ativo_circulante":null,"passivo_total":null,"passivo_circulante":null,"patrimonio_liquido":null,"divida_liquida":null,"capital_giro_liquido":null,"liquidez_corrente":null,"liquidez_geral":null,"endividamento_geral":null,"cobertura_juros":null,"divida_ebitda":null,"rentabilidade_pl":null},"observacoes":"observações relevantes sobre este documento"}],"analise_credito":{"classificacao_risco":"Baixo|Moderado|Alto|Crítico","resumo_executivo":"análise objetiva da saúde financeira em 3-4 frases","capacidade_seguro_garantia":"Alta|Moderada|Baixa|Inapta","justificativa_garantia":"justificativa técnica para seguro garantia","capacidade_fianca_locaticia":"Alta|Moderada|Baixa|Inapta","justificativa_fianca":"justificativa técnica para fiança locatícia","pontos_positivos":["ponto 1","ponto 2"],"pontos_atencao":["ponto 1","ponto 2"],"recomendacao_seguradora":"recomendação técnica objetiva para a seguradora"}}]}
-
-Regras de valores: monetários como número puro em reais (ex: 1500000.50), percentuais como decimal (ex: 25.5 para 25,5%), índices como decimal (ex: 1.45), null quando ausente. Responda sempre em português brasileiro.${blocoTexto ? '\n\nDOCUMENTOS PARA ANÁLISE:\n' + blocoTexto : ''}`;
-
-  let mensagens;
-  if (imagens.length > 0) {
-    mensagens = [{
+function criarHistoricoSeguroGarantia(arquivos, analiseInicial) {
+  const nomesArquivos = arquivos.map(f => f.name).join(', ');
+  return [
+    {
       role: 'user',
-      content: [
-        { type: 'text', text: instrucao },
-        ...imagens.map(img => ({ type: 'image_url', image_url: { url: img.conteudo } }))
-      ]
-    }];
-  } else {
-    mensagens = [{ role: 'user', content: instrucao }];
+      content: `Voce ja concluiu a analise inicial dos seguintes documentos: ${nomesArquivos}. A partir de agora, responda perguntas adicionais do corretor em portugues brasileiro com base APENAS na analise consolidada abaixo. Quando a analise consolidada nao trouxer evidencia suficiente, diga claramente que a informacao nao consta na analise consolidada.`,
+    },
+    {
+      role: 'assistant',
+      content: analiseInicial,
+    },
+  ];
+}
+
+async function chatSeguroGarantia(history) {
+  const data = await chamarWorkerDireto(history, 4096);
+  return parseDeepSeekContent(data);
+}
+
+async function analisarFiancaLocaticia(arquivos) {
+  try {
+    const result = await executarAnaliseEmLotes('fianca-locaticia', arquivos);
+    return parseJsonResult(result);
+  } catch (err) {
+    if (!shouldFallbackToLegacy(err)) throw err;
+    return analisarFiancaLocaticiaLegacy(arquivos);
   }
+}
 
-  const resp = await fetch(DEEPSEEK_WORKER_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'deepseek-chat', messages: mensagens, max_tokens: 8192 }),
-  });
-
-  if (!resp.ok) {
-    const txt = await resp.text();
-    throw new Error('Erro na API: ' + txt);
+async function analisarDocumentosFinanceiros(arquivos) {
+  try {
+    const result = await executarAnaliseEmLotes('analise-financeira', arquivos);
+    return parseJsonResult(result);
+  } catch (err) {
+    if (!shouldFallbackToLegacy(err)) throw err;
+    return analisarDocumentosFinanceirosLegacy(arquivos);
   }
-
-  const data = await resp.json();
-  let raw = parseDeepSeekContent(data);
-  return JSON.parse(raw);
 }

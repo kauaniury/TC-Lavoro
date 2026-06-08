@@ -875,11 +875,8 @@ async function processarSeguroGarantia() {
   document.getElementById('sgChatMessages').innerHTML = '';
 
   try {
-    const history = await iniciarChatSeguroGarantia(garantiaFiles);
-    sgChatHistory = history;
-
-    const respText = await chatSeguroGarantia(sgChatHistory);
-    sgChatHistory.push({ role: 'assistant', content: respText });
+    const respText = await analisarSeguroGarantia(garantiaFiles);
+    sgChatHistory = criarHistoricoSeguroGarantia(garantiaFiles, respText);
 
     const title = garantiaFiles.length === 1 ? garantiaFiles[0].name : garantiaFiles.length + ' documentos analisados';
     const files = garantiaFiles.map(f => f.name).join(' · ');
