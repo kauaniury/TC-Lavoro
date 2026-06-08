@@ -1,7 +1,7 @@
 const DEEPSEEK_WORKER_URL = 'https://lucky-hat-b241.kyuri887.workers.dev/';
 const DEEPSEEK_JOBS_URL = DEEPSEEK_WORKER_URL.replace(/\/+$/, '') + '/v1/analysis-jobs';
 const MAX_PDF_PAGES = 250;
-const TEXT_CHUNK_SIZE = 12000;
+const TEXT_CHUNK_SIZE = 30000;
 const MAX_JOB_ITERATIONS = 400;
 
 function parseDeepSeekContent(data) {
@@ -128,6 +128,8 @@ async function extrairPDF(file) {
     const totalPaginas = Math.min(pdf.numPages, MAX_PDF_PAGES);
     let textoCompleto = '';
     const partes = [];
+    let chunkBuffer = '';
+    let chunkStartPage = null;
 
     for (let i = 1; i <= totalPaginas; i++) {
       const page = await pdf.getPage(i);
@@ -136,14 +138,36 @@ async function extrairPDF(file) {
       if (!pageText) continue;
 
       textoCompleto += `[Pagina ${i}]\n${pageText}\n\n`;
-      const chunks = quebrarTextoEmPartes(pageText, TEXT_CHUNK_SIZE, { pagina: i });
-      chunks.forEach((chunk, idx) => {
-        partes.push({
-          indice: partes.length + 1,
-          pagina: i,
-          rotulo: `Pagina ${i}${chunks.length > 1 ? ` - parte ${idx + 1}` : ''}`,
-          conteudo: `[Pagina ${i}]\n${chunk.conteudo}`,
-        });
+      const blocoPagina = `[Pagina ${i}]\n${pageText}\n\n`;
+
+      if (!chunkBuffer) {
+        chunkBuffer = blocoPagina;
+        chunkStartPage = i;
+        continue;
+      }
+
+      if ((chunkBuffer + blocoPagina).length <= TEXT_CHUNK_SIZE) {
+        chunkBuffer += blocoPagina;
+        continue;
+      }
+
+      partes.push({
+        indice: partes.length + 1,
+        pagina: chunkStartPage,
+        rotulo: chunkStartPage === i - 1 ? `Pagina ${chunkStartPage}` : `Paginas ${chunkStartPage}-${i - 1}`,
+        conteudo: chunkBuffer.trim(),
+      });
+
+      chunkBuffer = blocoPagina;
+      chunkStartPage = i;
+    }
+
+    if (chunkBuffer) {
+      partes.push({
+        indice: partes.length + 1,
+        pagina: chunkStartPage,
+        rotulo: chunkStartPage === totalPaginas ? `Pagina ${chunkStartPage}` : `Paginas ${chunkStartPage}-${totalPaginas}`,
+        conteudo: chunkBuffer.trim(),
       });
     }
 

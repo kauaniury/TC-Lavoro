@@ -1,6 +1,6 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versão: 1.1  
+> Versão: 1.2  
 > Atualizado em: 2026-06-08
 
 ## 1. Visão Geral
@@ -188,7 +188,7 @@ Implementada em `deepseek.js`.
 | `extrairConteudoArquivo(file)` | roteia por extensão |
 | `extrairExcel(file)` | converte abas para CSV e divide em partes |
 | `extrairTexto(file)` | lê UTF-8 e divide em partes |
-| `extrairPDF(file)` | extrai até 250 páginas via PDF.js e preserva chunk/page metadata |
+| `extrairPDF(file)` | extrai até 250 páginas via PDF.js e agrupa várias páginas por chunk para reduzir latência |
 | `extrairImagem(file)` | gera DataURL |
 | `executarAnaliseEmLotes(flow, arquivos)` | cria job e itera até concluir |
 
@@ -203,7 +203,7 @@ Antes:
 Agora:
 
 - PDF é lido página a página
-- cada página pode ser dividida em múltiplos chunks
+- páginas consecutivas são agrupadas em chunks maiores
 - cada chunk vira uma unidade de trabalho no Worker
 - o Worker só finaliza após consumir todos os chunks
 
