@@ -727,6 +727,453 @@ function showError(msg) {
 }
 function hideError() { document.getElementById('errorMsg').classList.remove('show'); }
 
+// ── Seguro Garantia & Fiança Locatícia State
+let garantiaFiles = [];
+let fiancaFiles = [];
+let sgChatHistory = [];
+const MAX_CONTRATO_FILES = 10;
+const CONTRATO_EXTENSIONS = ['pdf', 'png', 'jpg', 'jpeg', 'xlsx', 'xls', 'csv'];
+
+const FL_DADOS_CONFIG = [
+  { key: 'imovel',          label: 'Imóvel' },
+  { key: 'locatario',       label: 'Locatário' },
+  { key: 'locador',         label: 'Locador' },
+  { key: 'finalidade',      label: 'Finalidade' },
+  { key: 'valor_aluguel',   label: 'Valor do Aluguel',    format: 'brl' },
+  { key: 'encargos_mensais',label: 'Encargos Mensais' },
+  { key: 'valor_garantia',  label: 'Valor da Garantia',   format: 'brl' },
+  { key: 'vigencia_inicio', label: 'Início da Vigência' },
+  { key: 'vigencia_fim',    label: 'Fim da Vigência' },
+  { key: 'indice_reajuste', label: 'Índice de Reajuste' },
+  { key: 'multa_rescisao',  label: 'Multa por Rescisão' },
+  { key: 'sub_rogacao',     label: 'Sub-rogação' },
+  { key: 'foro',            label: 'Foro de Eleição' },
+];
+
+// ── File handlers shared util
+function handleContratoFiles(files, fileArray, maxFiles, extensions, listId, btnId, errShowFn, errHideFn) {
+  errHideFn();
+  for (const file of files) {
+    if (fileArray.length >= maxFiles) {
+      errShowFn('Limite de ' + maxFiles + ' arquivos atingido.');
+      break;
+    }
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (!extensions.includes(ext)) {
+      errShowFn('Formato não suportado: .' + ext);
+      continue;
+    }
+    if (fileArray.some(f => f.name === file.name && f.size === file.size)) continue;
+    fileArray.push(file);
+  }
+  renderContratoFileList(fileArray, listId, fileArray === garantiaFiles ? 'garantia' : 'fianca');
+  document.getElementById(btnId).disabled = fileArray.length === 0;
+}
+
+function renderContratoFileList(fileArray, listId, tipo) {
+  const list = document.getElementById(listId);
+  if (!list) return;
+  if (fileArray.length === 0) { list.innerHTML = ''; return; }
+  list.innerHTML = fileArray.map((file, i) => `
+    <div class="financial-file-item">
+      <div class="financial-file-icon ${getFileIconClass(file)}">${getFileIconLabel(file)}</div>
+      <div class="financial-file-info">
+        <p class="financial-file-name" title="${esc(file.name)}">${esc(file.name)}</p>
+        <p class="financial-file-meta">${(file.size / 1024).toFixed(1)} KB</p>
+      </div>
+      <button type="button" class="financial-file-remove" onclick="removeContratoFile('${tipo}',${i})" aria-label="Remover ${esc(file.name)}">
+        <svg viewBox="0 0 16 16" fill="none"><path d="M2 2l12 12M14 2L2 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </button>
+    </div>`).join('');
+}
+
+function removeContratoFile(tipo, index) {
+  if (tipo === 'garantia') {
+    garantiaFiles.splice(index, 1);
+    renderContratoFileList(garantiaFiles, 'garantiaFileList', 'garantia');
+    document.getElementById('btnAnalyzeGarantia').disabled = garantiaFiles.length === 0;
+    hideGarantiaError();
+  } else {
+    fiancaFiles.splice(index, 1);
+    renderContratoFileList(fiancaFiles, 'fiancaFileList', 'fianca');
+    document.getElementById('btnAnalyzeFianca').disabled = fiancaFiles.length === 0;
+    hideFiancaError();
+  }
+}
+
+// Garantia drop zone
+const dzGarantia = document.getElementById('dropZoneGarantia');
+const fileInputGarantia = document.getElementById('fileInputGarantia');
+if (fileInputGarantia) {
+  fileInputGarantia.addEventListener('change', function() {
+    handleContratoFiles(Array.from(this.files), garantiaFiles, MAX_CONTRATO_FILES, CONTRATO_EXTENSIONS, 'garantiaFileList', 'btnAnalyzeGarantia', showGarantiaError, hideGarantiaError);
+    this.value = '';
+  });
+}
+if (dzGarantia) {
+  dzGarantia.addEventListener('dragover', e => { e.preventDefault(); dzGarantia.classList.add('drop-zone--over'); });
+  dzGarantia.addEventListener('dragleave', () => dzGarantia.classList.remove('drop-zone--over'));
+  dzGarantia.addEventListener('drop', e => {
+    e.preventDefault(); dzGarantia.classList.remove('drop-zone--over');
+    handleContratoFiles(Array.from(e.dataTransfer.files), garantiaFiles, MAX_CONTRATO_FILES, CONTRATO_EXTENSIONS, 'garantiaFileList', 'btnAnalyzeGarantia', showGarantiaError, hideGarantiaError);
+  });
+}
+
+// Fianca drop zone
+const dzFianca = document.getElementById('dropZoneFianca');
+const fileInputFianca = document.getElementById('fileInputFianca');
+if (fileInputFianca) {
+  fileInputFianca.addEventListener('change', function() {
+    handleContratoFiles(Array.from(this.files), fiancaFiles, MAX_CONTRATO_FILES, CONTRATO_EXTENSIONS, 'fiancaFileList', 'btnAnalyzeFianca', showFiancaError, hideFiancaError);
+    this.value = '';
+  });
+}
+if (dzFianca) {
+  dzFianca.addEventListener('dragover', e => { e.preventDefault(); dzFianca.classList.add('drop-zone--over'); });
+  dzFianca.addEventListener('dragleave', () => dzFianca.classList.remove('drop-zone--over'));
+  dzFianca.addEventListener('drop', e => {
+    e.preventDefault(); dzFianca.classList.remove('drop-zone--over');
+    handleContratoFiles(Array.from(e.dataTransfer.files), fiancaFiles, MAX_CONTRATO_FILES, CONTRATO_EXTENSIONS, 'fiancaFileList', 'btnAnalyzeFianca', showFiancaError, hideFiancaError);
+  });
+}
+
+function showGarantiaError(msg) {
+  const el = document.getElementById('errorMsgGarantia');
+  const tx = document.getElementById('errorTextGarantia');
+  if (el && tx) { tx.textContent = msg; el.classList.add('show'); }
+}
+function hideGarantiaError() {
+  const el = document.getElementById('errorMsgGarantia');
+  if (el) el.classList.remove('show');
+}
+function showFiancaError(msg) {
+  const el = document.getElementById('errorMsgFianca');
+  const tx = document.getElementById('errorTextFianca');
+  if (el && tx) { tx.textContent = msg; el.classList.add('show'); }
+}
+function hideFiancaError() {
+  const el = document.getElementById('errorMsgFianca');
+  if (el) el.classList.remove('show');
+}
+
+// ── Process functions
+async function processarSeguroGarantia() {
+  if (garantiaFiles.length === 0) return;
+  const btn = document.getElementById('btnAnalyzeGarantia');
+  btn.disabled = true;
+  btn.querySelector('.btn-label').textContent = 'Analisando…';
+  hideGarantiaError();
+
+  const tabSG = document.getElementById('tab-seguro-garantia');
+  tabSG.disabled = false;
+  tabSG.setAttribute('aria-disabled', 'false');
+  tabSG.removeAttribute('title');
+  switchTab('seguro-garantia');
+
+  document.getElementById('sgLoading').hidden = false;
+  document.getElementById('sgChatArea').hidden = true;
+  document.getElementById('sgChatMessages').innerHTML = '';
+
+  try {
+    const history = await iniciarChatSeguroGarantia(garantiaFiles);
+    sgChatHistory = history;
+
+    const respText = await chatSeguroGarantia(sgChatHistory);
+    sgChatHistory.push({ role: 'assistant', content: respText });
+
+    const title = garantiaFiles.length === 1 ? garantiaFiles[0].name : garantiaFiles.length + ' documentos analisados';
+    const files = garantiaFiles.map(f => f.name).join(' · ');
+    document.getElementById('sgChatTitle').textContent = title;
+    document.getElementById('sgChatFiles').textContent = files;
+
+    document.getElementById('sgLoading').hidden = true;
+    document.getElementById('sgChatArea').hidden = false;
+    appendSgChatMessage('assistant', respText);
+  } catch (err) {
+    document.getElementById('sgLoading').hidden = true;
+    switchTab('upload');
+    showGarantiaError('Erro ao analisar: ' + err.message);
+    tabSG.disabled = true;
+    tabSG.setAttribute('aria-disabled', 'true');
+    tabSG.title = 'Anexe documentos para analise primeiro';
+  } finally {
+    btn.disabled = false;
+    btn.querySelector('.btn-label').textContent = 'Analisar com IA';
+  }
+}
+
+async function sendSgChatMessage() {
+  const input = document.getElementById('sgChatInput');
+  const text = input.value.trim();
+  if (!text || sgChatHistory.length === 0) return;
+
+  input.value = '';
+  appendSgChatMessage('user', text);
+  sgChatHistory.push({ role: 'user', content: text });
+
+  const sendBtn = document.getElementById('sgChatSend');
+  sendBtn.disabled = true;
+  input.disabled = true;
+
+  const messagesEl = document.getElementById('sgChatMessages');
+  const typingDiv = document.createElement('div');
+  typingDiv.className = 'sg-chat-msg sg-chat-msg--ai sg-chat-typing';
+  typingDiv.innerHTML = '<div class="sg-chat-dots"><span></span><span></span><span></span></div>';
+  messagesEl.appendChild(typingDiv);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+
+  try {
+    const respText = await chatSeguroGarantia(sgChatHistory);
+    sgChatHistory.push({ role: 'assistant', content: respText });
+    typingDiv.remove();
+    appendSgChatMessage('assistant', respText);
+  } catch (err) {
+    typingDiv.remove();
+    appendSgChatMessage('assistant', 'Erro ao processar resposta: ' + esc(err.message));
+  } finally {
+    sendBtn.disabled = false;
+    input.disabled = false;
+    input.focus();
+  }
+}
+
+function appendSgChatMessage(role, text) {
+  const messagesEl = document.getElementById('sgChatMessages');
+  const div = document.createElement('div');
+  div.className = 'sg-chat-msg ' + (role === 'user' ? 'sg-chat-msg--user' : 'sg-chat-msg--ai');
+  div.innerHTML = role === 'assistant' ? renderMarkdown(text) : '<p>' + esc(text) + '</p>';
+  messagesEl.appendChild(div);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function renderMarkdown(text) {
+  const lines = esc(text).split('\n');
+  let html = '';
+  let inPara = false;
+
+  const inline = s =>
+    s.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+     .replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
+
+  for (const rawLine of lines) {
+    const line = inline(rawLine);
+    const trimmed = line.trim();
+
+    if (!trimmed) {
+      if (inPara) { html += '</p>'; inPara = false; }
+      continue;
+    }
+    if (trimmed.startsWith('### ')) {
+      if (inPara) { html += '</p>'; inPara = false; }
+      html += '<h4 class="sg-md-h4">' + trimmed.slice(4) + '</h4>';
+    } else if (trimmed.startsWith('## ')) {
+      if (inPara) { html += '</p>'; inPara = false; }
+      html += '<h3 class="sg-md-h3">' + trimmed.slice(3) + '</h3>';
+    } else if (trimmed.startsWith('# ')) {
+      if (inPara) { html += '</p>'; inPara = false; }
+      html += '<h3 class="sg-md-h3">' + trimmed.slice(2) + '</h3>';
+    } else if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+      if (inPara) { html += '</p>'; inPara = false; }
+      html += '<div class="sg-md-li">' + trimmed.slice(2) + '</div>';
+    } else if (/^\d+\. /.test(trimmed)) {
+      if (inPara) { html += '</p>'; inPara = false; }
+      html += '<div class="sg-md-li">' + trimmed.replace(/^\d+\. /, '') + '</div>';
+    } else {
+      if (!inPara) { html += '<p class="sg-md-p">'; inPara = true; }
+      else html += '<br>';
+      html += line;
+    }
+  }
+
+  if (inPara) html += '</p>';
+  return html || '<p></p>';
+}
+
+async function processarFiancaLocaticia() {
+  if (fiancaFiles.length === 0) return;
+  const btn = document.getElementById('btnAnalyzeFianca');
+  btn.disabled = true;
+  btn.querySelector('.btn-label').textContent = 'Analisando…';
+  hideFiancaError();
+
+  const tabFL = document.getElementById('tab-fianca-locaticia');
+  tabFL.disabled = false;
+  tabFL.setAttribute('aria-disabled', 'false');
+  tabFL.removeAttribute('title');
+  switchTab('fianca-locaticia');
+
+  document.getElementById('flLoading').hidden = false;
+  document.getElementById('flHero').hidden = true;
+  document.getElementById('flContent').hidden = true;
+  document.getElementById('flFooter').hidden = true;
+
+  try {
+    const resultado = await analisarFiancaLocaticia(fiancaFiles);
+    renderFiancaLocaticia(resultado);
+  } catch (err) {
+    document.getElementById('flLoading').hidden = true;
+    switchTab('upload');
+    showFiancaError('Erro ao analisar: ' + err.message);
+    tabFL.disabled = true;
+    tabFL.setAttribute('aria-disabled', 'true');
+    tabFL.title = 'Anexe documentos para análise primeiro';
+  } finally {
+    btn.disabled = false;
+    btn.querySelector('.btn-label').textContent = 'Analisar com IA';
+  }
+}
+
+// ── Render functions
+function renderFiancaLocaticia(data) {
+  document.getElementById('flLoading').hidden = true;
+  document.getElementById('flHero').hidden = false;
+  document.getElementById('flContent').hidden = false;
+  document.getElementById('flFooter').hidden = false;
+
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+  const dados = data.dados_gerais || {};
+  const locatario = (dados.locatario && dados.locatario.valor && dados.locatario.valor !== 'null') ? dados.locatario.valor : 'Análise Fiança Locatícia';
+  const imovel = (dados.imovel && dados.imovel.valor && dados.imovel.valor !== 'null') ? dados.imovel.valor : '';
+
+  document.getElementById('flTitulo').textContent = locatario;
+  document.getElementById('flSubtitulo').textContent = imovel;
+  document.getElementById('flData').textContent = 'Gerado em ' + dateStr;
+  document.getElementById('flFooterDate').textContent = dateStr;
+  document.getElementById('flResultContainer').innerHTML = buildAnaliseContratualHTML(data, FL_DADOS_CONFIG);
+}
+
+// ── Shared builder for both contractual analysis types
+function buildAnaliseContratualHTML(data, dadosConfig) {
+  const dados = data.dados_gerais || {};
+  const clausulas = data.clausulas_criticas || [];
+  const riscos = data.riscos || [];
+  const parecer = data.parecer || {};
+  const docs = data.documentos_analisados || [];
+
+  const dadosItens = dadosConfig
+    .map(cfg => buildDadoItem(cfg.label, dados[cfg.key], cfg.format))
+    .filter(h => h)
+    .join('');
+
+  const clausulasHtml = clausulas.length > 0
+    ? clausulas.map(buildClausulaItem).join('')
+    : '<p class="af-no-data">Nenhuma cláusula crítica identificada.</p>';
+
+  const riscosHtml = riscos.length > 0
+    ? riscos.map(buildRiscoItem).join('')
+    : '<p class="af-no-data">Nenhum risco identificado.</p>';
+
+  const docsHtml = docs.length > 0
+    ? docs.map(d => `<span class="sg-doc-badge">${esc(d)}</span>`).join('')
+    : '';
+
+  return `
+    ${buildParecerHTML(parecer)}
+
+    ${docsHtml ? `<div class="sg-docs-analisados">${docsHtml}</div>` : ''}
+
+    <section class="dashboard-section">
+      <h2 class="sec section-title">Dados do Contrato</h2>
+      <div class="card sg-dados-card">
+        ${dadosItens || '<p class="af-no-data">Dados não extraídos.</p>'}
+      </div>
+    </section>
+
+    <section class="dashboard-section">
+      <h2 class="sec section-title">Cláusulas Críticas</h2>
+      <div class="sg-clausulas-list">${clausulasHtml}</div>
+    </section>
+
+    <section class="dashboard-section">
+      <h2 class="sec section-title">Riscos Identificados</h2>
+      <div class="sg-riscos-list">${riscosHtml}</div>
+    </section>
+
+    ${data.resumo ? `
+    <section class="dashboard-section">
+      <h2 class="sec section-title">Resumo Executivo</h2>
+      <div class="card sg-resumo-card">
+        <p class="sg-resumo-text">${esc(data.resumo)}</p>
+      </div>
+    </section>` : ''}
+  `;
+}
+
+function buildDadoItem(label, item, format) {
+  if (!item || item.valor === null || item.valor === undefined || item.valor === 'null' || String(item.valor).trim() === '') return '';
+  let display = item.valor;
+  if (format === 'brl' && typeof item.valor === 'number') display = fmtBRL(item.valor);
+  return `
+    <div class="sg-dado-item">
+      <span class="sg-dado-label">${esc(label)}</span>
+      <div class="sg-dado-right">
+        <span class="sg-dado-valor">${esc(String(display))}</span>
+        ${item.fonte ? `<span class="sg-dado-fonte"><span class="sg-fonte-arrow" aria-hidden="true">↳</span>${esc(item.fonte)}</span>` : ''}
+      </div>
+    </div>`;
+}
+
+function buildClausulaItem(item) {
+  const impacto = item.impacto || '';
+  const impClass = impacto === 'Alto' ? 'sg-impact--alto' : impacto === 'Médio' ? 'sg-impact--medio' : 'sg-impact--baixo';
+  return `
+    <div class="sg-clausula-item card">
+      <div class="sg-clausula-top">
+        <span class="sg-impact-badge ${impClass}">${esc(impacto)}</span>
+        <strong class="sg-clausula-titulo">${esc(item.titulo || '')}</strong>
+      </div>
+      <p class="sg-clausula-desc">${esc(item.descricao || '')}</p>
+      ${item.fonte ? `<span class="sg-item-fonte"><span class="sg-fonte-arrow" aria-hidden="true">↳</span>${esc(item.fonte)}</span>` : ''}
+    </div>`;
+}
+
+function buildRiscoItem(item) {
+  const nivel = item.nivel || '';
+  const nivClass = nivel === 'Alto' ? 'sg-impact--alto' : nivel === 'Médio' ? 'sg-impact--medio' : 'sg-impact--baixo';
+  return `
+    <div class="sg-risco-item card">
+      <div class="sg-risco-top">
+        <span class="sg-impact-badge ${nivClass}">${esc(nivel)}</span>
+        <p class="sg-risco-desc">${esc(item.descricao || '')}</p>
+      </div>
+      ${item.fonte ? `<span class="sg-item-fonte"><span class="sg-fonte-arrow" aria-hidden="true">↳</span>${esc(item.fonte)}</span>` : ''}
+    </div>`;
+}
+
+function buildParecerHTML(parecer) {
+  if (!parecer || !parecer.recomendacao) return '';
+  const rec = parecer.recomendacao;
+  const recLow = rec.toLowerCase();
+  let parecerClass = 'sg-parecer--ressalvas';
+  let parecerIcon = '!';
+  if (recLow.includes('emitir') && !recLow.includes('ressalvas')) { parecerClass = 'sg-parecer--emitir'; parecerIcon = '✓'; }
+  if (recLow.includes('declinar')) { parecerClass = 'sg-parecer--declinar'; parecerIcon = '✗'; }
+
+  const condicoesHtml = (parecer.condicoes || []).filter(c => c).length > 0 ? `
+    <div class="sg-parecer-condicoes">
+      <p class="sg-parecer-cond-label">Condições para Emissão</p>
+      <ul class="sg-parecer-cond-list">
+        ${(parecer.condicoes || []).map(c => `<li>${esc(c)}</li>`).join('')}
+      </ul>
+    </div>` : '';
+
+  return `
+    <section class="dashboard-section">
+      <div class="sg-parecer-card ${parecerClass}">
+        <div class="sg-parecer-hdr">
+          <div>
+            <p class="sg-parecer-eyebrow">Parecer de Emissão</p>
+            <p class="sg-parecer-rec">${esc(rec)}</p>
+          </div>
+          <span class="sg-parecer-icon" aria-hidden="true">${parecerIcon}</span>
+        </div>
+        <p class="sg-parecer-just">${esc(parecer.justificativa || '')}</p>
+        ${condicoesHtml}
+      </div>
+    </section>`;
+}
+
 // -- Chart defaults
 Chart.defaults.font.family = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
 Chart.defaults.font.size = 11;
@@ -881,91 +1328,180 @@ async function processarAnaliseFinanceira() {
   }
 }
 
-// -- Render financial analysis result
+// -- Render financial analysis result (multi-company structure)
 function renderAnaliseFinanceira(data) {
   document.getElementById('afLoading').hidden = true;
   document.getElementById('afHero').hidden = false;
   document.getElementById('afContent').hidden = false;
   document.getElementById('afFooter').hidden = false;
 
-  // Hero
-  document.getElementById('afEmpresa').textContent = data.empresa || 'Empresa não identificada';
-  document.getElementById('afPeriodo').textContent = data.periodo ? 'Período: ' + data.periodo : '';
+  const empresas = data.empresas || [];
   const now = new Date();
   const dateStr = now.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+
+  // Hero
+  const heroTitle = empresas.length === 1
+    ? (empresas[0].empresa || 'Empresa não identificada')
+    : empresas.length + ' empresa' + (empresas.length > 1 ? 's' : '') + ' analisada' + (empresas.length > 1 ? 's' : '');
+  const totalDocs = empresas.reduce((s, e) => s + (e.documentos || []).length, 0);
+  document.getElementById('afEmpresa').textContent = heroTitle;
+  document.getElementById('afPeriodo').textContent = totalDocs + ' documento' + (totalDocs !== 1 ? 's' : '') + ' processado' + (totalDocs !== 1 ? 's' : '');
   document.getElementById('afDataGeracao').textContent = 'Gerado em ' + dateStr;
   document.getElementById('afFooterDate').textContent = dateStr;
 
-  // Tipo doc badge
-  document.getElementById('afTipoDoc').textContent = data.tipo_documento || '—';
+  // Build each empresa card
+  const container = document.getElementById('afEmpresasContainer');
+  container.innerHTML = empresas.map((emp, idx) => buildEmpresaCard(emp, idx)).join('');
 
-  // Risco badge
-  const riscoBadge = document.getElementById('afRiscoBadge');
-  const risco = (data.classificacao_risco || '').toLowerCase();
-  riscoBadge.textContent = 'Risco ' + (data.classificacao_risco || '—');
-  riscoBadge.className = 'af-risco-badge';
-  if (risco.includes('baixo'))    riscoBadge.classList.add('af-risco-badge--baixo');
-  else if (risco.includes('moderado')) riscoBadge.classList.add('af-risco-badge--moderado');
-  else if (risco.includes('alto') && !risco.includes('cr')) riscoBadge.classList.add('af-risco-badge--alto');
-  else if (risco.includes('cr'))  riscoBadge.classList.add('af-risco-badge--critico');
-
-  // KPIs
-  const ind = data.indicadores || {};
-  const kpisConfig = [
-    { label: 'Receita Bruta',       key: 'receita_bruta',       format: 'brl' },
-    { label: 'Receita Líquida',     key: 'receita_liquida',     format: 'brl' },
-    { label: 'Lucro Bruto',         key: 'lucro_bruto',         format: 'brl' },
-    { label: 'Lucro Líquido',       key: 'lucro_liquido',       format: 'brl' },
-    { label: 'EBITDA',              key: 'ebitda',              format: 'brl' },
-    { label: 'Margem Bruta',        key: 'margem_bruta',        format: 'pct' },
-    { label: 'Margem Líquida',      key: 'margem_liquida',      format: 'pct' },
-    { label: 'Ativo Total',         key: 'ativo_total',         format: 'brl' },
-    { label: 'Passivo Total',       key: 'passivo_total',       format: 'brl' },
-    { label: 'Patrimônio Líquido',  key: 'patrimonio_liquido',  format: 'brl' },
-    { label: 'Liquidez Corrente',   key: 'liquidez_corrente',   format: 'dec' },
-    { label: 'Liquidez Geral',      key: 'liquidez_geral',      format: 'dec' },
-    { label: 'Endividamento Geral', key: 'endividamento_geral', format: 'pct' },
-    { label: 'Rentabilidade PL',    key: 'rentabilidade_pl',    format: 'pct' },
-  ].filter(k => ind[k.key] !== null && ind[k.key] !== undefined);
-
-  const kpisEl = document.getElementById('afKpis');
-  kpisEl.innerHTML = kpisConfig.map(cfg => {
-    const val = ind[cfg.key];
-    let display = '—';
-    if (val !== null && val !== undefined) {
-      if (cfg.format === 'brl') display = fmtBRL(val);
-      else if (cfg.format === 'pct') display = Number(val).toFixed(2).replace('.', ',') + '%';
-      else display = Number(val).toFixed(2).replace('.', ',');
-    }
-    const isNeg = typeof val === 'number' && val < 0;
-    return `
-      <article class="kpi kpi-card ${isNeg ? 'kpi-card--declinado' : 'kpi-card--capacidade'}">
-        <div class="kpi-indicator" aria-hidden="true"></div>
-        <p class="kpi-label">${esc(cfg.label)}</p>
-        <p class="kpi-value kpi-value--mono mono">${display}</p>
-      </article>`;
-  }).join('');
-
-  if (kpisConfig.length === 0) {
-    kpisEl.innerHTML = '<p style="color:var(--color-text-muted);font-size:var(--text-sm);grid-column:1/-1">Indicadores numéricos não identificados nos documentos.</p>';
-  }
-
-  // Resumo
-  document.getElementById('afResumo').textContent = data.resumo_executivo || '—';
-
-  // Pontos positivos
-  const posEl = document.getElementById('afPositivos');
-  posEl.innerHTML = (data.pontos_positivos || []).map(p => `<li>${esc(p)}</li>`).join('') || '<li>Não identificados.</li>';
-
-  // Pontos de atenção
-  const atEl = document.getElementById('afAtencao');
-  atEl.innerHTML = (data.pontos_atencao || []).map(p => `<li>${esc(p)}</li>`).join('') || '<li>Não identificados.</li>';
-
-  // Recomendação
-  document.getElementById('afRecomendacao').textContent = data.recomendacao || '—';
-
-  // Show export button
   const btnDownload = document.getElementById('btnDownloadTop');
   if (btnDownload) btnDownload.hidden = false;
+}
+
+const AF_KPIS_CONFIG = [
+  { label: 'Receita Bruta',        key: 'receita_bruta',        format: 'brl', priority: true },
+  { label: 'Receita Líquida',      key: 'receita_liquida',      format: 'brl', priority: true },
+  { label: 'Lucro Líquido',        key: 'lucro_liquido',        format: 'brl', priority: true },
+  { label: 'EBITDA',               key: 'ebitda',               format: 'brl', priority: true },
+  { label: 'Margem EBITDA',        key: 'margem_ebitda',        format: 'pct', priority: true },
+  { label: 'Margem Líquida',       key: 'margem_liquida',       format: 'pct', priority: true },
+  { label: 'Patrimônio Líquido',   key: 'patrimonio_liquido',   format: 'brl', priority: true },
+  { label: 'Ativo Total',          key: 'ativo_total',          format: 'brl', priority: false },
+  { label: 'Ativo Circulante',     key: 'ativo_circulante',     format: 'brl', priority: false },
+  { label: 'Passivo Total',        key: 'passivo_total',        format: 'brl', priority: false },
+  { label: 'Passivo Circulante',   key: 'passivo_circulante',   format: 'brl', priority: false },
+  { label: 'Dívida Líquida',       key: 'divida_liquida',       format: 'brl', priority: false },
+  { label: 'Capital de Giro Líq.', key: 'capital_giro_liquido', format: 'brl', priority: false },
+  { label: 'Liquidez Corrente',    key: 'liquidez_corrente',    format: 'dec', priority: true },
+  { label: 'Liquidez Geral',       key: 'liquidez_geral',       format: 'dec', priority: false },
+  { label: 'Endividamento Geral',  key: 'endividamento_geral',  format: 'pct', priority: true },
+  { label: 'Dívida / EBITDA',      key: 'divida_ebitda',        format: 'dec', priority: false },
+  { label: 'Cobertura de Juros',   key: 'cobertura_juros',      format: 'dec', priority: false },
+  { label: 'Rentabilidade PL',     key: 'rentabilidade_pl',     format: 'pct', priority: false },
+  { label: 'Lucro Bruto',          key: 'lucro_bruto',          format: 'brl', priority: false },
+];
+
+function fmtIndicador(val, format) {
+  if (val === null || val === undefined) return null;
+  if (format === 'brl') return fmtBRL(val);
+  if (format === 'pct') return Number(val).toFixed(2).replace('.', ',') + '%';
+  return Number(val).toFixed(2).replace('.', ',');
+}
+
+function riscoClass(risco) {
+  const r = (risco || '').toLowerCase();
+  if (r.includes('baixo'))    return 'af-risco-badge--baixo';
+  if (r.includes('moderado')) return 'af-risco-badge--moderado';
+  if (r.includes('cr'))       return 'af-risco-badge--critico';
+  if (r.includes('alto'))     return 'af-risco-badge--alto';
+  return '';
+}
+
+function capacidadeClass(cap) {
+  const c = (cap || '').toLowerCase();
+  if (c.includes('alta'))     return 'af-cap--alta';
+  if (c.includes('moderada')) return 'af-cap--moderada';
+  if (c.includes('baixa'))    return 'af-cap--baixa';
+  if (c.includes('inapta'))   return 'af-cap--inapta';
+  return '';
+}
+
+function buildDocumentoCard(doc) {
+  const ind = doc.indicadores || {};
+  const kpis = AF_KPIS_CONFIG.filter(k => ind[k.key] !== null && ind[k.key] !== undefined);
+
+  const kpisHtml = kpis.length > 0
+    ? kpis.map(cfg => {
+        const val = ind[cfg.key];
+        const display = fmtIndicador(val, cfg.format);
+        const isNeg = typeof val === 'number' && val < 0;
+        const isKey = cfg.priority ? 'af-kpi--priority' : '';
+        return `
+          <div class="af-kpi-item ${isKey} ${isNeg ? 'af-kpi--neg' : ''}">
+            <span class="af-kpi-label">${esc(cfg.label)}</span>
+            <span class="af-kpi-value mono">${display}</span>
+          </div>`;
+      }).join('')
+    : '<p class="af-no-data">Indicadores não extraídos deste documento.</p>';
+
+  return `
+    <div class="af-doc-card card">
+      <div class="af-doc-header">
+        <span class="af-doc-tipo">${esc(doc.tipo || '—')}</span>
+        <span class="af-doc-periodo">${esc(doc.periodo || '—')}</span>
+      </div>
+      <div class="af-kpis-list">${kpisHtml}</div>
+      ${doc.observacoes ? `<p class="af-doc-obs">${esc(doc.observacoes)}</p>` : ''}
+    </div>`;
+}
+
+function buildEmpresaCard(emp, idx) {
+  const ac = emp.analise_credito || {};
+  const risco = ac.classificacao_risco || '—';
+  const docs = emp.documentos || [];
+
+  const docsHtml = docs.length > 0
+    ? `<div class="af-docs-grid">${docs.map(buildDocumentoCard).join('')}</div>`
+    : '<p class="af-no-data">Nenhum documento identificado.</p>';
+
+  const capGarantia  = ac.capacidade_seguro_garantia  || '—';
+  const capFianca    = ac.capacidade_fianca_locaticia  || '—';
+
+  return `
+    <section class="af-empresa-section dashboard-section" aria-label="${esc(emp.empresa || 'Empresa')}">
+      <div class="af-empresa-header">
+        <div class="af-empresa-identity">
+          <h2 class="af-empresa-nome">${esc(emp.empresa || 'Empresa não identificada')}</h2>
+          ${emp.cnpj ? `<span class="af-empresa-cnpj">CNPJ ${esc(emp.cnpj)}</span>` : ''}
+        </div>
+        <span class="af-risco-badge ${riscoClass(risco)}">Risco ${esc(risco)}</span>
+      </div>
+
+      <h3 class="af-subsection-title">Documentos Analisados</h3>
+      ${docsHtml}
+
+      <h3 class="af-subsection-title">Análise de Crédito</h3>
+      <div class="af-credito-card card">
+
+        <div class="af-capacidades-row">
+          <div class="af-cap-item ${capacidadeClass(capGarantia)}">
+            <span class="af-cap-label">Seguro Garantia</span>
+            <span class="af-cap-valor">${esc(capGarantia)}</span>
+            ${ac.justificativa_garantia ? `<span class="af-cap-just">${esc(ac.justificativa_garantia)}</span>` : ''}
+          </div>
+          <div class="af-cap-item ${capacidadeClass(capFianca)}">
+            <span class="af-cap-label">Fiança Locatícia</span>
+            <span class="af-cap-valor">${esc(capFianca)}</span>
+            ${ac.justificativa_fianca ? `<span class="af-cap-just">${esc(ac.justificativa_fianca)}</span>` : ''}
+          </div>
+        </div>
+
+        ${ac.resumo_executivo ? `
+        <div class="af-resumo-block">
+          <p class="af-card-label">Resumo Executivo</p>
+          <p class="af-resumo-text">${esc(ac.resumo_executivo)}</p>
+        </div>` : ''}
+
+        <div class="af-pontos-grid">
+          <div class="af-pontos-card af-pontos-card--pos">
+            <p class="af-card-label">Pontos Positivos</p>
+            <ul class="af-pontos-list">
+              ${(ac.pontos_positivos || []).map(p => `<li>${esc(p)}</li>`).join('') || '<li>Não identificados.</li>'}
+            </ul>
+          </div>
+          <div class="af-pontos-card af-pontos-card--atencao">
+            <p class="af-card-label">Pontos de Atenção</p>
+            <ul class="af-pontos-list">
+              ${(ac.pontos_atencao || []).map(p => `<li>${esc(p)}</li>`).join('') || '<li>Não identificados.</li>'}
+            </ul>
+          </div>
+        </div>
+
+        ${ac.recomendacao_seguradora ? `
+        <div class="af-recomendacao-block">
+          <p class="af-card-label">Recomendação para a Seguradora</p>
+          <p class="af-recomendacao-text">${esc(ac.recomendacao_seguradora)}</p>
+        </div>` : ''}
+      </div>
+    </section>`;
 }
 
