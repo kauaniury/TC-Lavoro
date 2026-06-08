@@ -1,6 +1,6 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versão: 1.4  
+> Versão: 1.5  
 > Atualizado em: 2026-06-08
 
 ## 1. Visão Geral
@@ -129,6 +129,11 @@ Secrets esperados no Worker:
 - `DEEPSEEK_API_KEY`
 - `UPSTASH_REDIS_REST_URL`
 - `UPSTASH_REDIS_REST_TOKEN`
+
+Modelo no Worker:
+
+- tenta `deepseek-reasoner` como modelo principal
+- faz fallback automático para `deepseek-chat` se a API responder erro de modelo inexistente/não suportado
 
 ### 5.3 Endpoints do Worker
 

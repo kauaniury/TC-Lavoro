@@ -5,7 +5,9 @@ const CORS_HEADERS = {
 };
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
-const WORKER_VERSION = '2026-06-08.4';
+const WORKER_VERSION = '2026-06-08.5';
+const PRIMARY_DEEPSEEK_MODEL = 'deepseek-reasoner';
+const FALLBACK_DEEPSEEK_MODEL = 'deepseek-chat';
 const JOB_TTL_SECONDS = 60 * 60 * 6;
 const CHUNK_NOTE_MAX_TOKENS = 1200;
 const FINAL_RESULT_MAX_TOKENS = 4000;
@@ -213,7 +215,7 @@ async function analyzeChunk(env, manifest, chunk) {
     ...manifest.images.map(image => ({ type: 'image_url', image_url: { url: image.conteudo } })),
   ];
   const payload = {
-    model: 'deepseek-reasoner',
+    model: PRIMARY_DEEPSEEK_MODEL,
     messages: [
       { role: 'user', content },
     ],
@@ -226,7 +228,7 @@ async function analyzeChunk(env, manifest, chunk) {
 async function synthesizeFinalResult(env, manifest) {
   const prompt = buildFinalPrompt(manifest.flow, manifest.fileNames, manifest.chunkNotes);
   const payload = {
-    model: 'deepseek-reasoner',
+    model: PRIMARY_DEEPSEEK_MODEL,
     messages: [{ role: 'user', content: prompt }],
     max_tokens: FINAL_RESULT_MAX_TOKENS,
   };
@@ -339,10 +341,42 @@ async function callDeepSeek(env, payload) {
 
   if (!response.ok) {
     const text = await response.text();
+    if (shouldRetryWithFallbackModel(response.status, text, payload.model)) {
+      const fallbackPayload = { ...payload, model: FALLBACK_DEEPSEEK_MODEL };
+      const fallbackResponse = await fetch(DEEPSEEK_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${env.DEEPSEEK_API_KEY}`,
+        },
+        body: JSON.stringify(fallbackPayload),
+      });
+
+      if (!fallbackResponse.ok) {
+        const fallbackText = await fallbackResponse.text();
+        throw new Error(`DeepSeek error ${fallbackResponse.status}: ${fallbackText}`);
+      }
+
+      return fallbackResponse.json();
+    }
+
     throw new Error(`DeepSeek error ${response.status}: ${text}`);
   }
 
   return response.json();
+}
+
+function shouldRetryWithFallbackModel(status, text, model) {
+  if (model !== PRIMARY_DEEPSEEK_MODEL) return false;
+  if (status !== 400 && status !== 404) return false;
+
+  const raw = String(text || '').toLowerCase();
+  return raw.includes('model') && (
+    raw.includes('not found') ||
+    raw.includes('does not exist') ||
+    raw.includes('invalid') ||
+    raw.includes('unsupported')
+  );
 }
 
 function safeJobResponse(manifest) {
