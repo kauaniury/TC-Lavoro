@@ -1,6 +1,6 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versão: 1.2  
+> Versão: 1.4  
 > Atualizado em: 2026-06-08
 
 ## 1. Visão Geral
@@ -118,9 +118,11 @@ Responsabilidades:
 
 - receber arquivos já extraídos/chunkados pelo browser
 - persistir estado do job no Redis
+- persistir o texto completo de cada chunk separadamente no Redis
 - processar partes sequencialmente
 - armazenar notas parciais por chunk
 - sintetizar resultado final só após o documento completo
+- expor `version` em respostas do Worker para auditoria de deploy
 
 Secrets esperados no Worker:
 
@@ -176,6 +178,10 @@ Executa um passo do job:
 #### `GET /v1/analysis-jobs/:jobId`
 
 Consulta status do job.
+
+#### `GET /health`
+
+Healthcheck simples do Worker. Deve retornar `ok`, `worker` e `version`.
 
 ### 5.4 Extração no Front-end
 

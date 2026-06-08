@@ -5,6 +5,7 @@ const CORS_HEADERS = {
 };
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
+const WORKER_VERSION = '2026-06-08.4';
 const JOB_TTL_SECONDS = 60 * 60 * 6;
 const CHUNK_NOTE_MAX_TOKENS = 1200;
 const FINAL_RESULT_MAX_TOKENS = 4000;
@@ -15,6 +16,14 @@ export default {
 
     const url = new URL(request.url);
     try {
+      if (request.method === 'GET' && url.pathname === '/health') {
+        return withCors(jsonResponse({
+          ok: true,
+          worker: 'lucky-hat-b241',
+          version: WORKER_VERSION,
+        }));
+      }
+
       if (request.method === 'POST' && url.pathname === '/v1/analysis-jobs') {
         return withCors(await handleCreateJob(request, env));
       }
@@ -64,10 +73,10 @@ async function handleCreateJob(request, env) {
   validateCreateJobBody(body);
 
   const jobId = crypto.randomUUID();
-  const manifest = buildJobManifest(jobId, body);
+  const { manifest, chunks } = buildJobManifest(jobId, body);
 
   await redisSet(env, jobKey(jobId), manifest, JOB_TTL_SECONDS);
-  for (const chunk of manifest.chunks) {
+  for (const chunk of chunks) {
     await redisSet(env, chunkKey(jobId, chunk.index), chunk, JOB_TTL_SECONDS);
   }
 
@@ -76,6 +85,7 @@ async function handleCreateJob(request, env) {
     status: manifest.status,
     totalChunks: manifest.totalChunks,
     createdAt: manifest.createdAt,
+    version: WORKER_VERSION,
   }, 201);
 }
 
@@ -150,12 +160,18 @@ function buildJobManifest(jobId, body) {
       : [{ indice: 1, rotulo: 'Parte 1', conteudo: file.conteudo || '' }];
 
     partes.forEach((parte, idx) => {
+      const textContent = typeof parte.conteudo === 'string'
+        ? parte.conteudo
+        : (typeof file.conteudo === 'string' ? file.conteudo : '');
+
+      if (!textContent.trim()) return;
+
       chunks.push({
         index: chunks.length + 1,
         fileName: file.nome,
         chunkLabel: parte.rotulo || `Parte ${idx + 1}`,
         page: parte.pagina || null,
-        content: parte.conteudo || '',
+        content: textContent,
       });
     });
   });
@@ -171,19 +187,22 @@ function buildJobManifest(jobId, body) {
   }
 
   return {
-    jobId,
-    flow: body.flow,
-    status: 'pending',
-    createdAt,
-    updatedAt: createdAt,
-    totalChunks: chunks.length,
-    nextChunkIndex: 0,
-    images,
-    fileNames: body.files.map(file => file.nome),
-    chunkNotes: [],
-    result: null,
-    error: null,
-    chunks: chunks.map(({ content, ...rest }) => rest),
+    manifest: {
+      jobId,
+      flow: body.flow,
+      status: 'pending',
+      createdAt,
+      updatedAt: createdAt,
+      totalChunks: chunks.length,
+      nextChunkIndex: 0,
+      images,
+      fileNames: body.files.map(file => file.nome),
+      chunkNotes: [],
+      result: null,
+      error: null,
+      chunks: chunks.map(({ content, ...rest }) => rest),
+    },
+    chunks,
   };
 }
 
@@ -328,6 +347,7 @@ async function callDeepSeek(env, payload) {
 
 function safeJobResponse(manifest) {
   return {
+    version: WORKER_VERSION,
     jobId: manifest.jobId,
     flow: manifest.flow,
     status: manifest.status,
