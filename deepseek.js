@@ -230,8 +230,8 @@ async function extrairPDF(file) {
       });
     }
 
-    // PDF sem texto reconhecível → fallback OCR
-    if (textoCompleto.trim().length < OCR_TEXT_THRESHOLD) {
+    // PDF sem texto reconhecível → fallback OCR (média de 100 chars/página)
+    if (textoCompleto.trim().length < Math.max(OCR_TEXT_THRESHOLD, totalPaginas * 100)) {
       const ocr = await extrairPDFcomOCR(pdf, totalPaginas);
       return {
         tipo: 'texto',
