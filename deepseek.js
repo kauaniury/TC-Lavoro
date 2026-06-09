@@ -4,6 +4,12 @@ const MAX_PDF_PAGES = 250;
 const TEXT_CHUNK_SIZE = 30000;
 const MAX_JOB_ITERATIONS = 400;
 const OCR_TEXT_THRESHOLD = 100; // abaixo disto o PDF é tratado como imagem → usa OCR
+const RAW_TEXT_CHAT_LIMIT = 50000; // chars do texto bruto incluídos no contexto do chat
+
+// Texto bruto dos documentos por aba — usado para dupla checagem no chat
+let _rawFinanceiro = '';
+let _rawSeguroGarantia = '';
+let _rawFianca = '';
 
 function parseDeepSeekContent(data) {
   const msg = data && data.choices && data.choices[0] && data.choices[0].message;
@@ -17,6 +23,17 @@ function parseDeepSeekContent(data) {
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function extrairTextosBrutos(arquivos) {
+  const extraidos = await Promise.all(
+    arquivos.map(async file => ({ nome: file.name, ...await extrairConteudoArquivo(file) }))
+  );
+  return extraidos
+    .filter(a => a.tipo === 'texto')
+    .map((a, i) => `--- DOCUMENTO ${i + 1}: ${a.nome} ---\n${String(a.conteudo || '')}`)
+    .join('\n\n')
+    .slice(0, RAW_TEXT_CHAT_LIMIT);
 }
 
 function quebrarTextoEmPartes(texto, maxChars, metaBase = {}) {
@@ -501,6 +518,7 @@ async function analisarDocumentosFinanceirosLegacy(arquivos) {
 }
 
 async function analisarSeguroGarantia(arquivos) {
+  _rawSeguroGarantia = await extrairTextosBrutos(arquivos);
   try {
     const result = await executarAnaliseEmLotes('seguro-garantia', arquivos);
     return typeof result === 'string' ? result : String(result && result.resultado ? result.resultado : '');
@@ -512,14 +530,17 @@ async function analisarSeguroGarantia(arquivos) {
 
 function criarHistoricoSeguroGarantia(arquivos, analiseInicial) {
   const nomesArquivos = arquivos.map(f => f.name).join(', ');
+  const blocoRaw = _rawSeguroGarantia
+    ? `\n\nTEXTO ORIGINAL DOS DOCUMENTOS (use para verificar dados diretamente):\n${_rawSeguroGarantia}\n`
+    : '';
   return [
     {
       role: 'user',
-      content: `Voce ja concluiu a analise inicial dos seguintes documentos: ${nomesArquivos}. A partir de agora, responda perguntas adicionais do corretor em portugues brasileiro com base APENAS na analise consolidada abaixo. Quando a analise consolidada nao trouxer evidencia suficiente, diga claramente que a informacao nao consta na analise consolidada.`,
+      content: `Você já concluiu a análise inicial dos seguintes documentos: ${nomesArquivos}.${blocoRaw}\nA partir de agora, responda perguntas adicionais do corretor em português brasileiro. Para verificar qualquer dado específico, consulte o texto original dos documentos acima. A análise consolidada está abaixo.\n\nAnálise consolidada:\n${analiseInicial}`,
     },
     {
       role: 'assistant',
-      content: analiseInicial,
+      content: 'Análise concluída. Pode me fazer perguntas sobre os documentos — vou consultar o texto original quando necessário para garantir precisão.',
     },
   ];
 }
@@ -531,14 +552,17 @@ async function chatSeguroGarantia(history) {
 
 function criarHistoricoFiancaLocaticia(arquivos, analiseJson) {
   const nomesArquivos = arquivos.map(f => f.name).join(', ');
+  const blocoRaw = _rawFianca
+    ? `\n\nTEXTO ORIGINAL DOS DOCUMENTOS (use para verificar dados diretamente):\n${_rawFianca}\n`
+    : '';
   return [
     {
       role: 'user',
-      content: `Você já concluiu a análise inicial dos seguintes documentos de fiança locatícia: ${nomesArquivos}. O JSON com toda a análise extraída está abaixo. A partir de agora, responda perguntas sobre o contrato de locação em português brasileiro com base APENAS nessa análise. Quando não houver evidência suficiente, diga claramente que a informação não consta na análise.\n\nJSON da análise:\n${analiseJson}`,
+      content: `Você já concluiu a análise inicial dos seguintes documentos de fiança locatícia: ${nomesArquivos}.${blocoRaw}\nResponda perguntas sobre o contrato de locação em português brasileiro. Para verificar qualquer dado específico, consulte o texto original acima. O JSON com a análise extraída está abaixo.\n\nJSON da análise:\n${analiseJson}`,
     },
     {
       role: 'assistant',
-      content: 'Análise dos documentos concluída. Pode me fazer perguntas sobre o contrato, cláusulas, valores, riscos e qualquer detalhe extraído dos documentos.',
+      content: 'Análise dos documentos concluída. Pode me fazer perguntas sobre o contrato, cláusulas, valores, riscos e qualquer detalhe — vou consultar o texto original quando necessário.',
     },
   ];
 }
@@ -550,14 +574,17 @@ async function chatFiancaLocaticia(history) {
 
 function criarHistoricoAnaliseFinanceira(arquivos, analiseJson) {
   const nomesArquivos = arquivos.map(f => f.name).join(', ');
+  const blocoRaw = _rawFinanceiro
+    ? `\n\nTEXTO ORIGINAL DOS DOCUMENTOS (use para verificar dados diretamente — fonte primária):\n${_rawFinanceiro}\n`
+    : '';
   return [
     {
       role: 'user',
-      content: `Você já concluiu a análise financeira dos seguintes documentos: ${nomesArquivos}. O JSON com toda a análise está abaixo. A partir de agora, responda perguntas em português brasileiro sobre os balanços, indicadores financeiros, risco de crédito e capacidade de emissão de seguros com base APENAS nessa análise. Quando não houver dados suficientes, diga claramente.\n\nJSON da análise:\n${analiseJson}`,
+      content: `Você já concluiu a análise financeira dos seguintes documentos: ${nomesArquivos}.${blocoRaw}\nResponda perguntas em português brasileiro sobre os balanços, indicadores financeiros, risco de crédito e capacidade de emissão de seguros. Sempre que houver dúvida ou a pergunta envolver um valor específico, consulte o texto original dos documentos acima para confirmar. O JSON com a análise está abaixo como referência rápida.\n\nJSON da análise:\n${analiseJson}`,
     },
     {
       role: 'assistant',
-      content: 'Análise financeira concluída. Pode me perguntar sobre indicadores, risco de crédito, capacidade de seguro garantia e fiança, ou qualquer detalhe dos demonstrativos analisados.',
+      content: 'Análise financeira concluída. Pode me perguntar sobre indicadores, risco de crédito, capacidade de seguro garantia e fiança, ou qualquer detalhe dos demonstrativos — vou consultar o texto original para garantir precisão.',
     },
   ];
 }
@@ -568,6 +595,7 @@ async function chatAnaliseFinanceira(history) {
 }
 
 async function analisarFiancaLocaticia(arquivos) {
+  _rawFianca = await extrairTextosBrutos(arquivos);
   try {
     const result = await executarAnaliseEmLotes('fianca-locaticia', arquivos);
     return parseJsonResult(result);
@@ -578,6 +606,7 @@ async function analisarFiancaLocaticia(arquivos) {
 }
 
 async function analisarDocumentosFinanceiros(arquivos) {
+  _rawFinanceiro = await extrairTextosBrutos(arquivos);
   try {
     const result = await executarAnaliseEmLotes('analise-financeira', arquivos);
     return parseJsonResult(result);
