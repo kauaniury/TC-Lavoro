@@ -1,6 +1,6 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versão: 1.6  
+> Versão: 1.7  
 > Atualizado em: 2026-06-09
 
 ## 1. Visão Geral
@@ -11,7 +11,7 @@ Aplicação web estática da **Lavoro Seguros** com quatro fluxos independentes:
 |---|---|---|
 | T&C Dashboard | Planilha Excel `.xlsx/.xls` | Dashboard executivo com limites, comparativos e exportação PDF |
 | Análise Financeira IA | DRE, Balanço, Balancete, CSV, PDF e imagem | JSON consolidado multiempresa/multiperíodo renderizado em cards |
-| Seguro Garantia IA | Edital, contrato, aditivos, apostilamentos, PDF/imagem/planilhas | Análise técnica em formato conversacional |
+| Seguro Garantia IA | Edital, contrato, aditivos, apostilamentos, PDF/imagem/planilhas | Relatório técnico estruturado (primeira resposta) + chat conversacional + exportação PDF |
 | Fiança Locatícia IA | Contrato de locação, aditivos, laudos, PDF/imagem/planilhas | JSON contratual renderizado em tela |
 
 O fluxo **T&C** continua estável e não deve ser alterado sem necessidade explícita.
@@ -294,15 +294,68 @@ Comportamento:
 
 ## 7. Fluxo 3 — Seguro Garantia IA
 
-### 7.1 Funções públicas
+### 7.1 Funções públicas (deepseek.js)
 
 | Função | Responsabilidade |
 |---|---|
-| `analisarSeguroGarantia(arquivos)` | produz a análise inicial completa |
+| `analisarSeguroGarantia(arquivos)` | produz a análise inicial completa via Worker em lotes |
 | `criarHistoricoSeguroGarantia(arquivos, analiseInicial)` | semeia o chat com a análise consolidada |
 | `chatSeguroGarantia(history)` | responde perguntas subsequentes do usuário |
 
-### 7.2 Mudança arquitetural
+### 7.2 Funções de renderização (app.js)
+
+| Função | Responsabilidade |
+|---|---|
+| `renderSeguroGarantiaReport(text)` | entry-point: constrói todo o HTML do relatório (masthead, badge de veredicto, seções) |
+| `parseReportSections(text)` | divide o markdown por `##` em `[{ title, content }]` |
+| `getSectionMeta(title)` | mapeia título para tipo: `dados \| modalidades \| clausulas \| riscos \| parecer \| resumo \| default` |
+| `getSectionSvgIcon(type)` | retorna SVG inline por tipo de seção |
+| `detectVerdictFromText(text)` | detecta veredicto no texto e retorna `{ cls, label, icon }` para Emitir / Ressalvas / Declinar |
+| `renderReportSection(section)` | renderiza um card de seção com cabeçalho com ícone e corpo em markdown |
+| `renderReportMarkdown(text)` | markdown aprimorado: tabelas pipe `\| … \|`, `---` HR, headings, bullets, negrito |
+| `downloadSgReport()` | exportação A4 multi-página via html2canvas + jsPDF |
+
+### 7.3 Arquitetura de renderização
+
+A primeira mensagem da IA no chat é renderizada como **relatório completo** (`div.sg-report-wrapper`). Mensagens subsequentes (perguntas e respostas do chat) usam o layout de balão padrão (`sg-chat-msg--user` / `sg-chat-msg--ai`).
+
+Controlado pela flag `sgFirstAnalysis` em `app.js`:
+
+```js
+// primeiro assistente → relatório estruturado
+if (role === 'assistant' && sgFirstAnalysis) {
+  div.className = 'sg-report-wrapper';
+  div.innerHTML = renderSeguroGarantiaReport(text);
+  sgFirstAnalysis = false;
+  // exibe botão "Exportar PDF"
+} else {
+  div.className = 'sg-chat-msg ' + (role === 'user' ? 'sg-chat-msg--user' : 'sg-chat-msg--ai');
+}
+```
+
+Um divisor visual (`.sg-chat-divider` com texto "Perguntas sobre a análise") é inserido antes da primeira mensagem do usuário após o relatório.
+
+### 7.4 Estrutura visual do relatório
+
+```
+.sg-report-wrapper               ← fade-in, outer container
+  .sg-report                     ← white card, shadow, border-radius
+    .sg-report-masthead           ← dark green (#192b24) + gold bottom line
+      .sg-report-verdict-badge   ← verde (Emitir) / âmbar (Ressalvas) / vermelho (Declinar)
+    .sg-report-section × N       ← um card por seção ##
+      .sg-report-section-head    ← fundo cinza claro + ícone colorido + título serif
+      .sg-report-section-body    ← corpo em markdown com tabelas e bullets
+```
+
+Seção `##Parecer Geral` recebe `sg-report-section--parecer` (fundo invertido escuro).
+
+### 7.5 Exportação PDF
+
+- Botão "Exportar PDF" (`#sgExportBtn`) fica oculto até a primeira análise ser renderizada.
+- Localizado na `.sg-chat-topbar-actions` (flex, lado direito da topbar).
+- `downloadSgReport()` usa `html2canvas` para capturar `.sg-report` e `jsPDF` para gerar A4 multi-página (divisão inteligente de página a cada 297 mm de conteúdo).
+
+### 7.6 Mudança arquitetural original
 
 Antes, a análise inicial reenviava todo o conteúdo de uma vez.  
 Agora, a análise inicial tenta o fluxo em lotes; o chat posterior conversa sobre a análise consolidada, reduzindo custo e contexto.
