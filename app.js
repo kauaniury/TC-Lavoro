@@ -897,6 +897,7 @@ function resetSeguroGarantia() {
   document.getElementById('sgChatArea').hidden = true;
   document.getElementById('sgUploadSection').hidden = false;
   document.getElementById('sgChatMessages').innerHTML = '';
+  document.getElementById('sgSidebarMessages').innerHTML = '';
   const exportBtn = document.getElementById('sgExportBtn');
   if (exportBtn) exportBtn.hidden = true;
   hideGarantiaError();
@@ -915,12 +916,12 @@ async function sendSgChatMessage() {
   sendBtn.disabled = true;
   input.disabled = true;
 
-  const messagesEl = document.getElementById('sgChatMessages');
+  const sidebarEl = document.getElementById('sgSidebarMessages');
   const typingDiv = document.createElement('div');
   typingDiv.className = 'sg-chat-msg sg-chat-msg--ai sg-chat-typing';
   typingDiv.innerHTML = '<div class="sg-chat-dots"><span></span><span></span><span></span></div>';
-  messagesEl.appendChild(typingDiv);
-  messagesEl.scrollTop = messagesEl.scrollHeight;
+  sidebarEl.appendChild(typingDiv);
+  sidebarEl.scrollTop = sidebarEl.scrollHeight;
 
   try {
     const respText = await chatSeguroGarantia(sgChatHistory);
@@ -938,14 +939,8 @@ async function sendSgChatMessage() {
 }
 
 function appendSgChatMessage(role, text) {
-  const messagesEl = document.getElementById('sgChatMessages');
-
-  if (role === 'user' && !sgFirstAnalysis && !messagesEl.querySelector('.sg-chat-divider')) {
-    const divider = document.createElement('div');
-    divider.className = 'sg-chat-divider';
-    divider.textContent = 'Perguntas sobre a análise';
-    messagesEl.appendChild(divider);
-  }
+  const mainEl = document.getElementById('sgChatMessages');
+  const sidebarEl = document.getElementById('sgSidebarMessages');
 
   const div = document.createElement('div');
   if (role === 'assistant' && sgFirstAnalysis) {
@@ -954,13 +949,14 @@ function appendSgChatMessage(role, text) {
     sgFirstAnalysis = false;
     const exportBtn = document.getElementById('sgExportBtn');
     if (exportBtn) exportBtn.hidden = false;
+    mainEl.appendChild(div);
+    mainEl.scrollTop = mainEl.scrollHeight;
   } else {
     div.className = 'sg-chat-msg ' + (role === 'user' ? 'sg-chat-msg--user' : 'sg-chat-msg--ai');
     div.innerHTML = role === 'assistant' ? renderMarkdown(text) : '<p>' + esc(text) + '</p>';
+    sidebarEl.appendChild(div);
+    sidebarEl.scrollTop = sidebarEl.scrollHeight;
   }
-
-  messagesEl.appendChild(div);
-  messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
 function renderMarkdown(text) {
@@ -1285,6 +1281,7 @@ function resetFiancaLocaticia() {
   document.getElementById('flChatArea').hidden = true;
   document.getElementById('flUploadSection').hidden = false;
   document.getElementById('flChatMessages').innerHTML = '';
+  document.getElementById('flSidebarMessages').innerHTML = '';
   const exportBtn = document.getElementById('flExportBtn');
   if (exportBtn) exportBtn.hidden = true;
   hideFiancaError();
@@ -1510,30 +1507,22 @@ function buildFlReportHtml(data, locatario, imovel, dateStr) {
 }
 
 function appendFlChatMessage(role, content) {
-  const messagesEl = document.getElementById('flChatMessages');
-
-  if (role === 'user' && !flFirstAnalysis) {
-    const existing = messagesEl.querySelector('.sg-chat-divider');
-    if (!existing) {
-      const divider = document.createElement('div');
-      divider.className = 'sg-chat-divider';
-      divider.textContent = 'Perguntas sobre a análise';
-      messagesEl.appendChild(divider);
-    }
-  }
+  const mainEl = document.getElementById('flChatMessages');
+  const sidebarEl = document.getElementById('flSidebarMessages');
 
   const div = document.createElement('div');
   if (role === 'report') {
     div.className = 'fl-report-wrapper';
     div.innerHTML = content;
     flFirstAnalysis = false;
+    mainEl.appendChild(div);
+    mainEl.scrollTop = mainEl.scrollHeight;
   } else {
     div.className = 'sg-chat-msg ' + (role === 'user' ? 'sg-chat-msg--user' : 'sg-chat-msg--ai');
     div.innerHTML = role === 'assistant' ? renderMarkdown(content) : '<p>' + esc(content) + '</p>';
+    sidebarEl.appendChild(div);
+    sidebarEl.scrollTop = sidebarEl.scrollHeight;
   }
-
-  messagesEl.appendChild(div);
-  messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
 async function sendFlChatMessage() {
@@ -1549,12 +1538,12 @@ async function sendFlChatMessage() {
   sendBtn.disabled = true;
   input.disabled = true;
 
-  const messagesEl = document.getElementById('flChatMessages');
+  const flSidebarEl = document.getElementById('flSidebarMessages');
   const typingDiv = document.createElement('div');
   typingDiv.className = 'sg-chat-msg sg-chat-msg--ai sg-chat-typing';
   typingDiv.innerHTML = '<div class="sg-chat-dots"><span></span><span></span><span></span></div>';
-  messagesEl.appendChild(typingDiv);
-  messagesEl.scrollTop = messagesEl.scrollHeight;
+  flSidebarEl.appendChild(typingDiv);
+  flSidebarEl.scrollTop = flSidebarEl.scrollHeight;
 
   try {
     const respText = await chatFiancaLocaticia(flChatHistory);
@@ -1824,12 +1813,12 @@ async function sendAfChatMessage() {
   sendBtn.disabled = true;
   input.disabled = true;
 
-  const messagesEl = document.getElementById('afQaMessages');
+  const afSidebarEl = document.getElementById('afQaMessages');
   const typingDiv = document.createElement('div');
-  typingDiv.className = 'af-qa-msg af-qa-msg--ai sg-chat-typing';
+  typingDiv.className = 'sg-chat-msg sg-chat-msg--ai sg-chat-typing';
   typingDiv.innerHTML = '<div class="sg-chat-dots"><span></span><span></span><span></span></div>';
-  messagesEl.appendChild(typingDiv);
-  messagesEl.scrollTop = messagesEl.scrollHeight;
+  afSidebarEl.appendChild(typingDiv);
+  afSidebarEl.scrollTop = afSidebarEl.scrollHeight;
 
   try {
     const respText = await chatAnaliseFinanceira(afChatHistory);
@@ -1849,7 +1838,7 @@ async function sendAfChatMessage() {
 function appendAfQaMessage(role, text) {
   const messagesEl = document.getElementById('afQaMessages');
   const div = document.createElement('div');
-  div.className = 'af-qa-msg ' + (role === 'user' ? 'af-qa-msg--user' : 'af-qa-msg--ai');
+  div.className = 'sg-chat-msg ' + (role === 'user' ? 'sg-chat-msg--user' : 'sg-chat-msg--ai');
   div.innerHTML = role === 'assistant' ? renderMarkdown(text) : '<p>' + esc(text) + '</p>';
   messagesEl.appendChild(div);
   messagesEl.scrollTop = messagesEl.scrollHeight;

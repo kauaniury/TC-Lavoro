@@ -307,29 +307,35 @@
   </section>
 
   <div class="content dashboard-body" id="afContent" hidden>
-    <div id="afEmpresasContainer"></div>
-
-    <!-- AI Q&A Chat -->
-    <div class="af-qa-section" id="afQaSection">
-      <div class="af-qa-header">
-        <div class="af-qa-header-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </div>
-        <div>
-          <p class="af-qa-title">Perguntar sobre a análise</p>
-          <p class="af-qa-subtitle">A IA responde com base nos balanços analisados</p>
-        </div>
+    <div class="af-split-layout">
+      <div class="af-split-main">
+        <div id="afEmpresasContainer"></div>
       </div>
-      <div class="af-qa-messages" id="afQaMessages" aria-live="polite"></div>
-      <div class="af-qa-input-row">
-        <input type="text" id="afChatInput" class="af-qa-input"
-               placeholder="Pergunte sobre indicadores, risco, capacidade…"
-               onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAfChatMessage();}">
-        <button type="button" class="btn-primary af-qa-send-btn" id="afChatSend" onclick="sendAfChatMessage()">
-          <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" width="15" height="15"><path d="M17 3L3 9.5l5.5 2 2 5.5L17 3z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="currentColor" fill-opacity="0.2"/></svg>
-          Enviar
-        </button>
-      </div>
+      <aside class="ai-chat-sidebar ai-chat-sidebar--af" id="afQaSection">
+        <div class="ai-chat-sidebar-header">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="20" height="20" aria-hidden="true"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <div>
+            <p class="ai-chat-sidebar-title">Chat com IA</p>
+            <p class="ai-chat-sidebar-sub">Pergunte sobre os balanços analisados</p>
+          </div>
+        </div>
+        <div class="ai-sidebar-messages" id="afQaMessages" aria-live="polite"></div>
+        <div class="ai-sidebar-input-area">
+          <div class="sg-chat-input-row">
+            <input type="text" id="afChatInput" class="sg-chat-input"
+                   placeholder="Pergunte sobre indicadores, risco, capacidade…"
+                   onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAfChatMessage();}">
+            <button type="button" class="btn-primary sg-chat-send-btn" id="afChatSend" onclick="sendAfChatMessage()">
+              <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" width="15" height="15"><path d="M17 3L3 9.5l5.5 2 2 5.5L17 3z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="currentColor" fill-opacity="0.2"/></svg>
+              Enviar
+            </button>
+          </div>
+        </div>
+        <p class="ai-disclaimer">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12" aria-hidden="true"><path d="M8 1l7 14H1L8 1z" stroke-linejoin="round"/><path d="M8 6v4M8 12h.01" stroke-linecap="round"/></svg>
+          A IA pode cometer erros. Verifique informações importantes.
+        </p>
+      </aside>
     </div>
   </div>
 
@@ -419,18 +425,35 @@
       </div>
     </div>
 
-    <div class="sg-chat-messages" id="sgChatMessages" aria-live="polite"></div>
-
-    <div class="sg-chat-input-area">
-      <div class="sg-chat-input-row">
-        <input type="text" id="sgChatInput" class="sg-chat-input"
-               placeholder="Pergunte sobre cláusulas, riscos, valores…"
-               onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendSgChatMessage();}">
-        <button type="button" class="btn-primary sg-chat-send-btn" id="sgChatSend" onclick="sendSgChatMessage()">
-          <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" width="15" height="15"><path d="M17 3L3 9.5l5.5 2 2 5.5L17 3z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="currentColor" fill-opacity="0.2"/></svg>
-          Enviar
-        </button>
+    <div class="ai-split-body">
+      <div class="ai-split-main">
+        <div class="sg-chat-messages" id="sgChatMessages" aria-live="polite"></div>
       </div>
+      <aside class="ai-chat-sidebar">
+        <div class="ai-chat-sidebar-header">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="20" height="20" aria-hidden="true"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <div>
+            <p class="ai-chat-sidebar-title">Chat com IA</p>
+            <p class="ai-chat-sidebar-sub">Pergunte sobre o contrato</p>
+          </div>
+        </div>
+        <div class="ai-sidebar-messages" id="sgSidebarMessages" aria-live="polite"></div>
+        <div class="ai-sidebar-input-area">
+          <div class="sg-chat-input-row">
+            <input type="text" id="sgChatInput" class="sg-chat-input"
+                   placeholder="Pergunte sobre cláusulas, riscos, valores…"
+                   onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendSgChatMessage();}">
+            <button type="button" class="btn-primary sg-chat-send-btn" id="sgChatSend" onclick="sendSgChatMessage()">
+              <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" width="15" height="15"><path d="M17 3L3 9.5l5.5 2 2 5.5L17 3z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="currentColor" fill-opacity="0.2"/></svg>
+              Enviar
+            </button>
+          </div>
+        </div>
+        <p class="ai-disclaimer">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12" aria-hidden="true"><path d="M8 1l7 14H1L8 1z" stroke-linejoin="round"/><path d="M8 6v4M8 12h.01" stroke-linecap="round"/></svg>
+          A IA pode cometer erros. Verifique informações importantes.
+        </p>
+      </aside>
     </div>
   </div>
 </main>
@@ -513,18 +536,35 @@
       </div>
     </div>
 
-    <div class="sg-chat-messages" id="flChatMessages" aria-live="polite"></div>
-
-    <div class="sg-chat-input-area">
-      <div class="sg-chat-input-row">
-        <input type="text" id="flChatInput" class="sg-chat-input"
-               placeholder="Pergunte sobre cláusulas, valores, riscos do contrato…"
-               onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendFlChatMessage();}">
-        <button type="button" class="btn-primary sg-chat-send-btn" id="flChatSend" onclick="sendFlChatMessage()">
-          <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" width="15" height="15"><path d="M17 3L3 9.5l5.5 2 2 5.5L17 3z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="currentColor" fill-opacity="0.2"/></svg>
-          Enviar
-        </button>
+    <div class="ai-split-body">
+      <div class="ai-split-main">
+        <div class="sg-chat-messages" id="flChatMessages" aria-live="polite"></div>
       </div>
+      <aside class="ai-chat-sidebar">
+        <div class="ai-chat-sidebar-header">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="20" height="20" aria-hidden="true"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <div>
+            <p class="ai-chat-sidebar-title">Chat com IA</p>
+            <p class="ai-chat-sidebar-sub">Pergunte sobre o contrato</p>
+          </div>
+        </div>
+        <div class="ai-sidebar-messages" id="flSidebarMessages" aria-live="polite"></div>
+        <div class="ai-sidebar-input-area">
+          <div class="sg-chat-input-row">
+            <input type="text" id="flChatInput" class="sg-chat-input"
+                   placeholder="Pergunte sobre cláusulas, valores, riscos do contrato…"
+                   onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendFlChatMessage();}">
+            <button type="button" class="btn-primary sg-chat-send-btn" id="flChatSend" onclick="sendFlChatMessage()">
+              <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" width="15" height="15"><path d="M17 3L3 9.5l5.5 2 2 5.5L17 3z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="currentColor" fill-opacity="0.2"/></svg>
+              Enviar
+            </button>
+          </div>
+        </div>
+        <p class="ai-disclaimer">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12" aria-hidden="true"><path d="M8 1l7 14H1L8 1z" stroke-linejoin="round"/><path d="M8 6v4M8 12h.01" stroke-linecap="round"/></svg>
+          A IA pode cometer erros. Verifique informações importantes.
+        </p>
+      </aside>
     </div>
   </div>
 </main>
