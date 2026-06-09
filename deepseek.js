@@ -3,6 +3,7 @@ const DEEPSEEK_JOBS_URL = DEEPSEEK_WORKER_URL.replace(/\/+$/, '') + '/v1/analysi
 const MAX_PDF_PAGES = 250;
 const TEXT_CHUNK_SIZE = 30000;
 const MAX_JOB_ITERATIONS = 400;
+const OCR_TEXT_THRESHOLD = 100; // abaixo disto o PDF é tratado como imagem → usa OCR
 
 function parseDeepSeekContent(data) {
   const msg = data && data.choices && data.choices[0] && data.choices[0].message;
@@ -121,6 +122,64 @@ function extrairTexto(file) {
   });
 }
 
+async function carregarTesseract() {
+  if (window.Tesseract) return;
+  await new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('Falha ao carregar Tesseract.js'));
+    document.head.appendChild(s);
+  });
+}
+
+async function extrairPDFcomOCR(pdf, totalPaginas) {
+  await carregarTesseract();
+  const worker = await Tesseract.createWorker(['por', 'eng']);
+  let textoCompleto = '';
+  const partes = [];
+  let chunkBuffer = '';
+  let chunkStartPage = null;
+
+  for (let i = 1; i <= totalPaginas; i++) {
+    const page = await pdf.getPage(i);
+    const viewport = page.getViewport({ scale: 2.0 });
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+
+    const { data: { text } } = await worker.recognize(canvas);
+    const pageText = text.replace(/\s+/g, ' ').trim();
+    if (!pageText) continue;
+
+    textoCompleto += `[Pagina ${i}]\n${pageText}\n\n`;
+    const bloco = `[Pagina ${i}]\n${pageText}\n\n`;
+
+    if (!chunkBuffer) { chunkBuffer = bloco; chunkStartPage = i; continue; }
+    if ((chunkBuffer + bloco).length <= TEXT_CHUNK_SIZE) { chunkBuffer += bloco; continue; }
+
+    partes.push({
+      indice: partes.length + 1, pagina: chunkStartPage,
+      rotulo: chunkStartPage === i - 1 ? `Pagina ${chunkStartPage}` : `Paginas ${chunkStartPage}-${i - 1}`,
+      conteudo: chunkBuffer.trim(),
+    });
+    chunkBuffer = bloco;
+    chunkStartPage = i;
+  }
+
+  if (chunkBuffer) {
+    partes.push({
+      indice: partes.length + 1, pagina: chunkStartPage,
+      rotulo: chunkStartPage === totalPaginas ? `Pagina ${chunkStartPage}` : `Paginas ${chunkStartPage}-${totalPaginas}`,
+      conteudo: chunkBuffer.trim(),
+    });
+  }
+
+  await worker.terminate();
+  return { textoCompleto: textoCompleto.trim(), partes };
+}
+
 async function extrairPDF(file) {
   try {
     const arrayBuffer = await file.arrayBuffer();
@@ -169,6 +228,17 @@ async function extrairPDF(file) {
         rotulo: chunkStartPage === totalPaginas ? `Pagina ${chunkStartPage}` : `Paginas ${chunkStartPage}-${totalPaginas}`,
         conteudo: chunkBuffer.trim(),
       });
+    }
+
+    // PDF sem texto reconhecível → fallback OCR
+    if (textoCompleto.trim().length < OCR_TEXT_THRESHOLD) {
+      const ocr = await extrairPDFcomOCR(pdf, totalPaginas);
+      return {
+        tipo: 'texto',
+        conteudo: ocr.textoCompleto,
+        partes: ocr.partes,
+        meta: { origem: 'pdf-ocr', totalPaginas, totalPartes: ocr.partes.length },
+      };
     }
 
     return {
