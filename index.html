@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
@@ -24,9 +24,9 @@
     <nav class="topbar-tabs topbar-nav" aria-label="Navegação principal">
       <button type="button" class="topbar-tab tab-btn active" data-page="upload" aria-current="page" onclick="switchTab('upload')">Importar</button>
       <button type="button" class="topbar-tab tab-btn" id="tab-dashboard" data-page="dashboard" aria-disabled="true" disabled title="Importe uma planilha primeiro" onclick="switchTab('dashboard')">Dashboard</button>
-      <button type="button" class="topbar-tab tab-btn" id="tab-analise-financeira" data-page="analise-financeira" aria-disabled="true" disabled title="Anexe documentos financeiros primeiro" onclick="switchTab('analise-financeira')">Análise Financeira</button>
-      <button type="button" class="topbar-tab tab-btn" id="tab-seguro-garantia" data-page="seguro-garantia" aria-disabled="true" disabled title="Anexe documentos para análise primeiro" onclick="switchTab('seguro-garantia')">Seg. Garantia</button>
-      <button type="button" class="topbar-tab tab-btn" id="tab-fianca-locaticia" data-page="fianca-locaticia" aria-disabled="true" disabled title="Anexe documentos para análise primeiro" onclick="switchTab('fianca-locaticia')">Fiança Loc.</button>
+      <button type="button" class="topbar-tab tab-btn" id="tab-analise-financeira" data-page="analise-financeira" onclick="switchTab('analise-financeira')">Análise Financeira</button>
+      <button type="button" class="topbar-tab tab-btn" id="tab-seguro-garantia" data-page="seguro-garantia" onclick="switchTab('seguro-garantia')">Seg. Garantia</button>
+      <button type="button" class="topbar-tab tab-btn" id="tab-fianca-locaticia" data-page="fianca-locaticia" onclick="switchTab('fianca-locaticia')">Fiança Loc.</button>
     </nav>
     <div class="topbar-actions">
       <button type="button" class="btn-secondary btn-download topbar-download" id="btnDownloadTop" onclick="downloadComparativo()" aria-label="Exportar relatório em PDF" hidden>
@@ -37,9 +37,10 @@
   </div>
 </header>
 
+<!-- ── Página: Importar (XLSX dashboard) ── -->
 <main class="page page-upload active" id="page-upload" aria-label="Importar planilha">
-  <div class="page-container upload-page">
-    <section class="upload-section">
+  <div class="upload-page upload-page--single">
+    <section class="upload-section upload-section--solo">
       <div class="upload-header">
         <p class="upload-header-eyebrow">Análise de Limites</p>
         <h1 class="upload-header-title">Importe sua planilha de cotações</h1>
@@ -86,142 +87,47 @@
           </div>
         </div>
       </div>
-    </section>
 
-    <section class="upload-section upload-section--financial">
-      <div class="upload-header">
-        <p class="upload-header-eyebrow">Inteligência Artificial</p>
-        <h1 class="upload-header-title">Análise de Balanços com IA</h1>
-        <p class="upload-header-sub">Anexe DRE, Balanço Patrimonial ou Balancete. A IA analisa e gera um relatório financeiro completo. Até 6 arquivos.</p>
-      </div>
-
-      <div class="upload-card card upload-card--financial">
-        <div class="upload-card-header">
-          <p class="upload-card-title">Documentos Financeiros</p>
-          <span class="badge-ia-tag">Lavoro IA</span>
-        </div>
-        <div class="upload-card-body">
-          <label class="drop-zone drop-zone--financial" id="dropZoneFinancial" tabindex="0" aria-label="Clique ou arraste documentos financeiros para fazer upload">
-            <input type="file" id="fileInputFinancial" accept=".xlsx,.xls,.csv,.pdf,.png,.jpg,.jpeg" multiple>
-            <svg class="drop-icon" viewBox="0 0 48 48" fill="none" aria-hidden="true"><rect x="4" y="6" width="26" height="34" rx="2" stroke="currentColor" stroke-width="2.5"/><path d="M26 6v10h10" stroke="currentColor" stroke-width="2.5" stroke-linecap="square"/><rect x="26" y="28" width="16" height="14" rx="2" stroke="currentColor" stroke-width="2"/><path d="M34 32v6M31 35h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-            <p class="drop-title">Arraste os arquivos aqui</p>
-            <p class="drop-sub">ou <span>clique para selecionar</span></p>
-            <p class="drop-hint">DRE · Balanço · Balancete &nbsp;|&nbsp; .xlsx .pdf .csv .jpg .png &nbsp;|&nbsp; Máx. 6 arquivos</p>
-          </label>
-
-          <div class="financial-file-list" id="financialFileList" aria-live="polite"></div>
-
-          <div class="error-msg" id="errorMsgFinancial" role="alert" aria-live="polite">
-            <p id="errorTextFinancial">Erro.</p>
-          </div>
-
-          <button type="button" class="btn-primary btn-generate btn-analyze" id="btnAnalyze" disabled onclick="processarAnaliseFinanceira()">
-            <span class="btn-label">Analisar com IA</span>
+      <div class="upload-other-tools">
+        <p class="upload-other-label">Outras ferramentas de IA</p>
+        <div class="upload-other-grid">
+          <button class="upload-tool-card" onclick="switchTab('analise-financeira')">
+            <div class="upload-tool-icon upload-tool-icon--fin">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 17H5a2 2 0 01-2-2V5a2 2 0 012-2h14a2 2 0 012 2v5"/><path d="M13 13l2 2 4-4" stroke-linecap="round" stroke-linejoin="round"/><rect x="9" y="14" width="11" height="7" rx="1.5"/></svg>
+            </div>
+            <div>
+              <p class="upload-tool-name">Análise Financeira</p>
+              <p class="upload-tool-desc">DRE, Balanço e Balancete com IA</p>
+            </div>
+            <svg class="upload-tool-arrow" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
           </button>
-
-          <div class="upload-instructions">
-            <h2 class="instr-title">Como usar</h2>
-            <ol class="instr-list">
-              <li class="instr-item"><span class="instr-num">01</span><span class="instr-text">Anexe até 6 arquivos: DRE, Balanço ou Balancete (.xlsx, .pdf, .csv, .jpg).</span></li>
-              <li class="instr-item"><span class="instr-num">02</span><span class="instr-text">A IA identifica automaticamente o tipo de documento.</span></li>
-              <li class="instr-item"><span class="instr-num">03</span><span class="instr-text">Clique em <strong>Analisar com IA</strong> para gerar o relatório.</span></li>
-              <li class="instr-item"><span class="instr-num">04</span><span class="instr-text">Exporte o relatório financeiro em PDF.</span></li>
-            </ol>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="upload-section upload-section--garantia">
-      <div class="upload-header">
-        <p class="upload-header-eyebrow upload-header-eyebrow--garantia">Seguro Garantia</p>
-        <h1 class="upload-header-title">Análise de Contratos e Editais</h1>
-        <p class="upload-header-sub">Envie edital, contrato, aditivos e apostilamentos. A IA analisa clausulas, riscos e indica a localização exata de cada informação. Até 10 arquivos.</p>
-      </div>
-
-      <div class="upload-card card upload-card--garantia">
-        <div class="upload-card-header">
-          <p class="upload-card-title">Documentos do Contrato</p>
-          <span class="badge-ia-tag badge-ia-tag--garantia">Lavoro IA</span>
-        </div>
-        <div class="upload-card-body">
-          <label class="drop-zone drop-zone--garantia" id="dropZoneGarantia" tabindex="0" aria-label="Clique ou arraste documentos de seguro garantia">
-            <input type="file" id="fileInputGarantia" accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.csv" multiple>
-            <svg class="drop-icon" viewBox="0 0 48 48" fill="none" aria-hidden="true"><rect x="6" y="4" width="28" height="36" rx="2" stroke="currentColor" stroke-width="2.5"/><path d="M28 4v10h10" stroke="currentColor" stroke-width="2.5" stroke-linecap="square"/><path d="M14 22h20M14 29h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-            <p class="drop-title">Arraste os arquivos aqui</p>
-            <p class="drop-sub">ou <span>clique para selecionar</span></p>
-            <p class="drop-hint">Edital · Contrato · Aditivo · Apostilamento &nbsp;|&nbsp; .pdf .jpg .png .xlsx &nbsp;|&nbsp; Máx. 10 arquivos</p>
-          </label>
-
-          <div class="financial-file-list" id="garantiaFileList" aria-live="polite"></div>
-
-          <div class="error-msg" id="errorMsgGarantia" role="alert" aria-live="polite">
-            <p id="errorTextGarantia">Erro.</p>
-          </div>
-
-          <button type="button" class="btn-primary btn-generate btn-garantia" id="btnAnalyzeGarantia" disabled onclick="processarSeguroGarantia()">
-            <span class="btn-label">Analisar com IA</span>
+          <button class="upload-tool-card" onclick="switchTab('seguro-garantia')">
+            <div class="upload-tool-icon upload-tool-icon--sg">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2L4 6v6c0 5.25 3.6 9 8 10 4.4-1 8-4.75 8-10V6L12 2z" stroke-linejoin="round"/></svg>
+            </div>
+            <div>
+              <p class="upload-tool-name">Seguro Garantia</p>
+              <p class="upload-tool-desc">Análise de contratos e editais</p>
+            </div>
+            <svg class="upload-tool-arrow" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
           </button>
-
-          <div class="upload-instructions">
-            <h2 class="instr-title">Como usar</h2>
-            <ol class="instr-list">
-              <li class="instr-item"><span class="instr-num">01</span><span class="instr-text">Anexe até 10 arquivos: edital, contrato, aditivos, apostilamentos.</span></li>
-              <li class="instr-item"><span class="instr-num">02</span><span class="instr-text">A IA extrai dados chave com a fonte exata em cada documento.</span></li>
-              <li class="instr-item"><span class="instr-num">03</span><span class="instr-text">Cláusulas críticas e riscos são listados com localização precisa.</span></li>
-              <li class="instr-item"><span class="instr-num">04</span><span class="instr-text">Receba um parecer de emissão fundamentado.</span></li>
-            </ol>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="upload-section upload-section--fianca">
-      <div class="upload-header">
-        <p class="upload-header-eyebrow upload-header-eyebrow--fianca">Fiança Locatícia</p>
-        <h1 class="upload-header-title">Análise de Contratos de Locação</h1>
-        <p class="upload-header-sub">Envie o contrato de locação, aditivos e demais documentos. A IA analisa cláusulas, riscos e indica onde está cada informação no documento. Até 10 arquivos.</p>
-      </div>
-
-      <div class="upload-card card upload-card--fianca">
-        <div class="upload-card-header">
-          <p class="upload-card-title">Documentos da Locação</p>
-          <span class="badge-ia-tag badge-ia-tag--fianca">Lavoro IA</span>
-        </div>
-        <div class="upload-card-body">
-          <label class="drop-zone drop-zone--fianca" id="dropZoneFianca" tabindex="0" aria-label="Clique ou arraste documentos de fiança locatícia">
-            <input type="file" id="fileInputFianca" accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.csv" multiple>
-            <svg class="drop-icon" viewBox="0 0 48 48" fill="none" aria-hidden="true"><rect x="6" y="4" width="28" height="36" rx="2" stroke="currentColor" stroke-width="2.5"/><path d="M28 4v10h10" stroke="currentColor" stroke-width="2.5" stroke-linecap="square"/><path d="M14 22h20M14 29h14M14 36h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-            <p class="drop-title">Arraste os arquivos aqui</p>
-            <p class="drop-sub">ou <span>clique para selecionar</span></p>
-            <p class="drop-hint">Contrato de Locação · Aditivo · Laudo &nbsp;|&nbsp; .pdf .jpg .png .xlsx &nbsp;|&nbsp; Máx. 10 arquivos</p>
-          </label>
-
-          <div class="financial-file-list" id="fiancaFileList" aria-live="polite"></div>
-
-          <div class="error-msg" id="errorMsgFianca" role="alert" aria-live="polite">
-            <p id="errorTextFianca">Erro.</p>
-          </div>
-
-          <button type="button" class="btn-primary btn-generate btn-fianca" id="btnAnalyzeFianca" disabled onclick="processarFiancaLocaticia()">
-            <span class="btn-label">Analisar com IA</span>
+          <button class="upload-tool-card" onclick="switchTab('fianca-locaticia')">
+            <div class="upload-tool-icon upload-tool-icon--fl">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 12h8M8 8h5M8 16h4" stroke-linecap="round"/></svg>
+            </div>
+            <div>
+              <p class="upload-tool-name">Fiança Locatícia</p>
+              <p class="upload-tool-desc">Análise de contratos de locação</p>
+            </div>
+            <svg class="upload-tool-arrow" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
           </button>
-
-          <div class="upload-instructions">
-            <h2 class="instr-title">Como usar</h2>
-            <ol class="instr-list">
-              <li class="instr-item"><span class="instr-num">01</span><span class="instr-text">Anexe até 10 arquivos: contrato de locação, aditivos, laudos.</span></li>
-              <li class="instr-item"><span class="instr-num">02</span><span class="instr-text">A IA extrai dados chave com a fonte exata em cada documento.</span></li>
-              <li class="instr-item"><span class="instr-num">03</span><span class="instr-text">Cláusulas críticas e riscos são listados com localização precisa.</span></li>
-              <li class="instr-item"><span class="instr-num">04</span><span class="instr-text">Receba um parecer de emissão fundamentado.</span></li>
-            </ol>
-          </div>
         </div>
       </div>
     </section>
   </div>
 </main>
 
+<!-- ── Página: Dashboard ── -->
 <main class="page page-dashboard" id="page-dashboard" aria-label="Dashboard de limites">
   <section class="hero dashboard-hero">
     <div class="hero-inner">
@@ -326,14 +232,63 @@
   </footer>
 </main>
 
+<!-- ── Página: Análise Financeira ── -->
 <main class="page page-analise-financeira" id="page-analise-financeira" aria-label="Análise Financeira IA">
 
+  <!-- Upload section (shown when no analysis done) -->
+  <div class="tab-upload-section" id="afUploadSection">
+    <div class="tab-upload-inner">
+      <div class="upload-header">
+        <p class="upload-header-eyebrow">Inteligência Artificial</p>
+        <h1 class="upload-header-title">Análise de Balanços com IA</h1>
+        <p class="upload-header-sub">Anexe DRE, Balanço Patrimonial ou Balancete. A IA analisa e gera um relatório financeiro completo. Até 6 arquivos.</p>
+      </div>
+      <div class="upload-card card upload-card--financial">
+        <div class="upload-card-header">
+          <p class="upload-card-title">Documentos Financeiros</p>
+          <span class="badge-ia-tag">Lavoro IA</span>
+        </div>
+        <div class="upload-card-body">
+          <label class="drop-zone drop-zone--financial" id="dropZoneFinancial" tabindex="0" aria-label="Clique ou arraste documentos financeiros para fazer upload">
+            <input type="file" id="fileInputFinancial" accept=".xlsx,.xls,.csv,.pdf,.png,.jpg,.jpeg" multiple>
+            <svg class="drop-icon" viewBox="0 0 48 48" fill="none" aria-hidden="true"><rect x="4" y="6" width="26" height="34" rx="2" stroke="currentColor" stroke-width="2.5"/><path d="M26 6v10h10" stroke="currentColor" stroke-width="2.5" stroke-linecap="square"/><rect x="26" y="28" width="16" height="14" rx="2" stroke="currentColor" stroke-width="2"/><path d="M34 32v6M31 35h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            <p class="drop-title">Arraste os arquivos aqui</p>
+            <p class="drop-sub">ou <span>clique para selecionar</span></p>
+            <p class="drop-hint">DRE · Balanço · Balancete &nbsp;|&nbsp; .xlsx .pdf .csv .jpg .png &nbsp;|&nbsp; Máx. 6 arquivos</p>
+          </label>
+
+          <div class="financial-file-list" id="financialFileList" aria-live="polite"></div>
+
+          <div class="error-msg" id="errorMsgFinancial" role="alert" aria-live="polite">
+            <p id="errorTextFinancial">Erro.</p>
+          </div>
+
+          <button type="button" class="btn-primary btn-generate btn-analyze" id="btnAnalyze" disabled onclick="processarAnaliseFinanceira()">
+            <span class="btn-label">Analisar com IA</span>
+          </button>
+
+          <div class="upload-instructions">
+            <h2 class="instr-title">Como usar</h2>
+            <ol class="instr-list">
+              <li class="instr-item"><span class="instr-num">01</span><span class="instr-text">Anexe até 6 arquivos: DRE, Balanço ou Balancete (.xlsx, .pdf, .csv, .jpg).</span></li>
+              <li class="instr-item"><span class="instr-num">02</span><span class="instr-text">A IA identifica automaticamente o tipo de documento e a empresa.</span></li>
+              <li class="instr-item"><span class="instr-num">03</span><span class="instr-text">Documentos de empresas diferentes são agrupados automaticamente.</span></li>
+              <li class="instr-item"><span class="instr-num">04</span><span class="instr-text">Clique em <strong>Analisar com IA</strong> para gerar o relatório.</span></li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading -->
   <div class="af-loading" id="afLoading" hidden>
     <div class="af-spinner" aria-hidden="true"></div>
     <p class="af-loading-text">Analisando documentos com IA…</p>
     <p class="af-loading-sub">Isso pode levar alguns segundos.</p>
   </div>
 
+  <!-- Results -->
   <section class="hero dashboard-hero" id="afHero" hidden>
     <div class="hero-inner">
       <div class="hero-left hero-content">
@@ -344,12 +299,39 @@
         <img src="assets/img/Lavoro-logo_branca.png" alt="Lavoro Seguros" class="print-hero-logo" aria-hidden="true">
         <p class="hero-cnpj" id="afPeriodo">—</p>
         <p class="hero-date" id="afDataGeracao"></p>
+        <button type="button" class="af-nova-analise-btn" onclick="resetAnaliseFinanceira()" title="Nova análise">
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 8a6 6 0 1 0 1.5-3.9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M2 4v4h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Nova análise
+        </button>
       </div>
     </div>
   </section>
 
   <div class="content dashboard-body" id="afContent" hidden>
     <div id="afEmpresasContainer"></div>
+
+    <!-- AI Q&A Chat -->
+    <div class="af-qa-section" id="afQaSection">
+      <div class="af-qa-header">
+        <div class="af-qa-header-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div>
+          <p class="af-qa-title">Perguntar sobre a análise</p>
+          <p class="af-qa-subtitle">A IA responde com base nos balanços analisados</p>
+        </div>
+      </div>
+      <div class="af-qa-messages" id="afQaMessages" aria-live="polite"></div>
+      <div class="af-qa-input-row">
+        <input type="text" id="afChatInput" class="af-qa-input"
+               placeholder="Pergunte sobre indicadores, risco, capacidade…"
+               onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAfChatMessage();}">
+        <button type="button" class="btn-primary af-qa-send-btn" id="afChatSend" onclick="sendAfChatMessage()">
+          <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" width="15" height="15"><path d="M17 3L3 9.5l5.5 2 2 5.5L17 3z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="currentColor" fill-opacity="0.2"/></svg>
+          Enviar
+        </button>
+      </div>
+    </div>
   </div>
 
   <footer class="footer app-footer" id="afFooter" hidden role="contentinfo">
@@ -360,14 +342,63 @@
   </footer>
 </main>
 
-<!-- ── Página: Seguro Garantia (Chat) ── -->
-<main class="page page-seguro-garantia" id="page-seguro-garantia" aria-label="Chat Seguro Garantia">
+<!-- ── Página: Seguro Garantia ── -->
+<main class="page page-seguro-garantia" id="page-seguro-garantia" aria-label="Seguro Garantia IA">
+
+  <!-- Upload section -->
+  <div class="tab-upload-section" id="sgUploadSection">
+    <div class="tab-upload-inner">
+      <div class="upload-header">
+        <p class="upload-header-eyebrow upload-header-eyebrow--garantia">Seguro Garantia</p>
+        <h1 class="upload-header-title">Análise de Contratos e Editais</h1>
+        <p class="upload-header-sub">Envie edital, contrato, aditivos e apostilamentos. A IA analisa clausulas, riscos e indica a localização exata de cada informação. Até 10 arquivos.</p>
+      </div>
+      <div class="upload-card card upload-card--garantia">
+        <div class="upload-card-header">
+          <p class="upload-card-title">Documentos do Contrato</p>
+          <span class="badge-ia-tag badge-ia-tag--garantia">Lavoro IA</span>
+        </div>
+        <div class="upload-card-body">
+          <label class="drop-zone drop-zone--garantia" id="dropZoneGarantia" tabindex="0" aria-label="Clique ou arraste documentos de seguro garantia">
+            <input type="file" id="fileInputGarantia" accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.csv" multiple>
+            <svg class="drop-icon" viewBox="0 0 48 48" fill="none" aria-hidden="true"><rect x="6" y="4" width="28" height="36" rx="2" stroke="currentColor" stroke-width="2.5"/><path d="M28 4v10h10" stroke="currentColor" stroke-width="2.5" stroke-linecap="square"/><path d="M14 22h20M14 29h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <p class="drop-title">Arraste os arquivos aqui</p>
+            <p class="drop-sub">ou <span>clique para selecionar</span></p>
+            <p class="drop-hint">Edital · Contrato · Aditivo · Apostilamento &nbsp;|&nbsp; .pdf .jpg .png .xlsx &nbsp;|&nbsp; Máx. 10 arquivos</p>
+          </label>
+
+          <div class="financial-file-list" id="garantiaFileList" aria-live="polite"></div>
+
+          <div class="error-msg" id="errorMsgGarantia" role="alert" aria-live="polite">
+            <p id="errorTextGarantia">Erro.</p>
+          </div>
+
+          <button type="button" class="btn-primary btn-generate btn-garantia" id="btnAnalyzeGarantia" disabled onclick="processarSeguroGarantia()">
+            <span class="btn-label">Analisar com IA</span>
+          </button>
+
+          <div class="upload-instructions">
+            <h2 class="instr-title">Como usar</h2>
+            <ol class="instr-list">
+              <li class="instr-item"><span class="instr-num">01</span><span class="instr-text">Anexe até 10 arquivos: edital, contrato, aditivos, apostilamentos.</span></li>
+              <li class="instr-item"><span class="instr-num">02</span><span class="instr-text">A IA extrai dados chave com a fonte exata em cada documento.</span></li>
+              <li class="instr-item"><span class="instr-num">03</span><span class="instr-text">Cláusulas críticas e riscos são listados com localização precisa.</span></li>
+              <li class="instr-item"><span class="instr-num">04</span><span class="instr-text">Receba um parecer de emissão fundamentado e pergunte à IA.</span></li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading -->
   <div class="af-loading" id="sgLoading" hidden>
     <div class="af-spinner" aria-hidden="true"></div>
     <p class="af-loading-text">Analisando documentos com IA…</p>
     <p class="af-loading-sub">Extraindo cláusulas, dados e riscos.</p>
   </div>
 
+  <!-- Chat Area -->
   <div class="sg-chat-wrapper" id="sgChatArea" hidden>
     <div class="sg-chat-topbar">
       <div class="sg-chat-topbar-inner">
@@ -377,6 +408,10 @@
         </div>
         <div class="sg-chat-topbar-actions">
           <p class="sg-chat-files-bar" id="sgChatFiles"></p>
+          <button type="button" class="sg-chat-export-btn" onclick="resetSeguroGarantia()" title="Nova análise">
+            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 8a6 6 0 1 0 1.5-3.9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M2 4v4h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Nova análise
+          </button>
           <button type="button" class="sg-chat-export-btn" id="sgExportBtn" onclick="downloadSgReport()" hidden>
             <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 1v9M5 7l3 3 3-3M2 12v1a1 1 0 001 1h10a1 1 0 001-1v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"/></svg>
             Exportar PDF
@@ -403,36 +438,96 @@
 
 <!-- ── Página: Fiança Locatícia ── -->
 <main class="page page-fianca-locaticia" id="page-fianca-locaticia" aria-label="Análise Fiança Locatícia">
+
+  <!-- Upload section -->
+  <div class="tab-upload-section" id="flUploadSection">
+    <div class="tab-upload-inner">
+      <div class="upload-header">
+        <p class="upload-header-eyebrow upload-header-eyebrow--fianca">Fiança Locatícia</p>
+        <h1 class="upload-header-title">Análise de Contratos de Locação</h1>
+        <p class="upload-header-sub">Envie o contrato de locação, aditivos e demais documentos. A IA analisa cláusulas, riscos e indica onde está cada informação. Até 10 arquivos.</p>
+      </div>
+      <div class="upload-card card upload-card--fianca">
+        <div class="upload-card-header">
+          <p class="upload-card-title">Documentos da Locação</p>
+          <span class="badge-ia-tag badge-ia-tag--fianca">Lavoro IA</span>
+        </div>
+        <div class="upload-card-body">
+          <label class="drop-zone drop-zone--fianca" id="dropZoneFianca" tabindex="0" aria-label="Clique ou arraste documentos de fiança locatícia">
+            <input type="file" id="fileInputFianca" accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.csv" multiple>
+            <svg class="drop-icon" viewBox="0 0 48 48" fill="none" aria-hidden="true"><rect x="6" y="4" width="28" height="36" rx="2" stroke="currentColor" stroke-width="2.5"/><path d="M28 4v10h10" stroke="currentColor" stroke-width="2.5" stroke-linecap="square"/><path d="M14 22h20M14 29h14M14 36h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <p class="drop-title">Arraste os arquivos aqui</p>
+            <p class="drop-sub">ou <span>clique para selecionar</span></p>
+            <p class="drop-hint">Contrato de Locação · Aditivo · Laudo &nbsp;|&nbsp; .pdf .jpg .png .xlsx &nbsp;|&nbsp; Máx. 10 arquivos</p>
+          </label>
+
+          <div class="financial-file-list" id="fiancaFileList" aria-live="polite"></div>
+
+          <div class="error-msg" id="errorMsgFianca" role="alert" aria-live="polite">
+            <p id="errorTextFianca">Erro.</p>
+          </div>
+
+          <button type="button" class="btn-primary btn-generate btn-fianca" id="btnAnalyzeFianca" disabled onclick="processarFiancaLocaticia()">
+            <span class="btn-label">Analisar com IA</span>
+          </button>
+
+          <div class="upload-instructions">
+            <h2 class="instr-title">Como usar</h2>
+            <ol class="instr-list">
+              <li class="instr-item"><span class="instr-num">01</span><span class="instr-text">Anexe até 10 arquivos: contrato de locação, aditivos, laudos.</span></li>
+              <li class="instr-item"><span class="instr-num">02</span><span class="instr-text">A IA extrai dados chave com a fonte exata em cada documento.</span></li>
+              <li class="instr-item"><span class="instr-num">03</span><span class="instr-text">Cláusulas críticas e riscos são listados com localização precisa.</span></li>
+              <li class="instr-item"><span class="instr-num">04</span><span class="instr-text">Receba um parecer e pergunte à IA sobre o contrato.</span></li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading -->
   <div class="af-loading" id="flLoading" hidden>
     <div class="af-spinner" aria-hidden="true"></div>
     <p class="af-loading-text">Analisando documentos com IA…</p>
     <p class="af-loading-sub">Extraindo cláusulas, dados e riscos.</p>
   </div>
 
-  <section class="hero dashboard-hero fl-hero" id="flHero" hidden>
-    <div class="hero-inner">
-      <div class="hero-left hero-content">
-        <p class="hero-label hero-eyebrow">Fiança Locatícia</p>
-        <h1 class="hero-title" id="flTitulo">—</h1>
-      </div>
-      <div class="hero-right hero-meta">
-        <img src="assets/img/Lavoro-logo_branca.png" alt="Lavoro Seguros" class="print-hero-logo" aria-hidden="true">
-        <p class="hero-cnpj" id="flSubtitulo">—</p>
-        <p class="hero-date" id="flData"></p>
+  <!-- Chat wrapper (results + Q&A) -->
+  <div class="sg-chat-wrapper" id="flChatArea" hidden>
+    <div class="sg-chat-topbar fl-chat-topbar">
+      <div class="sg-chat-topbar-inner">
+        <div>
+          <p class="sg-chat-eyebrow">Fiança Locatícia IA</p>
+          <p class="sg-chat-title-bar" id="flChatTitle">Análise de Contrato de Locação</p>
+        </div>
+        <div class="sg-chat-topbar-actions">
+          <p class="sg-chat-files-bar" id="flChatFiles"></p>
+          <button type="button" class="sg-chat-export-btn" onclick="resetFiancaLocaticia()" title="Nova análise">
+            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 8a6 6 0 1 0 1.5-3.9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M2 4v4h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Nova análise
+          </button>
+          <button type="button" class="sg-chat-export-btn" id="flExportBtn" onclick="downloadFlReport()" hidden>
+            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 1v9M5 7l3 3 3-3M2 12v1a1 1 0 001 1h10a1 1 0 001-1v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"/></svg>
+            Exportar PDF
+          </button>
+        </div>
       </div>
     </div>
-  </section>
 
-  <div class="content dashboard-body" id="flContent" hidden>
-    <div id="flResultContainer"></div>
+    <div class="sg-chat-messages" id="flChatMessages" aria-live="polite"></div>
+
+    <div class="sg-chat-input-area">
+      <div class="sg-chat-input-row">
+        <input type="text" id="flChatInput" class="sg-chat-input"
+               placeholder="Pergunte sobre cláusulas, valores, riscos do contrato…"
+               onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendFlChatMessage();}">
+        <button type="button" class="btn-primary sg-chat-send-btn" id="flChatSend" onclick="sendFlChatMessage()">
+          <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" width="15" height="15"><path d="M17 3L3 9.5l5.5 2 2 5.5L17 3z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="currentColor" fill-opacity="0.2"/></svg>
+          Enviar
+        </button>
+      </div>
+    </div>
   </div>
-
-  <footer class="footer app-footer" id="flFooter" hidden role="contentinfo">
-    <div class="footer-brand">
-      <img src="assets/img/lavoro_logo_sem_fundo.png" alt="" class="footer-logo" aria-hidden="true">
-    </div>
-    <p class="footer-right">Gerado em <span id="flFooterDate"></span></p>
-  </footer>
 </main>
 
 <script src="deepseek.js"></script>

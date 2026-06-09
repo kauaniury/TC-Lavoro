@@ -459,6 +459,44 @@ async function chatSeguroGarantia(history) {
   return parseDeepSeekContent(data);
 }
 
+function criarHistoricoFiancaLocaticia(arquivos, analiseJson) {
+  const nomesArquivos = arquivos.map(f => f.name).join(', ');
+  return [
+    {
+      role: 'user',
+      content: `Você já concluiu a análise inicial dos seguintes documentos de fiança locatícia: ${nomesArquivos}. O JSON com toda a análise extraída está abaixo. A partir de agora, responda perguntas sobre o contrato de locação em português brasileiro com base APENAS nessa análise. Quando não houver evidência suficiente, diga claramente que a informação não consta na análise.\n\nJSON da análise:\n${analiseJson}`,
+    },
+    {
+      role: 'assistant',
+      content: 'Análise dos documentos concluída. Pode me fazer perguntas sobre o contrato, cláusulas, valores, riscos e qualquer detalhe extraído dos documentos.',
+    },
+  ];
+}
+
+async function chatFiancaLocaticia(history) {
+  const data = await chamarWorkerDireto(history, 4096);
+  return parseDeepSeekContent(data);
+}
+
+function criarHistoricoAnaliseFinanceira(arquivos, analiseJson) {
+  const nomesArquivos = arquivos.map(f => f.name).join(', ');
+  return [
+    {
+      role: 'user',
+      content: `Você já concluiu a análise financeira dos seguintes documentos: ${nomesArquivos}. O JSON com toda a análise está abaixo. A partir de agora, responda perguntas em português brasileiro sobre os balanços, indicadores financeiros, risco de crédito e capacidade de emissão de seguros com base APENAS nessa análise. Quando não houver dados suficientes, diga claramente.\n\nJSON da análise:\n${analiseJson}`,
+    },
+    {
+      role: 'assistant',
+      content: 'Análise financeira concluída. Pode me perguntar sobre indicadores, risco de crédito, capacidade de seguro garantia e fiança, ou qualquer detalhe dos demonstrativos analisados.',
+    },
+  ];
+}
+
+async function chatAnaliseFinanceira(history) {
+  const data = await chamarWorkerDireto(history, 4096);
+  return parseDeepSeekContent(data);
+}
+
 async function analisarFiancaLocaticia(arquivos) {
   try {
     const result = await executarAnaliseEmLotes('fianca-locaticia', arquivos);

@@ -865,12 +865,7 @@ async function processarSeguroGarantia() {
   btn.querySelector('.btn-label').textContent = 'Analisando…';
   hideGarantiaError();
 
-  const tabSG = document.getElementById('tab-seguro-garantia');
-  tabSG.disabled = false;
-  tabSG.setAttribute('aria-disabled', 'false');
-  tabSG.removeAttribute('title');
-  switchTab('seguro-garantia');
-
+  document.getElementById('sgUploadSection').hidden = true;
   document.getElementById('sgLoading').hidden = false;
   document.getElementById('sgChatArea').hidden = true;
   sgFirstAnalysis = true;
@@ -892,15 +887,26 @@ async function processarSeguroGarantia() {
     appendSgChatMessage('assistant', respText);
   } catch (err) {
     document.getElementById('sgLoading').hidden = true;
-    switchTab('upload');
+    document.getElementById('sgUploadSection').hidden = false;
     showGarantiaError('Erro ao analisar: ' + err.message);
-    tabSG.disabled = true;
-    tabSG.setAttribute('aria-disabled', 'true');
-    tabSG.title = 'Anexe documentos para analise primeiro';
   } finally {
     btn.disabled = false;
     btn.querySelector('.btn-label').textContent = 'Analisar com IA';
   }
+}
+
+function resetSeguroGarantia() {
+  garantiaFiles = [];
+  sgChatHistory = [];
+  sgFirstAnalysis = true;
+  renderContratoFileList(garantiaFiles, 'garantiaFileList', 'garantia');
+  document.getElementById('btnAnalyzeGarantia').disabled = true;
+  document.getElementById('sgChatArea').hidden = true;
+  document.getElementById('sgUploadSection').hidden = false;
+  document.getElementById('sgChatMessages').innerHTML = '';
+  const exportBtn = document.getElementById('sgExportBtn');
+  if (exportBtn) exportBtn.hidden = true;
+  hideGarantiaError();
 }
 
 async function sendSgChatMessage() {
@@ -1242,6 +1248,10 @@ async function downloadSgReport() {
   }
 }
 
+let flChatHistory = [];
+let flFirstAnalysis = true;
+let flAnaliseData = null;
+
 async function processarFiancaLocaticia() {
   if (fiancaFiles.length === 0) return;
   const btn = document.getElementById('btnAnalyzeFianca');
@@ -1249,51 +1259,68 @@ async function processarFiancaLocaticia() {
   btn.querySelector('.btn-label').textContent = 'Analisando…';
   hideFiancaError();
 
-  const tabFL = document.getElementById('tab-fianca-locaticia');
-  tabFL.disabled = false;
-  tabFL.setAttribute('aria-disabled', 'false');
-  tabFL.removeAttribute('title');
-  switchTab('fianca-locaticia');
-
+  document.getElementById('flUploadSection').hidden = true;
   document.getElementById('flLoading').hidden = false;
-  document.getElementById('flHero').hidden = true;
-  document.getElementById('flContent').hidden = true;
-  document.getElementById('flFooter').hidden = true;
+  document.getElementById('flChatArea').hidden = true;
+  flFirstAnalysis = true;
+  flChatHistory = [];
+  document.getElementById('flChatMessages').innerHTML = '';
+  const flExportBtn = document.getElementById('flExportBtn');
+  if (flExportBtn) flExportBtn.hidden = true;
 
   try {
     const resultado = await analisarFiancaLocaticia(fiancaFiles);
+    flAnaliseData = resultado;
     renderFiancaLocaticia(resultado);
   } catch (err) {
     document.getElementById('flLoading').hidden = true;
-    switchTab('upload');
+    document.getElementById('flUploadSection').hidden = false;
     showFiancaError('Erro ao analisar: ' + err.message);
-    tabFL.disabled = true;
-    tabFL.setAttribute('aria-disabled', 'true');
-    tabFL.title = 'Anexe documentos para análise primeiro';
   } finally {
     btn.disabled = false;
     btn.querySelector('.btn-label').textContent = 'Analisar com IA';
   }
 }
 
+function resetFiancaLocaticia() {
+  fiancaFiles = [];
+  flChatHistory = [];
+  flFirstAnalysis = true;
+  flAnaliseData = null;
+  renderContratoFileList(fiancaFiles, 'fiancaFileList', 'fianca');
+  document.getElementById('btnAnalyzeFianca').disabled = true;
+  document.getElementById('flChatArea').hidden = true;
+  document.getElementById('flUploadSection').hidden = false;
+  document.getElementById('flChatMessages').innerHTML = '';
+  const exportBtn = document.getElementById('flExportBtn');
+  if (exportBtn) exportBtn.hidden = true;
+  hideFiancaError();
+}
+
 // ── Render functions
 function renderFiancaLocaticia(data) {
   document.getElementById('flLoading').hidden = true;
-  document.getElementById('flHero').hidden = false;
-  document.getElementById('flContent').hidden = false;
-  document.getElementById('flFooter').hidden = false;
+  document.getElementById('flChatArea').hidden = false;
 
   const now = new Date();
   const dateStr = now.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
   const dados = data.dados_gerais || {};
   const locatario = (dados.locatario && dados.locatario.valor && dados.locatario.valor !== 'null') ? dados.locatario.valor : 'Análise Fiança Locatícia';
   const imovel = (dados.imovel && dados.imovel.valor && dados.imovel.valor !== 'null') ? dados.imovel.valor : '';
+  const filesText = fiancaFiles.map(f => f.name).join(' · ');
 
-  document.getElementById('flTitulo').textContent = locatario;
-  document.getElementById('flSubtitulo').textContent = imovel;
-  document.getElementById('flData').textContent = 'Gerado em ' + dateStr;
-  document.getElementById('flFooterDate').textContent = dateStr;
-  document.getElementById('flResultContainer').innerHTML = buildAnaliseContratualHTML(data, FL_DADOS_CONFIG);
+  document.getElementById('flChatTitle').textContent = locatario || 'Análise de Locação';
+  document.getElementById('flChatFiles').textContent = filesText;
+
+  // Build chat history context
+  flChatHistory = criarHistoricoFiancaLocaticia(fiancaFiles, JSON.stringify(data));
+
+  // Render as first chat message
+  const reportHtml = buildFlReportHtml(data, locatario, imovel, dateStr);
+  appendFlChatMessage('report', reportHtml);
+
+  const exportBtn = document.getElementById('flExportBtn');
+  if (exportBtn) exportBtn.hidden = false;
 }
 
 // ── Shared builder for both contractual analysis types
@@ -1427,6 +1454,175 @@ function buildParecerHTML(parecer) {
     </section>`;
 }
 
+// ── Fiança Locatícia: report HTML builder ──────────────────────────────────
+function buildFlReportHtml(data, locatario, imovel, dateStr) {
+  const parecerPart = buildParecerHTML(data.parecer || {});
+  const dados = data.dados_gerais || {};
+  const clausulas = data.clausulas_criticas || [];
+  const riscos = data.riscos || [];
+  const docs = data.documentos_analisados || [];
+
+  const dadosItens = FL_DADOS_CONFIG
+    .map(cfg => buildDadoItem(cfg.label, dados[cfg.key], cfg.format))
+    .filter(h => h).join('');
+
+  const clausulasHtml = clausulas.length > 0
+    ? clausulas.map(buildClausulaItem).join('')
+    : '<p class="af-no-data">Nenhuma cláusula crítica identificada.</p>';
+
+  const riscosHtml = riscos.length > 0
+    ? riscos.map(buildRiscoItem).join('')
+    : '<p class="af-no-data">Nenhum risco identificado.</p>';
+
+  const docsHtml = docs.length > 0
+    ? docs.map(d => `<span class="sg-doc-badge">${esc(d)}</span>`).join('')
+    : '';
+
+  return `
+    <div class="fl-report" id="flReportContent">
+        <div class="fl-report-masthead">
+          <div>
+            <p class="fl-report-eyebrow">Fiança Locatícia IA · Análise Técnica</p>
+            <h2 class="fl-report-title">${esc(locatario)}</h2>
+            ${imovel ? `<p class="fl-report-subtitle">${esc(imovel)}</p>` : ''}
+          </div>
+          <div>
+            <p class="fl-report-gen-date">Gerado em ${dateStr}</p>
+          </div>
+        </div>
+        <div class="fl-report-body">
+          ${parecerPart}
+          ${docsHtml ? `<div class="sg-docs-analisados">${docsHtml}</div>` : ''}
+          <section class="dashboard-section">
+            <h2 class="sec section-title">Dados do Contrato</h2>
+            <div class="card sg-dados-card">
+              ${dadosItens || '<p class="af-no-data">Dados não extraídos.</p>'}
+            </div>
+          </section>
+          <section class="dashboard-section">
+            <h2 class="sec section-title">Cláusulas Críticas</h2>
+            <div class="sg-clausulas-list">${clausulasHtml}</div>
+          </section>
+          <section class="dashboard-section">
+            <h2 class="sec section-title">Riscos Identificados</h2>
+            <div class="sg-riscos-list">${riscosHtml}</div>
+          </section>
+          ${data.resumo ? `
+          <section class="dashboard-section">
+            <h2 class="sec section-title">Resumo Executivo</h2>
+            <div class="card sg-resumo-card">
+              <p class="sg-resumo-text">${esc(data.resumo)}</p>
+            </div>
+          </section>` : ''}
+        </div>
+      </div>`;
+}
+
+function appendFlChatMessage(role, content) {
+  const messagesEl = document.getElementById('flChatMessages');
+
+  if (role === 'user' && !flFirstAnalysis) {
+    const existing = messagesEl.querySelector('.sg-chat-divider');
+    if (!existing) {
+      const divider = document.createElement('div');
+      divider.className = 'sg-chat-divider';
+      divider.textContent = 'Perguntas sobre a análise';
+      messagesEl.appendChild(divider);
+    }
+  }
+
+  const div = document.createElement('div');
+  if (role === 'report') {
+    div.className = 'fl-report-wrapper';
+    div.innerHTML = content;
+    flFirstAnalysis = false;
+  } else {
+    div.className = 'sg-chat-msg ' + (role === 'user' ? 'sg-chat-msg--user' : 'sg-chat-msg--ai');
+    div.innerHTML = role === 'assistant' ? renderMarkdown(content) : '<p>' + esc(content) + '</p>';
+  }
+
+  messagesEl.appendChild(div);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+async function sendFlChatMessage() {
+  const input = document.getElementById('flChatInput');
+  const text = input.value.trim();
+  if (!text || flChatHistory.length === 0) return;
+
+  input.value = '';
+  appendFlChatMessage('user', text);
+  flChatHistory.push({ role: 'user', content: text });
+
+  const sendBtn = document.getElementById('flChatSend');
+  sendBtn.disabled = true;
+  input.disabled = true;
+
+  const messagesEl = document.getElementById('flChatMessages');
+  const typingDiv = document.createElement('div');
+  typingDiv.className = 'sg-chat-msg sg-chat-msg--ai sg-chat-typing';
+  typingDiv.innerHTML = '<div class="sg-chat-dots"><span></span><span></span><span></span></div>';
+  messagesEl.appendChild(typingDiv);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+
+  try {
+    const respText = await chatFiancaLocaticia(flChatHistory);
+    flChatHistory.push({ role: 'assistant', content: respText });
+    typingDiv.remove();
+    appendFlChatMessage('assistant', respText);
+  } catch (err) {
+    typingDiv.remove();
+    appendFlChatMessage('assistant', 'Erro ao processar resposta: ' + esc(err.message));
+  } finally {
+    sendBtn.disabled = false;
+    input.disabled = false;
+    input.focus();
+  }
+}
+
+async function downloadFlReport() {
+  const btn = document.getElementById('flExportBtn');
+  const btnOrigHTML = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Gerando PDF…'; }
+
+  const el = document.getElementById('flReportContent');
+  if (!el) { if (btn) { btn.disabled = false; btn.innerHTML = btnOrigHTML; } return; }
+
+  const messagesEl = document.getElementById('flChatMessages');
+  const prevOverflow = messagesEl ? messagesEl.style.overflow : '';
+  if (messagesEl) messagesEl.style.overflow = 'visible';
+
+  try {
+    const canvas = await html2canvas(el, {
+      scale: 1.5, useCORS: true, allowTaint: false, logging: false, backgroundColor: '#ffffff',
+    });
+    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+    const { jsPDF } = window.jspdf;
+    const pageW = 210;
+    const pageH = 297;
+    const imgH = (canvas.height * pageW) / canvas.width;
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    let posY = 0;
+    let remaining = imgH;
+    pdf.addImage(imgData, 'JPEG', 0, posY, pageW, imgH);
+    remaining -= pageH;
+    while (remaining > 0) {
+      posY -= pageH;
+      pdf.addPage();
+      pdf.addImage(imgData, 'JPEG', 0, posY, pageW, imgH);
+      remaining -= pageH;
+    }
+    const title = document.getElementById('flChatTitle').textContent || 'relatorio-fianca-locaticia';
+    const safeTitle = title.replace(/[^a-zA-Z0-9\s\-_]/g, '').trim() || 'relatorio-fianca-locaticia';
+    pdf.save(safeTitle + '.pdf');
+  } catch (err) {
+    console.error('Erro ao gerar PDF Fiança Locatícia:', err);
+  } finally {
+    if (messagesEl) messagesEl.style.overflow = prevOverflow;
+    if (btn) { btn.disabled = false; btn.innerHTML = btnOrigHTML; }
+  }
+}
+
 // -- Chart defaults
 Chart.defaults.font.family = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
 Chart.defaults.font.size = 11;
@@ -1544,6 +1740,9 @@ function hideFinancialError() {
   if (el) el.classList.remove('show');
 }
 
+let afChatHistory = [];
+let afAnaliseData = null;
+
 // -- Process financial analysis
 async function processarAnaliseFinanceira() {
   if (financialFiles.length === 0) return;
@@ -1553,13 +1752,7 @@ async function processarAnaliseFinanceira() {
   btn.querySelector('.btn-label').textContent = 'Analisando…';
   hideFinancialError();
 
-  // Show loading page
-  const tabAF = document.getElementById('tab-analise-financeira');
-  tabAF.disabled = false;
-  tabAF.setAttribute('aria-disabled', 'false');
-  tabAF.removeAttribute('title');
-  switchTab('analise-financeira');
-
+  document.getElementById('afUploadSection').hidden = true;
   document.getElementById('afLoading').hidden = false;
   document.getElementById('afHero').hidden = true;
   document.getElementById('afContent').hidden = true;
@@ -1567,18 +1760,32 @@ async function processarAnaliseFinanceira() {
 
   try {
     const analise = await analisarDocumentosFinanceiros(financialFiles);
+    afAnaliseData = analise;
     renderAnaliseFinanceira(analise);
   } catch (err) {
     document.getElementById('afLoading').hidden = true;
-    switchTab('upload');
+    document.getElementById('afUploadSection').hidden = false;
     showFinancialError('Erro ao analisar: ' + err.message);
-    tabAF.disabled = true;
-    tabAF.setAttribute('aria-disabled', 'true');
-    tabAF.title = 'Anexe documentos financeiros primeiro';
   } finally {
     btn.disabled = false;
     btn.querySelector('.btn-label').textContent = 'Analisar com IA';
   }
+}
+
+function resetAnaliseFinanceira() {
+  financialFiles = [];
+  afChatHistory = [];
+  afAnaliseData = null;
+  renderFinancialFileList();
+  document.getElementById('btnAnalyze').disabled = true;
+  document.getElementById('afHero').hidden = true;
+  document.getElementById('afContent').hidden = true;
+  document.getElementById('afFooter').hidden = true;
+  document.getElementById('afUploadSection').hidden = false;
+  document.getElementById('afQaMessages').innerHTML = '';
+  hideFinancialError();
+  const btnDownload = document.getElementById('btnDownloadTop');
+  if (btnDownload) btnDownload.hidden = true;
 }
 
 // -- Render financial analysis result (multi-company structure)
@@ -1592,7 +1799,6 @@ function renderAnaliseFinanceira(data) {
   const now = new Date();
   const dateStr = now.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
 
-  // Hero
   const heroTitle = empresas.length === 1
     ? (empresas[0].empresa || 'Empresa não identificada')
     : empresas.length + ' empresa' + (empresas.length > 1 ? 's' : '') + ' analisada' + (empresas.length > 1 ? 's' : '');
@@ -1602,12 +1808,60 @@ function renderAnaliseFinanceira(data) {
   document.getElementById('afDataGeracao').textContent = 'Gerado em ' + dateStr;
   document.getElementById('afFooterDate').textContent = dateStr;
 
-  // Build each empresa card
   const container = document.getElementById('afEmpresasContainer');
   container.innerHTML = empresas.map((emp, idx) => buildEmpresaCard(emp, idx)).join('');
 
   const btnDownload = document.getElementById('btnDownloadTop');
   if (btnDownload) btnDownload.hidden = false;
+
+  // Init Q&A chat history with JSON context
+  afChatHistory = criarHistoricoAnaliseFinanceira(financialFiles, JSON.stringify(data));
+  document.getElementById('afQaMessages').innerHTML = '';
+}
+
+// ── AF Q&A chat ──────────────────────────────────────────────────────────────
+async function sendAfChatMessage() {
+  const input = document.getElementById('afChatInput');
+  const text = input.value.trim();
+  if (!text || afChatHistory.length === 0) return;
+
+  input.value = '';
+  appendAfQaMessage('user', text);
+  afChatHistory.push({ role: 'user', content: text });
+
+  const sendBtn = document.getElementById('afChatSend');
+  sendBtn.disabled = true;
+  input.disabled = true;
+
+  const messagesEl = document.getElementById('afQaMessages');
+  const typingDiv = document.createElement('div');
+  typingDiv.className = 'af-qa-msg af-qa-msg--ai sg-chat-typing';
+  typingDiv.innerHTML = '<div class="sg-chat-dots"><span></span><span></span><span></span></div>';
+  messagesEl.appendChild(typingDiv);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+
+  try {
+    const respText = await chatAnaliseFinanceira(afChatHistory);
+    afChatHistory.push({ role: 'assistant', content: respText });
+    typingDiv.remove();
+    appendAfQaMessage('assistant', respText);
+  } catch (err) {
+    typingDiv.remove();
+    appendAfQaMessage('assistant', 'Erro ao processar resposta: ' + esc(err.message));
+  } finally {
+    sendBtn.disabled = false;
+    input.disabled = false;
+    input.focus();
+  }
+}
+
+function appendAfQaMessage(role, text) {
+  const messagesEl = document.getElementById('afQaMessages');
+  const div = document.createElement('div');
+  div.className = 'af-qa-msg ' + (role === 'user' ? 'af-qa-msg--user' : 'af-qa-msg--ai');
+  div.innerHTML = role === 'assistant' ? renderMarkdown(text) : '<p>' + esc(text) + '</p>';
+  messagesEl.appendChild(div);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
 const AF_KPIS_CONFIG = [
