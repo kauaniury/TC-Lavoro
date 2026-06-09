@@ -1,7 +1,7 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versão: 1.5  
-> Atualizado em: 2026-06-08
+> Versão: 1.6  
+> Atualizado em: 2026-06-09
 
 ## 1. Visão Geral
 
@@ -132,8 +132,9 @@ Secrets esperados no Worker:
 
 Modelo no Worker:
 
-- tenta `deepseek-reasoner` como modelo principal
-- faz fallback automático para `deepseek-chat` se a API responder erro de modelo inexistente/não suportado
+- **Análise de chunks** (`analyzeChunk`): usa `deepseek-chat` diretamente — mais rápido, sem overhead de chain-of-thought que esgotaria o budget de tokens e retornaria `content` vazio.
+- **Síntese final** (`synthesizeFinalResult`): usa `deepseek-reasoner` com fallback automático para `deepseek-chat` se a API responder erro de modelo inexistente/não suportado.
+- `extractMessageContent` usa `reasoning_content` como fallback caso `content` chegue vazio (defesa extra para o reasoner).
 
 ### 5.3 Endpoints do Worker
 

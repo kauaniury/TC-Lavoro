@@ -5,12 +5,13 @@ const CORS_HEADERS = {
 };
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
-const WORKER_VERSION = '2026-06-08.5';
+const WORKER_VERSION = '2026-06-09.1';
 const PRIMARY_DEEPSEEK_MODEL = 'deepseek-reasoner';
 const FALLBACK_DEEPSEEK_MODEL = 'deepseek-chat';
 const JOB_TTL_SECONDS = 60 * 60 * 6;
-const CHUNK_NOTE_MAX_TOKENS = 1200;
-const FINAL_RESULT_MAX_TOKENS = 4000;
+// deepseek-reasoner usa tokens para chain-of-thought antes do content; chunks usam deepseek-chat
+const CHUNK_NOTE_MAX_TOKENS = 4000;
+const FINAL_RESULT_MAX_TOKENS = 8000;
 
 export default {
   async fetch(request, env) {
@@ -214,8 +215,9 @@ async function analyzeChunk(env, manifest, chunk) {
     { type: 'text', text: prompt },
     ...manifest.images.map(image => ({ type: 'image_url', image_url: { url: image.conteudo } })),
   ];
+  // Usa deepseek-chat para chunks: mais rápido, sem overhead de reasoning, evita content vazio
   const payload = {
-    model: PRIMARY_DEEPSEEK_MODEL,
+    model: FALLBACK_DEEPSEEK_MODEL,
     messages: [
       { role: 'user', content },
     ],
@@ -318,7 +320,9 @@ ${notesBlock}`;
 }
 
 function extractMessageContent(data) {
-  const content = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+  const msg = data && data.choices && data.choices[0] && data.choices[0].message;
+  // deepseek-reasoner pode retornar content vazio e apenas reasoning_content
+  const content = (msg && msg.content) || (msg && msg.reasoning_content) || '';
   if (!content) throw new Error('Resposta vazia da DeepSeek.');
   return String(content)
     .replace(/<think>[\s\S]*?<\/think>/gi, '')
