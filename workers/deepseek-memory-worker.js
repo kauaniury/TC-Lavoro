@@ -6,10 +6,9 @@ const CORS_HEADERS = {
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
 const WORKER_VERSION = '2026-06-09.1';
-const PRIMARY_DEEPSEEK_MODEL = 'deepseek-reasoner';
+const PRIMARY_DEEPSEEK_MODEL = 'deepseek-chat';
 const FALLBACK_DEEPSEEK_MODEL = 'deepseek-chat';
 const JOB_TTL_SECONDS = 60 * 60 * 6;
-// deepseek-reasoner usa tokens para chain-of-thought antes do content; chunks usam deepseek-chat
 const CHUNK_NOTE_MAX_TOKENS = 4000;
 const FINAL_RESULT_MAX_TOKENS = 8000;
 
