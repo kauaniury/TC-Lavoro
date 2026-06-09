@@ -3594,9 +3594,9 @@ body.pdf-generating.has-comparison .comparison-section {
 
 /* Sidebar shared styles */
 .ai-chat-sidebar {
-  width: 300px;
-  min-width: 260px;
-  max-width: 320px;
+  width: 280px;
+  min-width: 280px;
+  max-width: 280px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -3607,6 +3607,7 @@ body.pdf-generating.has-comparison .comparison-section {
   top: calc(var(--topbar-height, 60px) + 70px + 8px);
   max-height: calc(100vh - var(--topbar-height, 60px) - 70px - 16px);
   align-self: flex-start;
+  overflow: hidden;
 }
 
 .ai-chat-sidebar-header {
@@ -3669,10 +3670,31 @@ body.pdf-generating.has-comparison .comparison-section {
 }
 
 .ai-sidebar-input-area {
-  padding: 12px 16px;
+  padding: 10px 12px;
   border-top: 1px solid var(--color-border, #e2e8f0);
   background: var(--color-surface, #fff);
   flex-shrink: 0;
+}
+
+.ai-sidebar-input-area .sg-chat-input-row {
+  gap: 6px;
+}
+
+.ai-sidebar-input-area .sg-chat-input {
+  font-size: 13px;
+  padding: 8px 12px;
+  min-width: 0;
+}
+
+.ai-sidebar-input-area .sg-chat-send-btn {
+  padding: 8px 10px;
+  flex-shrink: 0;
+  font-size: 0;
+}
+
+.ai-sidebar-input-area .sg-chat-send-btn svg {
+  width: 16px;
+  height: 16px;
 }
 
 .ai-disclaimer {
