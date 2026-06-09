@@ -7,7 +7,8 @@ function switchTab(tab) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-' + tab).classList.add('active');
   document.querySelectorAll('.topbar-tab').forEach(t => {
-    const isActive = t.dataset.page === tab;
+    const pages = (t.dataset.pages || t.dataset.page || '').split(' ');
+    const isActive = pages.includes(tab);
     t.classList.toggle('active', isActive);
     if (isActive) t.setAttribute('aria-current', 'page');
     else t.removeAttribute('aria-current');
@@ -403,16 +404,8 @@ function generateDashboard() {
   buildModalIndex(aprovadas);
 
   // Switch to dashboard tab
-  const tabDash = document.getElementById('tab-dashboard'); const tabDash2 = document.querySelectorAll('.topbar-tab')[1];
-  tabDash.disabled = false;
-  tabDash.setAttribute('aria-disabled', 'false');
-  tabDash.removeAttribute('title');
   const topDownload = document.getElementById('btnDownloadTop');
   if (topDownload) topDownload.hidden = false;
-  if(tabDash2){
-    tabDash2.disabled = false;
-    tabDash2.setAttribute('aria-disabled', 'false');
-  }
   generateButton.classList.remove('is-loading');
   generateButton.disabled = false;
   switchTab('dashboard');

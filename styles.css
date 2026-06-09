@@ -1219,7 +1219,6 @@ tbody tr:hover td {
 
 /* ── Modo de captura PDF (html2canvas + jsPDF) ───────────────────── */
 body.pdf-generating .topbar,
-body.pdf-generating .overview-section,
 body.pdf-generating .search-bar-wrap,
 body.pdf-generating .search-empty,
 body.pdf-generating .btn-download,
@@ -1240,9 +1239,10 @@ body.pdf-generating .print-hero-logo {
   display: block !important;
 }
 
-/* Ordem no PDF: indicadores → tabela → comparativo */
-body.pdf-generating .kpis-section        { order: 1; }
-body.pdf-generating .executive-table-section { order: 2; }
+/* Ordem no PDF: indicadores → gráficos → tabela → comparativo */
+body.pdf-generating .kpis-section            { order: 1; }
+body.pdf-generating .overview-section        { order: 2; display: flex !important; }
+body.pdf-generating .executive-table-section { order: 3; }
 
 body.pdf-generating.has-comparison .comparison-section {
   display: flex !important;
