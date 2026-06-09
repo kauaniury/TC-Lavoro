@@ -1449,7 +1449,6 @@ function buildParecerHTML(parecer) {
 
 // ── Fiança Locatícia: report HTML builder ──────────────────────────────────
 function buildFlReportHtml(data, locatario, imovel, dateStr) {
-  const parecerPart = buildParecerHTML(data.parecer || {});
   const dados = data.dados_gerais || {};
   const clausulas = data.clausulas_criticas || [];
   const riscos = data.riscos || [];
@@ -1484,7 +1483,6 @@ function buildFlReportHtml(data, locatario, imovel, dateStr) {
           </div>
         </div>
         <div class="fl-report-body">
-          ${parecerPart}
           ${docsHtml ? `<div class="sg-docs-analisados">${docsHtml}</div>` : ''}
           <section class="dashboard-section">
             <h2 class="sec section-title">Dados do Contrato</h2>
