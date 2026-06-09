@@ -375,7 +375,13 @@
           <p class="sg-chat-eyebrow">Seguro Garantia IA</p>
           <p class="sg-chat-title-bar" id="sgChatTitle">Análise de Contrato</p>
         </div>
-        <p class="sg-chat-files-bar" id="sgChatFiles"></p>
+        <div class="sg-chat-topbar-actions">
+          <p class="sg-chat-files-bar" id="sgChatFiles"></p>
+          <button type="button" class="sg-chat-export-btn" id="sgExportBtn" onclick="downloadSgReport()" hidden>
+            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 1v9M5 7l3 3 3-3M2 12v1a1 1 0 001 1h10a1 1 0 001-1v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"/></svg>
+            Exportar PDF
+          </button>
+        </div>
       </div>
     </div>
 

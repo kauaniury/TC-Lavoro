@@ -731,6 +731,7 @@ function hideError() { document.getElementById('errorMsg').classList.remove('sho
 let garantiaFiles = [];
 let fiancaFiles = [];
 let sgChatHistory = [];
+let sgFirstAnalysis = true;
 const MAX_CONTRATO_FILES = 10;
 const CONTRATO_EXTENSIONS = ['pdf', 'png', 'jpg', 'jpeg', 'xlsx', 'xls', 'csv'];
 
@@ -872,6 +873,9 @@ async function processarSeguroGarantia() {
 
   document.getElementById('sgLoading').hidden = false;
   document.getElementById('sgChatArea').hidden = true;
+  sgFirstAnalysis = true;
+  const _sgExportBtn = document.getElementById('sgExportBtn');
+  if (_sgExportBtn) _sgExportBtn.hidden = true;
   document.getElementById('sgChatMessages').innerHTML = '';
 
   try {
@@ -936,9 +940,26 @@ async function sendSgChatMessage() {
 
 function appendSgChatMessage(role, text) {
   const messagesEl = document.getElementById('sgChatMessages');
+
+  if (role === 'user' && !sgFirstAnalysis && !messagesEl.querySelector('.sg-chat-divider')) {
+    const divider = document.createElement('div');
+    divider.className = 'sg-chat-divider';
+    divider.textContent = 'Perguntas sobre a análise';
+    messagesEl.appendChild(divider);
+  }
+
   const div = document.createElement('div');
-  div.className = 'sg-chat-msg ' + (role === 'user' ? 'sg-chat-msg--user' : 'sg-chat-msg--ai');
-  div.innerHTML = role === 'assistant' ? renderMarkdown(text) : '<p>' + esc(text) + '</p>';
+  if (role === 'assistant' && sgFirstAnalysis) {
+    div.className = 'sg-report-wrapper';
+    div.innerHTML = renderSeguroGarantiaReport(text);
+    sgFirstAnalysis = false;
+    const exportBtn = document.getElementById('sgExportBtn');
+    if (exportBtn) exportBtn.hidden = false;
+  } else {
+    div.className = 'sg-chat-msg ' + (role === 'user' ? 'sg-chat-msg--user' : 'sg-chat-msg--ai');
+    div.innerHTML = role === 'assistant' ? renderMarkdown(text) : '<p>' + esc(text) + '</p>';
+  }
+
   messagesEl.appendChild(div);
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
@@ -984,6 +1005,241 @@ function renderMarkdown(text) {
 
   if (inPara) html += '</p>';
   return html || '<p></p>';
+}
+
+// ── Seguro Garantia Report Renderer ──────────────────────────────────────
+
+function renderSeguroGarantiaReport(text) {
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+  const docTitle = document.getElementById('sgChatTitle').textContent || 'Análise de Contrato';
+  const filesText = document.getElementById('sgChatFiles').textContent || '';
+
+  const sections = parseReportSections(text);
+  const parecerSec = sections.find(s => s.title && /parecer/i.test(s.title));
+  const verdict = parecerSec ? detectVerdictFromText(parecerSec.content) : null;
+
+  const verdictHtml = verdict ? `
+    <div class="sg-report-verdict-badge sg-report-verdict-badge--${verdict.cls}">
+      <span class="sg-report-verdict-icon">${verdict.icon}</span>
+      <span>${esc(verdict.label)}</span>
+    </div>` : '';
+
+  return `
+    <div class="sg-report" id="sgReportContent">
+      <div class="sg-report-masthead">
+        <div class="sg-report-masthead-left">
+          <p class="sg-report-eyebrow">Análise Técnica · Seguro Garantia IA</p>
+          <h2 class="sg-report-doc-title">${esc(docTitle)}</h2>
+          ${filesText && filesText !== docTitle ? `<p class="sg-report-files-label">${esc(filesText)}</p>` : ''}
+        </div>
+        <div class="sg-report-masthead-right">
+          ${verdictHtml}
+          <p class="sg-report-gen-date">Gerado em ${dateStr}</p>
+        </div>
+      </div>
+      <div class="sg-report-sections">
+        ${sections.map(renderReportSection).join('')}
+      </div>
+    </div>`;
+}
+
+function parseReportSections(text) {
+  const sections = [];
+  let current = null;
+
+  for (const line of (text || '').split('\n')) {
+    if (/^##\s+/.test(line)) {
+      if (current !== null) sections.push({ ...current, content: current.lines.join('\n').trim() });
+      current = { title: line.replace(/^##\s+/, '').trim(), lines: [] };
+    } else if (/^#\s+/.test(line)) {
+      // skip root-level title
+    } else {
+      if (current === null) current = { title: null, lines: [] };
+      current.lines.push(line);
+    }
+  }
+  if (current !== null) sections.push({ ...current, content: current.lines.join('\n').trim() });
+  return sections.filter(s => s.title || (s.content && s.content.trim()));
+}
+
+function getSectionMeta(title) {
+  if (!title) return { type: 'default' };
+  const t = title.toLowerCase();
+  if (t.includes('partes') || t.includes('dados gerais') || t.includes('dados g')) return { type: 'dados' };
+  if (t.includes('modalidades') || t.includes('modalidade')) return { type: 'modalidades' };
+  if (t.includes('clausulas') || t.includes('cláusulas') || t.includes('criticas') || t.includes('críticas')) return { type: 'clausulas' };
+  if (t.includes('riscos') || t.includes('risco')) return { type: 'riscos' };
+  if (t.includes('parecer')) return { type: 'parecer' };
+  if (t.includes('resumo')) return { type: 'resumo' };
+  return { type: 'default' };
+}
+
+function getSectionSvgIcon(type) {
+  const icons = {
+    dados:       '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 3L2 8v9h5v-5h6v5h5V8L10 3z" stroke-linejoin="round"/></svg>',
+    modalidades: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 2L3 6v5c0 4.4 3.1 7.6 7 8 3.9-.4 7-3.6 7-8V6L10 2z" stroke-linejoin="round"/></svg>',
+    clausulas:   '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="2" width="12" height="16" rx="1.5"/><path d="M7 7h6M7 10.5h6M7 14h3" stroke-linecap="round"/></svg>',
+    riscos:      '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 3L2 17h16L10 3z" stroke-linejoin="round"/><path d="M10 10v3M10 15h.01" stroke-linecap="round"/></svg>',
+    parecer:     '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10" cy="10" r="7"/><path d="M7 10l2.5 2.5L14 8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    resumo:      '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="2" width="12" height="16" rx="1.5"/><path d="M7 7h6M7 10.5h6M7 14h4" stroke-linecap="round"/></svg>',
+    default:     '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="2" width="12" height="16" rx="1.5"/><path d="M7 8h6M7 12h4" stroke-linecap="round"/></svg>',
+  };
+  return icons[type] || icons.default;
+}
+
+function detectVerdictFromText(text) {
+  const l = (text || '').toLowerCase();
+  if (l.includes('declinar')) return { cls: 'declinar', label: 'Declinar', icon: '✕' };
+  if (l.includes('ressalvas')) return { cls: 'ressalvas', label: 'Emitir com Ressalvas', icon: '!' };
+  if (l.includes('emitir')) return { cls: 'emitir', label: 'Emitir', icon: '✓' };
+  return null;
+}
+
+function renderReportSection(section) {
+  if (!section.title && !section.content.trim()) return '';
+  const meta = getSectionMeta(section.title);
+  const bodyHtml = renderReportMarkdown(section.content);
+  return `
+    <div class="sg-report-section sg-report-section--${meta.type}">
+      ${section.title ? `
+      <div class="sg-report-section-head">
+        <div class="sg-report-section-icon sg-report-icon--${meta.type}">${getSectionSvgIcon(meta.type)}</div>
+        <h3 class="sg-report-section-title">${esc(section.title)}</h3>
+      </div>` : ''}
+      <div class="sg-report-section-body">${bodyHtml}</div>
+    </div>`;
+}
+
+function renderReportMarkdown(text) {
+  if (!text) return '';
+  const lines = text.split('\n');
+  let html = '';
+  let inPara = false;
+  let tableLines = [];
+
+  const inlineFormat = s => {
+    let r = esc(s);
+    r = r.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+    r = r.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
+    return r;
+  };
+
+  const flushTable = () => {
+    if (!tableLines.length) return;
+    const parseRow = row => row.split('|').map(c => c.trim()).filter((c, i, a) =>
+      !(i === 0 && !c) && !(i === a.length - 1 && !c)
+    );
+    const isSep = r => /^[\s|:\-]+$/.test(r);
+    const headerCells = parseRow(tableLines[0]);
+    const dataRows = tableLines.slice(2).filter(l => !isSep(l)).map(parseRow).filter(r => r.length);
+    if (!headerCells.length) { tableLines = []; return; }
+    html += '<div class="sg-md-table-wrap"><table class="sg-md-table">';
+    html += '<thead><tr>' + headerCells.map(h => '<th>' + inlineFormat(h) + '</th>').join('') + '</tr></thead>';
+    if (dataRows.length) {
+      html += '<tbody>' + dataRows.map(r => '<tr>' + r.map(c => '<td>' + inlineFormat(c) + '</td>').join('') + '</tr>').join('') + '</tbody>';
+    }
+    html += '</table></div>';
+    tableLines = [];
+  };
+
+  for (const rawLine of lines) {
+    const trimmed = rawLine.trim();
+
+    if (trimmed.startsWith('|')) {
+      if (inPara) { html += '</p>'; inPara = false; }
+      tableLines.push(trimmed);
+      continue;
+    }
+    if (tableLines.length) flushTable();
+
+    if (!trimmed) {
+      if (inPara) { html += '</p>'; inPara = false; }
+      continue;
+    }
+    if (trimmed === '---' || trimmed === '***' || trimmed === '___') {
+      if (inPara) { html += '</p>'; inPara = false; }
+      html += '<hr class="sg-md-hr">';
+      continue;
+    }
+
+    const inl = inlineFormat(rawLine);
+    const trim2 = inl.trim();
+
+    if (trim2.startsWith('### ')) {
+      if (inPara) { html += '</p>'; inPara = false; }
+      html += '<h4 class="sg-md-h4">' + trim2.slice(4) + '</h4>';
+    } else if (trim2.startsWith('## ')) {
+      if (inPara) { html += '</p>'; inPara = false; }
+      html += '<h3 class="sg-md-h3">' + trim2.slice(3) + '</h3>';
+    } else if (trim2.startsWith('- ') || trim2.startsWith('* ')) {
+      if (inPara) { html += '</p>'; inPara = false; }
+      html += '<div class="sg-md-li">' + trim2.slice(2) + '</div>';
+    } else if (/^\d+\.\s/.test(trim2)) {
+      if (inPara) { html += '</p>'; inPara = false; }
+      html += '<div class="sg-md-li">' + trim2.replace(/^\d+\.\s/, '') + '</div>';
+    } else {
+      if (!inPara) { html += '<p class="sg-md-p">'; inPara = true; }
+      else html += '<br>';
+      html += inl;
+    }
+  }
+
+  if (tableLines.length) flushTable();
+  if (inPara) html += '</p>';
+  return html;
+}
+
+async function downloadSgReport() {
+  const btn = document.getElementById('sgExportBtn');
+  const btnOrigHTML = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Gerando PDF…'; }
+
+  const el = document.getElementById('sgReportContent');
+  if (!el) { if (btn) { btn.disabled = false; btn.innerHTML = btnOrigHTML; } return; }
+
+  const messagesEl = document.getElementById('sgChatMessages');
+  const prevOverflow = messagesEl ? messagesEl.style.overflow : '';
+  if (messagesEl) messagesEl.style.overflow = 'visible';
+
+  try {
+    const canvas = await html2canvas(el, {
+      scale: 1.5,
+      useCORS: true,
+      allowTaint: false,
+      logging: false,
+      backgroundColor: '#ffffff',
+    });
+
+    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+    const { jsPDF } = window.jspdf;
+    const pageW = 210;
+    const pageH = 297;
+    const imgH = (canvas.height * pageW) / canvas.width;
+
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    let posY = 0;
+    let remaining = imgH;
+
+    pdf.addImage(imgData, 'JPEG', 0, posY, pageW, imgH);
+    remaining -= pageH;
+
+    while (remaining > 0) {
+      posY -= pageH;
+      pdf.addPage();
+      pdf.addImage(imgData, 'JPEG', 0, posY, pageW, imgH);
+      remaining -= pageH;
+    }
+
+    const rawTitle = document.getElementById('sgChatTitle').textContent || 'relatorio-seguro-garantia';
+    const safeTitle = rawTitle.replace(/[^a-zA-Z0-9\s\-_]/g, '').trim() || 'relatorio-seguro-garantia';
+    pdf.save(safeTitle + '.pdf');
+  } catch (err) {
+    console.error('Erro ao gerar PDF do Seguro Garantia:', err);
+  } finally {
+    if (messagesEl) messagesEl.style.overflow = prevOverflow;
+    if (btn) { btn.disabled = false; btn.innerHTML = btnOrigHTML; }
+  }
 }
 
 async function processarFiancaLocaticia() {
