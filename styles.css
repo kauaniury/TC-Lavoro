@@ -2605,7 +2605,6 @@ body.pdf-generating.has-comparison .comparison-section {
   display: flex;
   flex-direction: column;
   flex: 1;
-  overflow: hidden;
 }
 
 .sg-chat-topbar {
@@ -3565,37 +3564,49 @@ body.pdf-generating.has-comparison .comparison-section {
 
 /* ── AI Chat Sidebar (split layout) ───────────────────────────────────────── */
 
-/* SG / FL: split body inside sg-chat-wrapper */
+/* SG / FL topbar: sticky below main app topbar */
+.sg-chat-topbar {
+  position: sticky;
+  top: var(--topbar-height, 60px);
+  z-index: 9;
+}
+
+/* SG / FL: split body — normal flow so sticky works */
+.sg-chat-wrapper {
+  overflow: visible;
+}
+
 .ai-split-body {
   display: flex;
-  flex: 1;
-  overflow: hidden;
-  min-height: 0;
+  align-items: flex-start;
 }
 
 .ai-split-main {
   flex: 1;
-  overflow-y: auto;
   min-width: 0;
 }
 
 .ai-split-main .sg-chat-messages {
   flex: none;
   overflow-y: visible;
-  min-height: 100%;
+  max-height: none;
 }
 
 /* Sidebar shared styles */
 .ai-chat-sidebar {
-  width: 360px;
-  min-width: 300px;
-  max-width: 400px;
+  width: 300px;
+  min-width: 260px;
+  max-width: 320px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   border-left: 1px solid var(--color-border, #e2e8f0);
   background: var(--color-surface, #fff);
-  box-shadow: -4px 0 16px rgba(0,0,0,0.06);
+  box-shadow: -2px 0 12px rgba(0,0,0,0.05);
+  position: sticky;
+  top: calc(var(--topbar-height, 60px) + 70px + 8px);
+  max-height: calc(100vh - var(--topbar-height, 60px) - 70px - 16px);
+  align-self: flex-start;
 }
 
 .ai-chat-sidebar-header {
@@ -3697,28 +3708,24 @@ body.pdf-generating.has-comparison .comparison-section {
 }
 
 .ai-chat-sidebar--af {
-  width: 360px;
-  min-width: 300px;
-  max-width: 400px;
+  width: 300px;
+  min-width: 260px;
+  max-width: 320px;
   position: sticky;
-  top: 0;
-  max-height: 100vh;
+  top: calc(var(--topbar-height, 60px) + 8px);
+  max-height: calc(100vh - var(--topbar-height, 60px) - 16px);
   border-left: none;
   border-radius: var(--radius-xl, 12px);
   border: 1px solid var(--color-border, #e2e8f0);
   overflow: hidden;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+  align-self: flex-start;
 }
 
 /* Responsive: stack sidebar below on small screens */
 @media (max-width: 900px) {
   .ai-split-body {
     flex-direction: column;
-    overflow: auto;
-  }
-
-  .ai-split-main {
-    overflow-y: visible;
   }
 
   .ai-chat-sidebar {
@@ -3728,7 +3735,8 @@ body.pdf-generating.has-comparison .comparison-section {
     border-left: none;
     border-top: 1px solid var(--color-border, #e2e8f0);
     box-shadow: none;
-    max-height: 480px;
+    max-height: 400px;
+    position: static;
   }
 
   .af-split-layout {
@@ -3743,7 +3751,7 @@ body.pdf-generating.has-comparison .comparison-section {
     width: 100%;
     max-width: 100%;
     position: static;
-    max-height: 480px;
+    max-height: 400px;
     border-radius: var(--radius-xl, 12px);
     margin-top: 24px;
   }
