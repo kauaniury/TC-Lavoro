@@ -898,19 +898,116 @@ function resetSeguroGarantia() {
   document.getElementById('sgUploadSection').hidden = false;
   document.getElementById('sgChatMessages').innerHTML = '';
   document.getElementById('sgSidebarMessages').innerHTML = '';
+  _clearChatFiles('sg');
   const exportBtn = document.getElementById('sgExportBtn');
   if (exportBtn) exportBtn.hidden = true;
   hideGarantiaError();
 }
 
+// ── Chat file attachments ─────────────────────────────────────────────────────
+
+const _chatFiles = { sg: [], fl: [], af: [] };
+
+function handleChatFileSelect(event, flow) {
+  const files = Array.from(event.target.files || []);
+  files.forEach(f => _chatFiles[flow].push(f));
+  event.target.value = '';
+  _renderChatChips(flow);
+}
+
+function handleChatDragOver(event, flow) {
+  event.preventDefault();
+  event.stopPropagation();
+  const area = document.getElementById(flow + 'InputArea');
+  if (area) area.classList.add('chat-drag-over');
+}
+
+function handleChatDragLeave(event, flow) {
+  event.stopPropagation();
+  const area = document.getElementById(flow + 'InputArea');
+  if (area) area.classList.remove('chat-drag-over');
+}
+
+function handleChatDrop(event, flow) {
+  event.preventDefault();
+  event.stopPropagation();
+  const area = document.getElementById(flow + 'InputArea');
+  if (area) area.classList.remove('chat-drag-over');
+  const files = Array.from(event.dataTransfer.files || []);
+  files.forEach(f => _chatFiles[flow].push(f));
+  _renderChatChips(flow);
+}
+
+function _removeChatFile(flow, idx) {
+  _chatFiles[flow].splice(idx, 1);
+  _renderChatChips(flow);
+}
+
+function _renderChatChips(flow) {
+  const el = document.getElementById(flow + 'FileChips');
+  if (!el) return;
+  const files = _chatFiles[flow];
+  el.hidden = files.length === 0;
+  el.innerHTML = files.map((f, i) =>
+    '<span class="ai-chat-file-chip">' +
+    '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="11" height="11" aria-hidden="true"><rect x="2" y="1" width="9" height="12" rx="1"/><path d="M8 1v4h4" stroke-linecap="square"/></svg>' +
+    '<span class="ai-chat-file-chip-name">' + esc(f.name) + '</span>' +
+    '<button type="button" class="ai-chat-file-chip-remove" onclick="_removeChatFile(\'' + flow + '\',' + i + ')" aria-label="Remover arquivo">\xd7</button>' +
+    '</span>'
+  ).join('');
+}
+
+async function _buildChatMessage(flow, text) {
+  const files = _chatFiles[flow];
+  if (!files.length) return { role: 'user', content: text };
+
+  const extraidos = await Promise.all(
+    files.map(async f => ({ nome: f.name, ...await extrairConteudoArquivo(f) }))
+  );
+
+  const imagens = extraidos.filter(a => a.tipo === 'imagem');
+  const textuais = extraidos.filter(a => a.tipo !== 'imagem');
+
+  let msgText = text;
+  if (textuais.length) {
+    const bloco = textuais
+      .map(a => '[Arquivo: ' + a.nome + ']\n' + String(a.conteudo || '').slice(0, 12000))
+      .join('\n\n---\n\n');
+    msgText = (text ? text + '\n\n' : '') + bloco;
+  }
+
+  if (imagens.length) {
+    return {
+      role: 'user',
+      content: [
+        { type: 'text', text: msgText },
+        ...imagens.map(img => ({ type: 'image_url', image_url: { url: img.conteudo } }))
+      ]
+    };
+  }
+
+  return { role: 'user', content: msgText };
+}
+
+function _clearChatFiles(flow) {
+  _chatFiles[flow] = [];
+  _renderChatChips(flow);
+}
+
+// ── Seguro Garantia chat ───────────────────────────────────────────────────────
+
 async function sendSgChatMessage() {
   const input = document.getElementById('sgChatInput');
   const text = input.value.trim();
-  if (!text || sgChatHistory.length === 0) return;
+  if ((!text && !_chatFiles.sg.length) || sgChatHistory.length === 0) return;
 
   input.value = '';
-  appendSgChatMessage('user', text);
-  sgChatHistory.push({ role: 'user', content: text });
+  const displayText = text || _chatFiles.sg.map(f => f.name).join(', ');
+  appendSgChatMessage('user', displayText);
+
+  const msgObj = await _buildChatMessage('sg', text);
+  _clearChatFiles('sg');
+  sgChatHistory.push(msgObj);
 
   const sendBtn = document.getElementById('sgChatSend');
   sendBtn.disabled = true;
@@ -1011,8 +1108,8 @@ function renderSeguroGarantiaReport(text) {
   const filesText = document.getElementById('sgChatFiles').textContent || '';
 
   const sections = parseReportSections(text);
-  const parecerSec = sections.find(s => s.title && /parecer/i.test(s.title));
-  const verdict = parecerSec ? detectVerdictFromText(parecerSec.content) : null;
+  // Busca veredicto em toda a resposta (pode estar na conclusao, resumo final ou parecer)
+  const verdict = detectVerdictFromText(text);
 
   const verdictHtml = verdict ? `
     <div class="sg-report-verdict-badge sg-report-verdict-badge--${verdict.cls}">
@@ -1060,11 +1157,21 @@ function parseReportSections(text) {
 
 function getSectionMeta(title) {
   if (!title) return { type: 'default' };
-  const t = title.toLowerCase();
-  if (t.includes('partes') || t.includes('dados gerais') || t.includes('dados g')) return { type: 'dados' };
-  if (t.includes('modalidades') || t.includes('modalidade')) return { type: 'modalidades' };
-  if (t.includes('clausulas') || t.includes('cláusulas') || t.includes('criticas') || t.includes('críticas')) return { type: 'clausulas' };
-  if (t.includes('riscos') || t.includes('risco')) return { type: 'riscos' };
+  // Remove prefixo numérico "1. " ou "12. "
+  const t = title.replace(/^\d+\.\s*/, '').toLowerCase();
+  if (t.includes('classifica')) return { type: 'classificacao' };
+  if (t.includes('modalidade')) return { type: 'modalidades' };
+  if (t.includes('partes ident')) return { type: 'partes' };
+  if (t.includes('dados principais') || t.includes('dados para emiss') || t.includes('emissao') || t.includes('emissão')) return { type: 'dados-emissao' };
+  if (t.includes('dados gerais') || t.includes('partes') || t.includes('dados g')) return { type: 'dados' };
+  if (t.includes('calculo') || t.includes('cálculo') || t.includes('importancia') || t.includes('importância')) return { type: 'calculo' };
+  if (t.includes('vigencia') || t.includes('vigência')) return { type: 'vigencia' };
+  if (t.includes('objeto')) return { type: 'objeto' };
+  if (t.includes('clausulas') || t.includes('cláusulas') || t.includes('coberturas')) return { type: 'clausulas' };
+  if (t.includes('pontos de') || t.includes('atencao') || t.includes('atenção') || t.includes('riscos') || t.includes('risco')) return { type: 'riscos' };
+  if (t.includes('documentos') || t.includes('pendentes') || t.includes('pendencias') || t.includes('pendências')) return { type: 'pendencias' };
+  if (t.includes('conclusao') || t.includes('conclusão') || t.includes('operacional')) return { type: 'conclusao' };
+  if (t.includes('resumo final') || t.includes('cadastro')) return { type: 'resumo-final' };
   if (t.includes('parecer')) return { type: 'parecer' };
   if (t.includes('resumo')) return { type: 'resumo' };
   return { type: 'default' };
@@ -1072,13 +1179,22 @@ function getSectionMeta(title) {
 
 function getSectionSvgIcon(type) {
   const icons = {
-    dados:       '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 3L2 8v9h5v-5h6v5h5V8L10 3z" stroke-linejoin="round"/></svg>',
-    modalidades: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 2L3 6v5c0 4.4 3.1 7.6 7 8 3.9-.4 7-3.6 7-8V6L10 2z" stroke-linejoin="round"/></svg>',
-    clausulas:   '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="2" width="12" height="16" rx="1.5"/><path d="M7 7h6M7 10.5h6M7 14h3" stroke-linecap="round"/></svg>',
-    riscos:      '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 3L2 17h16L10 3z" stroke-linejoin="round"/><path d="M10 10v3M10 15h.01" stroke-linecap="round"/></svg>',
-    parecer:     '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10" cy="10" r="7"/><path d="M7 10l2.5 2.5L14 8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-    resumo:      '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="2" width="12" height="16" rx="1.5"/><path d="M7 7h6M7 10.5h6M7 14h4" stroke-linecap="round"/></svg>',
-    default:     '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="2" width="12" height="16" rx="1.5"/><path d="M7 8h6M7 12h4" stroke-linecap="round"/></svg>',
+    classificacao:  '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h12M4 10h8M4 14h5" stroke-linecap="round"/><rect x="2" y="2" width="16" height="16" rx="2"/></svg>',
+    partes:         '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="7" r="3"/><circle cx="14" cy="7" r="2.5"/><path d="M2 17c0-3 2.7-5 6-5s6 2 6 5" stroke-linecap="round"/><path d="M15 12c1.7.5 3 2 3 4" stroke-linecap="round"/></svg>',
+    dados:          '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 3L2 8v9h5v-5h6v5h5V8L10 3z" stroke-linejoin="round"/></svg>',
+    'dados-emissao':'<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="14" height="14" rx="1.5"/><path d="M7 7h6M7 10h6M7 13h3" stroke-linecap="round"/></svg>',
+    modalidades:    '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 2L3 6v5c0 4.4 3.1 7.6 7 8 3.9-.4 7-3.6 7-8V6L10 2z" stroke-linejoin="round"/></svg>',
+    calculo:        '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="14" height="14" rx="1.5"/><path d="M7 10h6M10 7v6" stroke-linecap="round"/></svg>',
+    vigencia:       '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10" cy="10" r="7"/><path d="M10 6v4l3 2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    objeto:         '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h12v2H4zM4 9h12M4 13h8" stroke-linecap="round"/><rect x="3" y="3" width="14" height="14" rx="1.5"/></svg>',
+    clausulas:      '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="2" width="12" height="16" rx="1.5"/><path d="M7 7h6M7 10.5h6M7 14h3" stroke-linecap="round"/></svg>',
+    riscos:         '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 3L2 17h16L10 3z" stroke-linejoin="round"/><path d="M10 10v3M10 15h.01" stroke-linecap="round"/></svg>',
+    pendencias:     '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10" cy="10" r="7"/><path d="M10 6v4M10 14h.01" stroke-linecap="round"/></svg>',
+    conclusao:      '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10" cy="10" r="7"/><path d="M7 10l2.5 2.5L14 8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    'resumo-final': '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="14" height="14" rx="1.5"/><path d="M7 7h6M7 10h6M7 13h6" stroke-linecap="round"/></svg>',
+    parecer:        '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10" cy="10" r="7"/><path d="M7 10l2.5 2.5L14 8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    resumo:         '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="2" width="12" height="16" rx="1.5"/><path d="M7 7h6M7 10.5h6M7 14h4" stroke-linecap="round"/></svg>',
+    default:        '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="2" width="12" height="16" rx="1.5"/><path d="M7 8h6M7 12h4" stroke-linecap="round"/></svg>',
   };
   return icons[type] || icons.default;
 }
@@ -1086,7 +1202,7 @@ function getSectionSvgIcon(type) {
 function detectVerdictFromText(text) {
   const l = (text || '').toLowerCase();
   if (l.includes('declinar')) return { cls: 'declinar', label: 'Declinar', icon: '✕' };
-  if (l.includes('ressalvas')) return { cls: 'ressalvas', label: 'Emitir com Ressalvas', icon: '!' };
+  if (l.includes('com ressalvas') || l.includes('ressalvas')) return { cls: 'ressalvas', label: 'Emitir com Ressalvas', icon: '!' };
   if (l.includes('emitir')) return { cls: 'emitir', label: 'Emitir', icon: '✓' };
   return null;
 }
@@ -1094,6 +1210,11 @@ function detectVerdictFromText(text) {
 function renderReportSection(section) {
   if (!section.title && !section.content.trim()) return '';
   const meta = getSectionMeta(section.title);
+
+  if (meta.type === 'resumo-final') {
+    return renderResumoFinalSection(section);
+  }
+
   const bodyHtml = renderReportMarkdown(section.content);
   return `
     <div class="sg-report-section sg-report-section--${meta.type}">
@@ -1103,6 +1224,37 @@ function renderReportSection(section) {
         <h3 class="sg-report-section-title">${esc(section.title)}</h3>
       </div>` : ''}
       <div class="sg-report-section-body">${bodyHtml}</div>
+    </div>`;
+}
+
+function renderResumoFinalSection(section) {
+  const lines = (section.content || '').split('\n').filter(l => l.trim());
+  const fields = lines.map(line => {
+    const colonIdx = line.indexOf(':');
+    if (colonIdx < 0) return null;
+    const label = line.slice(0, colonIdx).trim().replace(/^\*+|\*+$/g, '');
+    const value = line.slice(colonIdx + 1).trim();
+    return label ? { label, value } : null;
+  }).filter(Boolean);
+
+  const fieldsHtml = fields.length > 0
+    ? fields.map(f => `
+      <div class="sg-resumo-field">
+        <span class="sg-resumo-field-label">${esc(f.label)}</span>
+        <span class="sg-resumo-field-value">${f.value ? esc(f.value) : '<em>Não localizado</em>'}</span>
+      </div>`).join('')
+    : renderReportMarkdown(section.content);
+
+  return `
+    <div class="sg-report-section sg-report-section--resumo-final">
+      <div class="sg-report-section-head">
+        <div class="sg-report-section-icon sg-report-icon--resumo-final">${getSectionSvgIcon('resumo-final')}</div>
+        <h3 class="sg-report-section-title">${esc(section.title || 'Resumo Final para Cadastro')}</h3>
+        <span class="sg-resumo-final-tag">Pronto para emissão</span>
+      </div>
+      <div class="sg-report-section-body sg-resumo-final-body">
+        <div class="sg-resumo-final-grid">${fieldsHtml}</div>
+      </div>
     </div>`;
 }
 
@@ -1282,6 +1434,7 @@ function resetFiancaLocaticia() {
   document.getElementById('flUploadSection').hidden = false;
   document.getElementById('flChatMessages').innerHTML = '';
   document.getElementById('flSidebarMessages').innerHTML = '';
+  _clearChatFiles('fl');
   const exportBtn = document.getElementById('flExportBtn');
   if (exportBtn) exportBtn.hidden = true;
   hideFiancaError();
@@ -1450,60 +1603,122 @@ function buildFlReportHtml(data, locatario, imovel, dateStr) {
   const clausulas = data.clausulas_criticas || [];
   const riscos = data.riscos || [];
   const docs = data.documentos_analisados || [];
+  const parecer = data.parecer || {};
 
-  const dadosItens = FL_DADOS_CONFIG
-    .map(cfg => buildDadoItem(cfg.label, dados[cfg.key], cfg.format))
-    .filter(h => h).join('');
+  // Veredicto
+  const rec = (parecer.recomendacao || '').toLowerCase();
+  const verdictCls = rec.includes('declinar') ? 'declinar' : rec.includes('ressalvas') ? 'ressalvas' : parecer.recomendacao ? 'emitir' : '';
+  const verdictLabel = parecer.recomendacao || '';
+  const verdictIcon = rec.includes('declinar') ? '✕' : rec.includes('ressalvas') ? '!' : '✓';
 
+  // Tabela dados_gerais com 3 colunas: Campo | Valor | Fonte
+  const dadosRows = FL_DADOS_CONFIG.map(cfg => {
+    const item = dados[cfg.key];
+    if (!item) return null;
+    const rawVal = typeof item === 'object' ? item.valor : item;
+    const fonte = typeof item === 'object' ? (item.fonte || '—') : '—';
+    if (rawVal === null || rawVal === undefined || String(rawVal) === 'null') return null;
+    const display = cfg.format === 'brl' && typeof rawVal === 'number' ? fmtBRL(rawVal) : esc(String(rawVal));
+    return `<tr>
+      <td class="fl-dados-label">${esc(cfg.label)}</td>
+      <td class="fl-dados-value">${display}</td>
+      <td class="fl-dados-fonte"><em>${esc(fonte)}</em></td>
+    </tr>`;
+  }).filter(Boolean).join('');
+
+  // Cláusulas com accordion
   const clausulasHtml = clausulas.length > 0
-    ? clausulas.map(buildClausulaItem).join('')
+    ? clausulas.map((c, i) => {
+        const imp = (c.impacto || '').toLowerCase().replace('é', 'e').replace('é', 'e');
+        return `<details class="fl-clausula-item"${i < 2 ? ' open' : ''}>
+          <summary class="fl-clausula-summary">
+            <span class="fl-nivel-badge fl-nivel--${imp}">${esc(c.impacto || '—')}</span>
+            <span class="fl-clausula-titulo">${esc(c.titulo || 'Cláusula sem título')}</span>
+            <span class="fl-clausula-chevron">▾</span>
+          </summary>
+          <div class="fl-clausula-body">
+            ${c.descricao ? `<p>${esc(c.descricao)}</p>` : ''}
+            ${c.fonte ? `<p class="fl-fonte-cite"><strong>Fonte:</strong> <em>${esc(c.fonte)}</em></p>` : ''}
+          </div>
+        </details>`;
+      }).join('')
     : '<p class="af-no-data">Nenhuma cláusula crítica identificada.</p>';
 
+  // Riscos
   const riscosHtml = riscos.length > 0
-    ? riscos.map(buildRiscoItem).join('')
+    ? riscos.map(r => {
+        const niv = (r.nivel || '').toLowerCase().replace('é', 'e').replace('é', 'e');
+        return `<div class="fl-risco-item">
+          <span class="fl-nivel-badge fl-nivel--${niv}">${esc(r.nivel || '—')}</span>
+          <div class="fl-risco-content">
+            <p>${esc(r.descricao || '')}</p>
+            ${r.fonte ? `<p class="fl-fonte-cite"><em>${esc(r.fonte)}</em></p>` : ''}
+          </div>
+        </div>`;
+      }).join('')
     : '<p class="af-no-data">Nenhum risco identificado.</p>';
-
-  const docsHtml = docs.length > 0
-    ? docs.map(d => `<span class="sg-doc-badge">${esc(d)}</span>`).join('')
-    : '';
 
   return `
     <div class="fl-report" id="flReportContent">
-        <div class="fl-report-masthead">
-          <div>
-            <p class="fl-report-eyebrow">Fiança Locatícia IA · Análise Técnica</p>
-            <h2 class="fl-report-title">${esc(locatario)}</h2>
-            ${imovel ? `<p class="fl-report-subtitle">${esc(imovel)}</p>` : ''}
-          </div>
-          <div>
-            <p class="fl-report-gen-date">Gerado em ${dateStr}</p>
-          </div>
+      <div class="fl-report-masthead">
+        <div class="fl-masthead-left">
+          <p class="fl-report-eyebrow">Fiança Locatícia IA · Análise Técnica</p>
+          <h2 class="fl-report-title">${esc(locatario)}</h2>
+          ${imovel ? `<p class="fl-report-subtitle">${esc(imovel)}</p>` : ''}
         </div>
-        <div class="fl-report-body">
-          ${docsHtml ? `<div class="sg-docs-analisados">${docsHtml}</div>` : ''}
-          <section class="dashboard-section">
-            <h2 class="sec section-title">Dados do Contrato</h2>
-            <div class="card sg-dados-card">
-              ${dadosItens || '<p class="af-no-data">Dados não extraídos.</p>'}
-            </div>
-          </section>
-          <section class="dashboard-section">
-            <h2 class="sec section-title">Cláusulas Críticas</h2>
-            <div class="sg-clausulas-list">${clausulasHtml}</div>
-          </section>
-          <section class="dashboard-section">
-            <h2 class="sec section-title">Riscos Identificados</h2>
-            <div class="sg-riscos-list">${riscosHtml}</div>
-          </section>
-          ${data.resumo ? `
-          <section class="dashboard-section">
-            <h2 class="sec section-title">Resumo Executivo</h2>
-            <div class="card sg-resumo-card">
-              <p class="sg-resumo-text">${esc(data.resumo)}</p>
-            </div>
-          </section>` : ''}
+        <div class="fl-masthead-right">
+          ${verdictLabel ? `<div class="sg-report-verdict-badge sg-report-verdict-badge--${verdictCls}">
+            <span class="sg-report-verdict-icon">${verdictIcon}</span>
+            <span>${esc(verdictLabel)}</span>
+          </div>` : ''}
+          <p class="fl-report-gen-date">Gerado em ${dateStr}</p>
         </div>
-      </div>`;
+      </div>
+
+      <div class="fl-report-body">
+        ${docs.length > 0 ? `<div class="sg-docs-analisados">${docs.map(d => `<span class="sg-doc-badge">${esc(d)}</span>`).join('')}</div>` : ''}
+
+        <div class="fl-report-section">
+          <div class="fl-section-head">
+            <svg class="fl-section-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="14" height="14" rx="1.5"/><path d="M7 7h6M7 10h6M7 13h3" stroke-linecap="round"/></svg>
+            <h2 class="fl-section-title">Dados do Contrato</h2>
+          </div>
+          ${dadosRows ? `<table class="fl-dados-table">
+            <thead><tr><th>Campo</th><th>Valor</th><th>Fonte no Documento</th></tr></thead>
+            <tbody>${dadosRows}</tbody>
+          </table>` : '<p class="af-no-data" style="padding:16px 20px">Dados não extraídos.</p>'}
+        </div>
+
+        <div class="fl-report-section">
+          <div class="fl-section-head">
+            <svg class="fl-section-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="2" width="12" height="16" rx="1.5"/><path d="M7 7h6M7 10.5h6M7 14h3" stroke-linecap="round"/></svg>
+            <h2 class="fl-section-title">Cláusulas Críticas</h2>
+          </div>
+          <div class="fl-clausulas-list">${clausulasHtml}</div>
+        </div>
+
+        <div class="fl-report-section">
+          <div class="fl-section-head">
+            <svg class="fl-section-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10 3L2 17h16L10 3z" stroke-linejoin="round"/><path d="M10 10v3M10 15h.01" stroke-linecap="round"/></svg>
+            <h2 class="fl-section-title">Riscos Identificados</h2>
+          </div>
+          <div class="fl-riscos-list">${riscosHtml}</div>
+        </div>
+
+        ${(parecer.justificativa || data.resumo) ? `
+        <div class="fl-report-section fl-report-section--parecer">
+          <div class="fl-section-head">
+            <svg class="fl-section-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="10" cy="10" r="7"/><path d="M7 10l2.5 2.5L14 8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <h2 class="fl-section-title">Parecer e Resumo</h2>
+          </div>
+          <div class="fl-parecer-body">
+            ${parecer.justificativa ? `<p class="fl-parecer-justificativa">${esc(parecer.justificativa)}</p>` : ''}
+            ${parecer.condicoes && parecer.condicoes.length > 0 ? `<div class="fl-condicoes"><p class="fl-condicoes-label">Condições para emissão:</p><ul>${parecer.condicoes.map(c => `<li>${esc(c)}</li>`).join('')}</ul></div>` : ''}
+            ${data.resumo ? `<p class="fl-resumo-text">${esc(data.resumo)}</p>` : ''}
+          </div>
+        </div>` : ''}
+      </div>
+    </div>`;
 }
 
 function appendFlChatMessage(role, content) {
@@ -1528,11 +1743,15 @@ function appendFlChatMessage(role, content) {
 async function sendFlChatMessage() {
   const input = document.getElementById('flChatInput');
   const text = input.value.trim();
-  if (!text || flChatHistory.length === 0) return;
+  if ((!text && !_chatFiles.fl.length) || flChatHistory.length === 0) return;
 
   input.value = '';
-  appendFlChatMessage('user', text);
-  flChatHistory.push({ role: 'user', content: text });
+  const displayText = text || _chatFiles.fl.map(f => f.name).join(', ');
+  appendFlChatMessage('user', displayText);
+
+  const msgObj = await _buildChatMessage('fl', text);
+  _clearChatFiles('fl');
+  flChatHistory.push(msgObj);
 
   const sendBtn = document.getElementById('flChatSend');
   sendBtn.disabled = true;
@@ -1763,6 +1982,7 @@ function resetAnaliseFinanceira() {
   document.getElementById('afFooter').hidden = true;
   document.getElementById('afUploadSection').hidden = false;
   document.getElementById('afQaMessages').innerHTML = '';
+  _clearChatFiles('af');
   hideFinancialError();
   const btnDownload = document.getElementById('btnDownloadTop');
   if (btnDownload) btnDownload.hidden = true;
@@ -1803,11 +2023,15 @@ function renderAnaliseFinanceira(data) {
 async function sendAfChatMessage() {
   const input = document.getElementById('afChatInput');
   const text = input.value.trim();
-  if (!text || afChatHistory.length === 0) return;
+  if ((!text && !_chatFiles.af.length) || afChatHistory.length === 0) return;
 
   input.value = '';
-  appendAfQaMessage('user', text);
-  afChatHistory.push({ role: 'user', content: text });
+  const displayText = text || _chatFiles.af.map(f => f.name).join(', ');
+  appendAfQaMessage('user', displayText);
+
+  const msgObj = await _buildChatMessage('af', text);
+  _clearChatFiles('af');
+  afChatHistory.push(msgObj);
 
   const sendBtn = document.getElementById('afChatSend');
   sendBtn.disabled = true;
@@ -1894,30 +2118,31 @@ function capacidadeClass(cap) {
 
 function buildDocumentoCard(doc) {
   const ind = doc.indicadores || {};
-  const kpis = AF_KPIS_CONFIG.filter(k => ind[k.key] !== null && ind[k.key] !== undefined);
+  const hasAny = AF_KPIS_CONFIG.some(k => ind[k.key] !== null && ind[k.key] !== undefined);
 
-  const kpisHtml = kpis.length > 0
-    ? kpis.map(cfg => {
-        const val = ind[cfg.key];
-        const display = fmtIndicador(val, cfg.format);
-        const isNeg = typeof val === 'number' && val < 0;
-        const isKey = cfg.priority ? 'af-kpi--priority' : '';
-        return `
-          <div class="af-kpi-item ${isKey} ${isNeg ? 'af-kpi--neg' : ''}">
-            <span class="af-kpi-label">${esc(cfg.label)}</span>
-            <span class="af-kpi-value mono">${display}</span>
-          </div>`;
-      }).join('')
+  const rowsHtml = AF_KPIS_CONFIG.map(cfg => {
+    const val = ind[cfg.key];
+    const hasVal = val !== null && val !== undefined;
+    const display = hasVal ? fmtIndicador(val, cfg.format) : '—';
+    const isNeg = typeof val === 'number' && val < 0;
+    return `<tr class="${cfg.priority ? 'af-kpi-row--priority' : ''}${!hasVal ? ' af-kpi-row--empty' : ''}${isNeg ? ' af-kpi-row--neg' : ''}">
+      <td class="af-kpi-label">${esc(cfg.label)}</td>
+      <td class="af-kpi-value mono">${display}</td>
+    </tr>`;
+  }).join('');
+
+  const kpisHtml = hasAny
+    ? `<table class="af-kpis-table"><tbody>${rowsHtml}</tbody></table>`
     : '<p class="af-no-data">Indicadores não extraídos deste documento.</p>';
 
   return `
-    <div class="af-doc-card card">
+    <div class="af-doc-card">
       <div class="af-doc-header">
-        <span class="af-doc-tipo">${esc(doc.tipo || '—')}</span>
+        <span class="af-doc-tipo-badge">${esc(doc.tipo || '—')}</span>
         <span class="af-doc-periodo">${esc(doc.periodo || '—')}</span>
       </div>
-      <div class="af-kpis-list">${kpisHtml}</div>
-      ${doc.observacoes ? `<p class="af-doc-obs">${esc(doc.observacoes)}</p>` : ''}
+      ${kpisHtml}
+      ${doc.observacoes ? `<div class="af-doc-obs"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="13" height="13"><circle cx="8" cy="8" r="6"/><path d="M8 7v4M8 5.5h.01" stroke-linecap="round"/></svg>${esc(doc.observacoes)}</div>` : ''}
     </div>`;
 }
 
@@ -1951,13 +2176,17 @@ function buildEmpresaCard(emp, idx) {
 
         <div class="af-capacidades-row">
           <div class="af-cap-item ${capacidadeClass(capGarantia)}">
-            <span class="af-cap-label">Seguro Garantia</span>
-            <span class="af-cap-valor">${esc(capGarantia)}</span>
+            <div class="af-cap-header">
+              <span class="af-cap-label">Capacidade · Seguro Garantia</span>
+              <span class="af-cap-chip ${capacidadeClass(capGarantia)}">${esc(capGarantia)}</span>
+            </div>
             ${ac.justificativa_garantia ? `<span class="af-cap-just">${esc(ac.justificativa_garantia)}</span>` : ''}
           </div>
           <div class="af-cap-item ${capacidadeClass(capFianca)}">
-            <span class="af-cap-label">Fiança Locatícia</span>
-            <span class="af-cap-valor">${esc(capFianca)}</span>
+            <div class="af-cap-header">
+              <span class="af-cap-label">Capacidade · Fiança Locatícia</span>
+              <span class="af-cap-chip ${capacidadeClass(capFianca)}">${esc(capFianca)}</span>
+            </div>
             ${ac.justificativa_fianca ? `<span class="af-cap-just">${esc(ac.justificativa_fianca)}</span>` : ''}
           </div>
         </div>

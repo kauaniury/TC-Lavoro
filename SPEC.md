@@ -1,7 +1,7 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versão: 1.7  
-> Atualizado em: 2026-06-09
+> Versão: 2.1  
+> Atualizado em: 2026-06-11
 
 ## 1. Visão Geral
 
@@ -105,6 +105,14 @@ O front-end agora possui dois modos:
 
 1. **Modo novo**: cria jobs em `/v1/analysis-jobs`, processa em lotes e usa Redis como memória temporária.
 2. **Fallback legado**: se o Worker ainda não expuser os endpoints novos, usa a chamada monolítica anterior no `/`.
+
+### 5.1a Modelo e tokens por fluxo
+
+| Fluxo | Chunk (`analyzeChunk`) | Síntese final (`synthesizeFinalResult`) |
+|---|---|---|
+| Análise Financeira | deepseek-chat / 4.000 tokens | deepseek-chat / 8.000 tokens |
+| Seguro Garantia | deepseek-chat / 4.000 tokens | deepseek-chat / **10.000 tokens** |
+| Fiança Locatícia | deepseek-chat / 4.000 tokens | deepseek-chat / 8.000 tokens |
 
 ### 5.2 Worker com Memória Redis
 
@@ -221,12 +229,51 @@ Agora:
 
 Isso reduz estouro de contexto e cria memória transacional da análise no Redis.
 
+### 5.6 Arquitetura Redis — chaves e tamanho do manifest
+
+**Convenção de chaves:**
+
+| Chave | Conteúdo |
+|---|---|
+| `deepseek:job:{jobId}` | Manifest do job (metadados, status, índices) |
+| `deepseek:job:{jobId}:chunk:{index}` | Conteúdo textual bruto de cada chunk |
+| `deepseek:job:{jobId}:note:{index}` | Nota gerada pela IA para cada chunk |
+
+TTL de todas as chaves: 6 horas (`JOB_TTL_SECONDS`).
+
+**Regra crítica:** as notas de chunk **nunca devem ficar dentro do manifest**. Com 10 arquivos e 50–100 chunks, cada nota pode ter ~16KB (4.000 tokens). Armazenar tudo no manifest resultaria em 800KB–1,6MB por `SETEX`, ultrapassando os limites do Upstash. Cada nota é salva como `noteKey(jobId, index)` e recuperada individualmente na síntese final.
+
+**Chamadas Redis — formato POST body obrigatório:**
+
+A função `redisCall` usa **POST body** para enviar comandos ao Upstash REST API:
+
+```js
+fetch(UPSTASH_REDIS_REST_URL, {
+  method: 'POST',
+  headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+  body: JSON.stringify(command),   // ex.: ["SETEX", "key", "21600", "{...json...}"]
+})
+```
+
+**Nunca usar path params** (formato `GET /{cmd}/{arg1}/{arg2}`) — o valor JSON encodado na URL ultrapassa os limites de tamanho (~8–32KB de URL).
+
 ## 6. Fluxo 2 — Análise Financeira IA
 
 ### 6.1 Entrada
 
-- máximo de 6 arquivos
+- máximo de 6 arquivos (`MAX_FINANCIAL_FILES`)
 - formatos: `.xlsx`, `.xls`, `.csv`, `.pdf`, `.jpg`, `.jpeg`, `.png`
+
+### 6.1a Regra crítica de escala — "em milhares"
+
+O prompt de chunk (`analise-financeira`) detecta se o documento indica escala em milhares no título/cabeçalho (`"em milhares"`, `"R$ Mil"`, `"Em R$ Mil"`, etc.) e registra `"escala":"milhares"` na nota. O prompt de síntese final multiplica todos os valores monetários desse documento por 1.000 antes de incluir no JSON final e registra o ajuste em `"observacoes"`.
+
+### 6.1b Renderização — Indicadores Financeiros
+
+`buildDocumentoCard` renderiza os 20 indicadores como tabela 2 colunas (label | valor):
+- Linhas com `.af-kpi-row--priority` destacadas (campos principais)
+- Linhas com `.af-kpi-row--empty` esmaecidas (valor null → "—")
+- Linhas com `.af-kpi-row--neg` em vermelho (valor negativo)
 
 ### 6.2 Função pública
 
@@ -294,6 +341,11 @@ Comportamento:
 
 ## 7. Fluxo 3 — Seguro Garantia IA
 
+### 7.0 Entrada
+
+- máximo de 10 arquivos (`MAX_CONTRATO_FILES`)
+- formatos: `.pdf`, `.png`, `.jpg`, `.jpeg`, `.xlsx`, `.xls`, `.csv`
+
 ### 7.1 Funções públicas (deepseek.js)
 
 | Função | Responsabilidade |
@@ -301,6 +353,25 @@ Comportamento:
 | `analisarSeguroGarantia(arquivos)` | produz a análise inicial completa via Worker em lotes |
 | `criarHistoricoSeguroGarantia(arquivos, analiseInicial)` | semeia o chat com a análise consolidada |
 | `chatSeguroGarantia(history)` | responde perguntas subsequentes do usuário |
+
+### 7.1a Prompt de síntese — Seguro Garantia
+
+O prompt final produz uma análise técnica completa em markdown com 12 seções numeradas:
+
+1. Classificação do documento
+2. Modalidade sugerida
+3. Partes identificadas (tabela: Papel | Nome/Razão Social | CPF/CNPJ | Fonte)
+4. Dados principais para emissão (tabela: Campo | Informação | Fonte/Trecho | Confiança)
+5. Cálculo da importância segurada
+6. Vigência recomendada
+7. Objeto sugerido para a apólice
+8. Cláusulas e coberturas recomendadas (tabela)
+9. Pontos de atenção
+10. Documentos ou informações pendentes
+11. Conclusão operacional
+12. Resumo final para cadastro *(seção especial — fundo verde escuro + campos monoespaçados)*
+
+A seção 12 é renderizada por `renderResumoFinalSection` como grade de campos `label: valor`, não como markdown genérico.
 
 ### 7.2 Funções de renderização (app.js)
 
@@ -349,6 +420,18 @@ Um divisor visual (`.sg-chat-divider` com texto "Perguntas sobre a análise") é
 
 Seção `##Parecer Geral` recebe `sg-report-section--parecer` (fundo invertido escuro).
 
+### 7.4a Chat Sidebar — Anexo de arquivos e imagens
+
+Os três sidebars de Q&A (Seguro Garantia, Fiança Locatícia, Análise Financeira) suportam anexo de arquivos durante o chat:
+
+- **Botão de clipe** (`ai-chat-attach-btn`) abre o seletor de arquivos: `.pdf .png .jpg .jpeg .xlsx .xls .csv .txt`
+- **Drag-and-drop** na área de input (`ai-sidebar-input-area`) — IDs: `sgInputArea`, `flInputArea`, `afInputArea`
+- **Chips visuais** (`ai-chat-file-chip`) exibem arquivos pendentes; podem ser removidos individualmente
+- Ao enviar: `_buildChatMessage(flow, text)` extrai conteúdo via `extrairConteudoArquivo()`:
+  - Imagens → `{type:'image_url', image_url:{url: base64}}` no array de content
+  - Textuais → conteúdo extraído prefixado ao texto da mensagem
+- Estado: `_chatFiles = { sg:[], fl:[], af:[] }` — limpo ao enviar e ao "Nova análise"
+
 ### 7.5 Exportação PDF
 
 - Botão "Exportar PDF" (`#sgExportBtn`) fica oculto até a primeira análise ser renderizada.
@@ -361,6 +444,11 @@ Antes, a análise inicial reenviava todo o conteúdo de uma vez.
 Agora, a análise inicial tenta o fluxo em lotes; o chat posterior conversa sobre a análise consolidada, reduzindo custo e contexto.
 
 ## 8. Fluxo 4 — Fiança Locatícia IA
+
+### 8.0 Entrada
+
+- máximo de 10 arquivos (`MAX_CONTRATO_FILES`)
+- formatos: `.pdf`, `.png`, `.jpg`, `.jpeg`, `.xlsx`, `.xls`, `.csv`
 
 ### 8.1 Função pública
 

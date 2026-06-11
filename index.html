@@ -320,14 +320,19 @@
           </div>
         </div>
         <div class="ai-sidebar-messages" id="afQaMessages" aria-live="polite"></div>
-        <div class="ai-sidebar-input-area">
+        <div class="ai-sidebar-input-area" id="afInputArea"
+             ondragover="handleChatDragOver(event,'af')" ondragleave="handleChatDragLeave(event,'af')" ondrop="handleChatDrop(event,'af')">
+          <div class="ai-chat-file-chips" id="afFileChips" hidden></div>
           <div class="sg-chat-input-row">
+            <button type="button" class="ai-chat-attach-btn" id="afAttachBtn" onclick="document.getElementById('afAttachInput').click()" title="Anexar arquivo ou imagem">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" width="16" height="16" aria-hidden="true"><path d="M10 2L10 13M10 2C10 2 7 5 5 5C3 5 2 3.5 2 3.5C2 3.5 3 2 5 2H15C17 2 18 3.5 18 3.5C18 3.5 17 5 15 5C13 5 10 2 10 2Z" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 9.5C2.5 10.5 2 12 2 13.5C2 16 4 18 7 18H13C16 18 18 16 18 13.5C18 12 17.5 10.5 16 9.5" stroke-linecap="round"/></svg>
+            </button>
+            <input type="file" id="afAttachInput" accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.csv,.txt" multiple style="display:none" onchange="handleChatFileSelect(event,'af')">
             <input type="text" id="afChatInput" class="sg-chat-input"
-                   placeholder="Pergunte sobre indicadores, risco, capacidade…"
+                   placeholder="Pergunte ou arraste um arquivo aqui…"
                    onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAfChatMessage();}">
             <button type="button" class="btn-primary sg-chat-send-btn" id="afChatSend" onclick="sendAfChatMessage()">
               <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" width="15" height="15"><path d="M17 3L3 9.5l5.5 2 2 5.5L17 3z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="currentColor" fill-opacity="0.2"/></svg>
-              Enviar
             </button>
           </div>
         </div>
@@ -438,14 +443,19 @@
           </div>
         </div>
         <div class="ai-sidebar-messages" id="sgSidebarMessages" aria-live="polite"></div>
-        <div class="ai-sidebar-input-area">
+        <div class="ai-sidebar-input-area" id="sgInputArea"
+             ondragover="handleChatDragOver(event,'sg')" ondragleave="handleChatDragLeave(event,'sg')" ondrop="handleChatDrop(event,'sg')">
+          <div class="ai-chat-file-chips" id="sgFileChips" hidden></div>
           <div class="sg-chat-input-row">
+            <button type="button" class="ai-chat-attach-btn" id="sgAttachBtn" onclick="document.getElementById('sgAttachInput').click()" title="Anexar arquivo ou imagem">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" width="16" height="16" aria-hidden="true"><path d="M10 2L10 13M10 2C10 2 7 5 5 5C3 5 2 3.5 2 3.5C2 3.5 3 2 5 2H15C17 2 18 3.5 18 3.5C18 3.5 17 5 15 5C13 5 10 2 10 2Z" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 9.5C2.5 10.5 2 12 2 13.5C2 16 4 18 7 18H13C16 18 18 16 18 13.5C18 12 17.5 10.5 16 9.5" stroke-linecap="round"/></svg>
+            </button>
+            <input type="file" id="sgAttachInput" accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.csv,.txt" multiple style="display:none" onchange="handleChatFileSelect(event,'sg')">
             <input type="text" id="sgChatInput" class="sg-chat-input"
-                   placeholder="Pergunte sobre cláusulas, riscos, valores…"
+                   placeholder="Pergunte ou arraste um arquivo aqui…"
                    onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendSgChatMessage();}">
             <button type="button" class="btn-primary sg-chat-send-btn" id="sgChatSend" onclick="sendSgChatMessage()">
               <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" width="15" height="15"><path d="M17 3L3 9.5l5.5 2 2 5.5L17 3z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="currentColor" fill-opacity="0.2"/></svg>
-              Enviar
             </button>
           </div>
         </div>
@@ -549,14 +559,19 @@
           </div>
         </div>
         <div class="ai-sidebar-messages" id="flSidebarMessages" aria-live="polite"></div>
-        <div class="ai-sidebar-input-area">
+        <div class="ai-sidebar-input-area" id="flInputArea"
+             ondragover="handleChatDragOver(event,'fl')" ondragleave="handleChatDragLeave(event,'fl')" ondrop="handleChatDrop(event,'fl')">
+          <div class="ai-chat-file-chips" id="flFileChips" hidden></div>
           <div class="sg-chat-input-row">
+            <button type="button" class="ai-chat-attach-btn" id="flAttachBtn" onclick="document.getElementById('flAttachInput').click()" title="Anexar arquivo ou imagem">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" width="16" height="16" aria-hidden="true"><path d="M10 2L10 13M10 2C10 2 7 5 5 5C3 5 2 3.5 2 3.5C2 3.5 3 2 5 2H15C17 2 18 3.5 18 3.5C18 3.5 17 5 15 5C13 5 10 2 10 2Z" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 9.5C2.5 10.5 2 12 2 13.5C2 16 4 18 7 18H13C16 18 18 16 18 13.5C18 12 17.5 10.5 16 9.5" stroke-linecap="round"/></svg>
+            </button>
+            <input type="file" id="flAttachInput" accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.csv,.txt" multiple style="display:none" onchange="handleChatFileSelect(event,'fl')">
             <input type="text" id="flChatInput" class="sg-chat-input"
-                   placeholder="Pergunte sobre cláusulas, valores, riscos do contrato…"
+                   placeholder="Pergunte ou arraste um arquivo aqui…"
                    onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendFlChatMessage();}">
             <button type="button" class="btn-primary sg-chat-send-btn" id="flChatSend" onclick="sendFlChatMessage()">
               <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" width="15" height="15"><path d="M17 3L3 9.5l5.5 2 2 5.5L17 3z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="currentColor" fill-opacity="0.2"/></svg>
-              Enviar
             </button>
           </div>
         </div>
