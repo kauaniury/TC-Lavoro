@@ -1,7 +1,7 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versão: 2.1  
-> Atualizado em: 2026-06-11
+> Versão: 2.3  
+> Atualizado em: 2026-06-15
 
 ## 1. Visão Geral
 
@@ -385,6 +385,7 @@ A seção 12 é renderizada por `renderResumoFinalSection` como grade de campos 
 | `renderReportSection(section)` | renderiza um card de seção com cabeçalho com ícone e corpo em markdown |
 | `renderReportMarkdown(text)` | markdown aprimorado: tabelas pipe `\| … \|`, `---` HR, headings, bullets, negrito |
 | `downloadSgReport()` | exportação A4 multi-página via html2canvas + jsPDF |
+| `syncAiChatStickyOffset()` | mede a topbar ativa do relatório e atualiza `--ai-sidebar-sticky-top` para manter o chat lateral visível abaixo dela |
 
 ### 7.3 Arquitetura de renderização
 
@@ -431,6 +432,8 @@ Os três sidebars de Q&A (Seguro Garantia, Fiança Locatícia, Análise Financei
   - Imagens → `{type:'image_url', image_url:{url: base64}}` no array de content
   - Textuais → conteúdo extraído prefixado ao texto da mensagem
 - Estado: `_chatFiles = { sg:[], fl:[], af:[] }` — limpo ao enviar e ao "Nova análise"
+- O sidebar usa `--ai-sidebar-sticky-top`, calculado por `syncAiChatStickyOffset()`, para permanecer abaixo da topbar ativa do relatório durante o scroll.
+- O cabeçalho do sidebar (`.ai-chat-sidebar-header`) permanece visível com `position: sticky`, acompanhando o scroll no topo do card de chat.
 
 ### 7.5 Exportação PDF
 

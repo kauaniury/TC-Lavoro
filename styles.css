@@ -2609,6 +2609,7 @@ body.pdf-generating.has-comparison .comparison-section {
 
 .sg-chat-topbar {
   background: var(--color-primary);
+  margin-bottom: 10px;
   color: #fff;
   padding: 14px 24px;
   flex-shrink: 0;
@@ -3608,10 +3609,12 @@ body.pdf-generating.has-comparison .comparison-section {
   /* Y_doc do sidebar ≈ topbar(60) + sg-topbar(62) = 122px                       */
   /* top ≤ Y_doc garante que sticky ativa ao primeiro pixel de scroll            */
   position: sticky;
-  top: calc(var(--topbar-height, 60px) + 62px);
-  max-height: calc(100vh - var(--topbar-height, 60px) - 62px - 4px);
+  top: var(--ai-sidebar-sticky-top, calc(var(--topbar-height, 60px) + 96px));
+  max-height: calc(100vh - var(--ai-sidebar-sticky-top, calc(var(--topbar-height, 60px) + 96px)) - var(--space-1, 4px));
   align-self: flex-start;
   overflow: hidden;
+  margin-top: var(--space-6);
+  border-radius: var(--radius-xl);
 }
 
 .ai-chat-sidebar-header {
@@ -3623,6 +3626,9 @@ body.pdf-generating.has-comparison .comparison-section {
   color: #fff;
   border-bottom: 2px solid var(--color-accent);
   flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 2;
 }
 
 .ai-chat-sidebar-header svg {
@@ -3658,7 +3664,7 @@ body.pdf-generating.has-comparison .comparison-section {
   font-size: 13px;
   color: var(--color-text-muted, #94a3b8);
   text-align: center;
-  padding: 24px 16px;
+  padding: 200px 16px;
   line-height: 1.6;
   display: block;
 }

@@ -13,7 +13,26 @@ function switchTab(tab) {
     if (isActive) t.setAttribute('aria-current', 'page');
     else t.removeAttribute('aria-current');
   });
+  requestAnimationFrame(syncAiChatStickyOffset);
 }
+
+function syncAiChatStickyOffset() {
+  const activePage = document.querySelector('.page.active');
+  if (!activePage) return;
+
+  const chatTopbar = activePage.querySelector('.sg-chat-wrapper:not([hidden]) .sg-chat-topbar');
+  if (!chatTopbar) return;
+
+  const appTopbar = document.querySelector('.topbar');
+  const appTopbarHeight = appTopbar ? appTopbar.getBoundingClientRect().height : 60;
+  const chatTopbarStyle = window.getComputedStyle(chatTopbar);
+  const chatTopbarMarginBottom = parseFloat(chatTopbarStyle.marginBottom) || 0;
+  const stickyTop = Math.ceil(appTopbarHeight + chatTopbar.getBoundingClientRect().height + chatTopbarMarginBottom);
+
+  activePage.style.setProperty('--ai-sidebar-sticky-top', stickyTop + 'px');
+}
+
+window.addEventListener('resize', syncAiChatStickyOffset);
 
 // â"€â"€ Drag & drop
 const dz = document.getElementById('dropZone');
@@ -1048,6 +1067,7 @@ function appendSgChatMessage(role, text) {
     if (exportBtn) exportBtn.hidden = false;
     mainEl.appendChild(div);
     mainEl.scrollTop = mainEl.scrollHeight;
+    requestAnimationFrame(syncAiChatStickyOffset);
   } else {
     div.className = 'sg-chat-msg ' + (role === 'user' ? 'sg-chat-msg--user' : 'sg-chat-msg--ai');
     div.innerHTML = role === 'assistant' ? renderMarkdown(text) : '<p>' + esc(text) + '</p>';
@@ -1464,6 +1484,7 @@ function renderFiancaLocaticia(data) {
 
   const exportBtn = document.getElementById('flExportBtn');
   if (exportBtn) exportBtn.hidden = false;
+  requestAnimationFrame(syncAiChatStickyOffset);
 }
 
 // ── Shared builder for both contractual analysis types
