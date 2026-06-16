@@ -1995,29 +1995,6 @@ body.pdf-generating.has-comparison .comparison-section {
   font-family: var(--font-mono);
 }
 
-.af-kpis-list {
-  padding: var(--space-3);
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.af-kpi-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  padding: 5px var(--space-2);
-  border-radius: var(--radius-sm);
-}
-
-.af-kpi-item.af-kpi--priority {
-  background: rgba(205,173,125,0.08);
-  font-weight: var(--weight-semibold);
-}
-
-.af-kpi-item.af-kpi--neg .af-kpi-value { color: var(--color-danger); }
-
 .af-kpi-label {
   font-size: var(--text-xs);
   color: var(--color-text-secondary);
@@ -2117,12 +2094,15 @@ body.pdf-generating.has-comparison .comparison-section {
 /* ── Upload cards: Seguro Garantia & Fiança Locatícia ── */
 .upload-header-eyebrow--garantia { color: var(--color-primary); }
 .upload-header-eyebrow--fianca   { color: var(--color-accent-hover); }
+.upload-header-eyebrow--apolice  { color: var(--color-primary-light); }
 
 .upload-card--garantia { border-top: 3px solid var(--color-primary); }
 .upload-card--fianca   { border-top: 3px solid var(--color-accent-hover); }
+.upload-card--apolice  { border-top: 3px solid var(--color-primary-light); }
 
 .badge-ia-tag--garantia { background: var(--color-primary-light); color: #fff; }
 .badge-ia-tag--fianca   { background: var(--color-accent-hover); color: var(--color-primary); }
+.badge-ia-tag--apolice  { background: var(--color-primary); color: var(--color-accent); }
 
 .drop-zone--garantia {
   border-color: rgba(25,43,36,0.25);
@@ -2140,6 +2120,15 @@ body.pdf-generating.has-comparison .comparison-section {
 .drop-zone--fianca.drop-zone--over {
   border-color: var(--color-accent-hover);
   background: rgba(205,173,125,0.06);
+}
+
+.drop-zone--apolice {
+  border-color: var(--color-border-brand);
+}
+.drop-zone--apolice:hover,
+.drop-zone--apolice.drop-zone--over {
+  border-color: var(--color-primary-light);
+  background: var(--color-accent-light);
 }
 
 .btn-garantia {
@@ -2161,6 +2150,16 @@ body.pdf-generating.has-comparison .comparison-section {
   transform: translateY(-1px);
 }
 .btn-fianca:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+
+.btn-apolice {
+  background: var(--color-primary);
+  color: var(--color-accent);
+}
+.btn-apolice:hover:not(:disabled) {
+  background: var(--color-primary-light);
+  transform: translateY(-1px);
+}
+.btn-apolice:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
 
 /* ── Resultado Contratual (shared SG + FL) ── */
 .sg-docs-analisados {
@@ -3247,6 +3246,7 @@ body.pdf-generating.has-comparison .comparison-section {
 .upload-tool-icon--fin { background: var(--color-accent-hover); }
 .upload-tool-icon--sg  { background: var(--color-primary); }
 .upload-tool-icon--fl  { background: var(--color-primary-light); }
+.upload-tool-icon--ap  { background: var(--color-accent); color: var(--color-primary); }
 
 .upload-tool-card > div:nth-child(2) {
   flex: 1;
@@ -3533,9 +3533,59 @@ body.pdf-generating.has-comparison .comparison-section {
   gap: var(--space-6);
 }
 
+.ap-chat-topbar {
+  border-bottom-color: var(--color-accent) !important;
+}
+
+.ap-chat-topbar .sg-chat-eyebrow {
+  color: var(--color-accent) !important;
+}
+
+.ap-report-shell {
+  width: min(1040px, 100%);
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-8) var(--space-10);
+}
+
+.ap-report {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+}
+
+.ap-report-masthead {
+  background: var(--color-primary);
+}
+
+.ap-dados-table .fl-dados-value {
+  font-weight: var(--weight-semibold);
+}
+
+.ap-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-5);
+}
+
+.ap-list-item {
+  padding: var(--space-4) var(--space-5);
+  border-left: 4px solid var(--color-accent);
+}
+
+.ap-list-desc {
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-normal);
+}
+
 /* ── Page-level: SG and FL with chat ── */
 .page-seguro-garantia.active,
-.page-fianca-locaticia.active {
+.page-fianca-locaticia.active,
+.page-analise-apolice.active {
   display: flex;
   flex-direction: column;
 }
@@ -3554,6 +3604,7 @@ body.pdf-generating.has-comparison .comparison-section {
   .fl-report-masthead { padding: 20px; gap: 16px; }
   .fl-report-title { font-size: 17px; }
   .fl-report-body { padding: var(--space-4); gap: var(--space-4); }
+  .ap-report-shell { padding: var(--space-4); }
   .upload-other-grid { gap: var(--space-2); }
 }
 
@@ -3979,49 +4030,48 @@ body.pdf-generating.has-comparison .comparison-section {
   font-style: italic;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   ANÁLISE FINANCEIRA — Redesign da tabela de KPIs
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* Análise Financeira: tabela simples, exibindo somente indicadores disponíveis */
 
 .af-doc-card {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg, 10px);
+  border-radius: var(--radius-md);
   overflow: hidden;
+  box-shadow: none;
 }
 
 .af-doc-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
-  background: var(--color-primary, #192b24);
-  border-bottom: 2px solid var(--color-accent, #cdad7d);
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface-muted);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .af-doc-tipo-badge {
-  font-size: 11px;
-  font-weight: 700;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: #fff;
-  background: rgba(205,173,125,0.2);
-  border: 1px solid rgba(205,173,125,0.35);
-  border-radius: 99px;
-  padding: 3px 10px;
+  letter-spacing: 0.04em;
+  color: var(--color-primary);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
 }
 
 .af-doc-periodo {
-  font-size: 12px;
-  font-weight: 600;
-  color: rgba(255,255,255,0.7);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-muted);
   margin-left: auto;
 }
 
 .af-kpis-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 .af-kpis-table tbody tr {
@@ -4029,45 +4079,42 @@ body.pdf-generating.has-comparison .comparison-section {
 }
 .af-kpis-table tbody tr:last-child { border-bottom: 0; }
 
-.af-kpis-table td { padding: 8px 16px; vertical-align: middle; }
+.af-kpis-table td {
+  padding: var(--space-2) var(--space-4);
+  vertical-align: middle;
+}
 
 .af-kpi-label {
-  color: var(--color-text-secondary, #4a4a4a);
-  font-size: 12.5px;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
   width: 55%;
 }
 
 .af-kpi-value {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--color-text, #1a1a1a);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
   text-align: right;
 }
 
-/* Linhas de destaque (priority) */
-.af-kpi-row--priority { background: rgba(205,173,125,0.07); }
-.af-kpi-row--priority .af-kpi-label { font-weight: 600; color: var(--color-primary, #192b24); }
-.af-kpi-row--priority .af-kpi-value { color: var(--color-primary, #192b24); font-size: 13.5px; }
-
-/* Linhas vazias (valor null → "—") */
-.af-kpi-row--empty .af-kpi-label { color: #c0c4cc; }
-.af-kpi-row--empty .af-kpi-value { color: #c0c4cc; font-weight: 400; }
-
-/* Valores negativos */
-.af-kpi-row--neg .af-kpi-value { color: var(--color-danger, #dc2626) !important; }
+.af-kpi-row--neg .af-kpi-value { color: var(--color-danger) !important; }
 
 .af-doc-obs {
   display: flex;
   align-items: flex-start;
-  gap: 6px;
-  padding: 10px 16px;
-  background: #fffbeb;
-  border-top: 1px solid #fde68a;
-  font-size: 12px;
-  color: #78350f;
-  line-height: 1.5;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface-muted);
+  border-top: 1px solid var(--color-border);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  line-height: var(--leading-normal);
 }
-.af-doc-obs svg { flex-shrink: 0; margin-top: 1px; color: #d97706; }
+.af-doc-obs svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--color-text-muted);
+}
 
 /* Capacity chips */
 .af-cap-header {

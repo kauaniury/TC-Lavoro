@@ -742,6 +742,7 @@ function hideError() { document.getElementById('errorMsg').classList.remove('sho
 // ── Seguro Garantia & Fiança Locatícia State
 let garantiaFiles = [];
 let fiancaFiles = [];
+let apoliceFiles = [];
 let sgChatHistory = [];
 let sgFirstAnalysis = true;
 const MAX_CONTRATO_FILES = 10;
@@ -763,8 +764,16 @@ const FL_DADOS_CONFIG = [
   { key: 'foro',            label: 'Foro de Eleição' },
 ];
 
+const APOLICE_DADOS_CONFIG = [
+  { key: 'tomador', label: 'Tomador' },
+  { key: 'segurado', label: 'Segurado' },
+  { key: 'importancia_segurada', label: 'Importância Segurada', format: 'brl' },
+  { key: 'vigencia', label: 'Vigência' },
+  { key: 'objeto_apolice', label: 'Objeto da Apólice' },
+];
+
 // ── File handlers shared util
-function handleContratoFiles(files, fileArray, maxFiles, extensions, listId, btnId, errShowFn, errHideFn) {
+function handleContratoFiles(files, fileArray, maxFiles, extensions, listId, btnId, errShowFn, errHideFn, tipo) {
   errHideFn();
   for (const file of files) {
     if (fileArray.length >= maxFiles) {
@@ -779,7 +788,7 @@ function handleContratoFiles(files, fileArray, maxFiles, extensions, listId, btn
     if (fileArray.some(f => f.name === file.name && f.size === file.size)) continue;
     fileArray.push(file);
   }
-  renderContratoFileList(fileArray, listId, fileArray === garantiaFiles ? 'garantia' : 'fianca');
+  renderContratoFileList(fileArray, listId, tipo);
   document.getElementById(btnId).disabled = fileArray.length === 0;
 }
 
@@ -806,11 +815,16 @@ function removeContratoFile(tipo, index) {
     renderContratoFileList(garantiaFiles, 'garantiaFileList', 'garantia');
     document.getElementById('btnAnalyzeGarantia').disabled = garantiaFiles.length === 0;
     hideGarantiaError();
-  } else {
+  } else if (tipo === 'fianca') {
     fiancaFiles.splice(index, 1);
     renderContratoFileList(fiancaFiles, 'fiancaFileList', 'fianca');
     document.getElementById('btnAnalyzeFianca').disabled = fiancaFiles.length === 0;
     hideFiancaError();
+  } else if (tipo === 'apolice') {
+    apoliceFiles.splice(index, 1);
+    renderContratoFileList(apoliceFiles, 'apoliceFileList', 'apolice');
+    document.getElementById('btnAnalyzeApolice').disabled = apoliceFiles.length === 0;
+    hideApoliceError();
   }
 }
 
@@ -819,7 +833,7 @@ const dzGarantia = document.getElementById('dropZoneGarantia');
 const fileInputGarantia = document.getElementById('fileInputGarantia');
 if (fileInputGarantia) {
   fileInputGarantia.addEventListener('change', function() {
-    handleContratoFiles(Array.from(this.files), garantiaFiles, MAX_CONTRATO_FILES, CONTRATO_EXTENSIONS, 'garantiaFileList', 'btnAnalyzeGarantia', showGarantiaError, hideGarantiaError);
+    handleContratoFiles(Array.from(this.files), garantiaFiles, MAX_CONTRATO_FILES, CONTRATO_EXTENSIONS, 'garantiaFileList', 'btnAnalyzeGarantia', showGarantiaError, hideGarantiaError, 'garantia');
     this.value = '';
   });
 }
@@ -828,7 +842,7 @@ if (dzGarantia) {
   dzGarantia.addEventListener('dragleave', () => dzGarantia.classList.remove('drop-zone--over'));
   dzGarantia.addEventListener('drop', e => {
     e.preventDefault(); dzGarantia.classList.remove('drop-zone--over');
-    handleContratoFiles(Array.from(e.dataTransfer.files), garantiaFiles, MAX_CONTRATO_FILES, CONTRATO_EXTENSIONS, 'garantiaFileList', 'btnAnalyzeGarantia', showGarantiaError, hideGarantiaError);
+    handleContratoFiles(Array.from(e.dataTransfer.files), garantiaFiles, MAX_CONTRATO_FILES, CONTRATO_EXTENSIONS, 'garantiaFileList', 'btnAnalyzeGarantia', showGarantiaError, hideGarantiaError, 'garantia');
   });
 }
 
@@ -837,7 +851,7 @@ const dzFianca = document.getElementById('dropZoneFianca');
 const fileInputFianca = document.getElementById('fileInputFianca');
 if (fileInputFianca) {
   fileInputFianca.addEventListener('change', function() {
-    handleContratoFiles(Array.from(this.files), fiancaFiles, MAX_CONTRATO_FILES, CONTRATO_EXTENSIONS, 'fiancaFileList', 'btnAnalyzeFianca', showFiancaError, hideFiancaError);
+    handleContratoFiles(Array.from(this.files), fiancaFiles, MAX_CONTRATO_FILES, CONTRATO_EXTENSIONS, 'fiancaFileList', 'btnAnalyzeFianca', showFiancaError, hideFiancaError, 'fianca');
     this.value = '';
   });
 }
@@ -846,7 +860,25 @@ if (dzFianca) {
   dzFianca.addEventListener('dragleave', () => dzFianca.classList.remove('drop-zone--over'));
   dzFianca.addEventListener('drop', e => {
     e.preventDefault(); dzFianca.classList.remove('drop-zone--over');
-    handleContratoFiles(Array.from(e.dataTransfer.files), fiancaFiles, MAX_CONTRATO_FILES, CONTRATO_EXTENSIONS, 'fiancaFileList', 'btnAnalyzeFianca', showFiancaError, hideFiancaError);
+    handleContratoFiles(Array.from(e.dataTransfer.files), fiancaFiles, MAX_CONTRATO_FILES, CONTRATO_EXTENSIONS, 'fiancaFileList', 'btnAnalyzeFianca', showFiancaError, hideFiancaError, 'fianca');
+  });
+}
+
+// Apolice drop zone
+const dzApolice = document.getElementById('dropZoneApolice');
+const fileInputApolice = document.getElementById('fileInputApolice');
+if (fileInputApolice) {
+  fileInputApolice.addEventListener('change', function() {
+    handleContratoFiles(Array.from(this.files), apoliceFiles, MAX_CONTRATO_FILES, CONTRATO_EXTENSIONS, 'apoliceFileList', 'btnAnalyzeApolice', showApoliceError, hideApoliceError, 'apolice');
+    this.value = '';
+  });
+}
+if (dzApolice) {
+  dzApolice.addEventListener('dragover', e => { e.preventDefault(); dzApolice.classList.add('drop-zone--over'); });
+  dzApolice.addEventListener('dragleave', () => dzApolice.classList.remove('drop-zone--over'));
+  dzApolice.addEventListener('drop', e => {
+    e.preventDefault(); dzApolice.classList.remove('drop-zone--over');
+    handleContratoFiles(Array.from(e.dataTransfer.files), apoliceFiles, MAX_CONTRATO_FILES, CONTRATO_EXTENSIONS, 'apoliceFileList', 'btnAnalyzeApolice', showApoliceError, hideApoliceError, 'apolice');
   });
 }
 
@@ -866,6 +898,15 @@ function showFiancaError(msg) {
 }
 function hideFiancaError() {
   const el = document.getElementById('errorMsgFianca');
+  if (el) el.classList.remove('show');
+}
+function showApoliceError(msg) {
+  const el = document.getElementById('errorMsgApolice');
+  const tx = document.getElementById('errorTextApolice');
+  if (el && tx) { tx.textContent = msg; el.classList.add('show'); }
+}
+function hideApoliceError() {
+  const el = document.getElementById('errorMsgApolice');
   if (el) el.classList.remove('show');
 }
 
@@ -1843,6 +1884,190 @@ async function downloadFlReport() {
   }
 }
 
+let apoliceAnaliseData = null;
+
+async function processarAnaliseApolice() {
+  if (apoliceFiles.length === 0) return;
+  const btn = document.getElementById('btnAnalyzeApolice');
+  btn.disabled = true;
+  btn.querySelector('.btn-label').textContent = 'Analisando…';
+  hideApoliceError();
+
+  document.getElementById('apUploadSection').hidden = true;
+  document.getElementById('apLoading').hidden = false;
+  document.getElementById('apResultArea').hidden = true;
+  const exportBtn = document.getElementById('apExportBtn');
+  if (exportBtn) exportBtn.hidden = true;
+
+  try {
+    const resultado = await analisarApolice(apoliceFiles);
+    apoliceAnaliseData = resultado;
+    renderAnaliseApolice(resultado);
+  } catch (err) {
+    document.getElementById('apLoading').hidden = true;
+    document.getElementById('apUploadSection').hidden = false;
+    showApoliceError('Erro ao analisar: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.querySelector('.btn-label').textContent = 'Analisar com IA';
+  }
+}
+
+function resetAnaliseApolice() {
+  apoliceFiles = [];
+  apoliceAnaliseData = null;
+  renderContratoFileList(apoliceFiles, 'apoliceFileList', 'apolice');
+  document.getElementById('btnAnalyzeApolice').disabled = true;
+  document.getElementById('apResultArea').hidden = true;
+  document.getElementById('apUploadSection').hidden = false;
+  document.getElementById('apReportContainer').innerHTML = '';
+  const exportBtn = document.getElementById('apExportBtn');
+  if (exportBtn) exportBtn.hidden = true;
+  hideApoliceError();
+}
+
+function renderAnaliseApolice(data) {
+  document.getElementById('apLoading').hidden = true;
+  document.getElementById('apResultArea').hidden = false;
+
+  const dados = data.dados_gerais || {};
+  const title = getApoliceValor(dados.tomador) || getApoliceValor(dados.segurado) || 'Dados da Apólice';
+  const filesText = apoliceFiles.map(f => f.name).join(' · ');
+
+  document.getElementById('apChatTitle').textContent = title;
+  document.getElementById('apChatFiles').textContent = filesText;
+  document.getElementById('apReportContainer').innerHTML = buildApoliceReportHtml(data, title);
+
+  const exportBtn = document.getElementById('apExportBtn');
+  if (exportBtn) exportBtn.hidden = false;
+  requestAnimationFrame(syncAiChatStickyOffset);
+}
+
+function getApoliceValor(item) {
+  if (!item || item.valor === null || item.valor === undefined || item.valor === 'null') return '';
+  return String(item.valor).trim();
+}
+
+function buildApoliceReportHtml(data, title) {
+  const dados = data.dados_gerais || {};
+  const docs = data.documentos_analisados || [];
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+
+  const dadosRows = APOLICE_DADOS_CONFIG.map(cfg => buildApoliceDadoRow(cfg, dados[cfg.key])).join('');
+  const coberturasHtml = buildApoliceList(data.coberturas, 'Nenhuma cobertura localizada.');
+  const excluidosHtml = buildApoliceList(data.riscos_excluidos, 'Nenhum risco excluído localizado.');
+
+  return `
+    <div class="ap-report" id="apReportContent">
+      <div class="fl-report-masthead ap-report-masthead">
+        <div class="fl-masthead-left">
+          <p class="fl-report-eyebrow">Análise de Apólice IA</p>
+          <h2 class="fl-report-title">${esc(title)}</h2>
+          <p class="fl-report-subtitle">Dados essenciais extraídos da apólice</p>
+        </div>
+        <div class="fl-masthead-right">
+          <p class="fl-report-gen-date">Gerado em ${dateStr}</p>
+        </div>
+      </div>
+
+      <div class="fl-report-body">
+        ${docs.length > 0 ? `<div class="sg-docs-analisados">${docs.map(d => `<span class="sg-doc-badge">${esc(d)}</span>`).join('')}</div>` : ''}
+
+        <div class="fl-report-section">
+          <div class="fl-section-head">
+            <svg class="fl-section-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="14" height="14" rx="1.5"/><path d="M7 7h6M7 10h6M7 13h3" stroke-linecap="round"/></svg>
+            <h2 class="fl-section-title">Dados da Apólice</h2>
+          </div>
+          <table class="fl-dados-table ap-dados-table">
+            <thead><tr><th>Campo</th><th>Valor</th><th>Fonte no Documento</th></tr></thead>
+            <tbody>${dadosRows}</tbody>
+          </table>
+        </div>
+
+        <div class="fl-report-section">
+          <div class="fl-section-head">
+            <svg class="fl-section-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10 2L3 6v5c0 4.4 3.1 7.6 7 8 3.9-.4 7-3.6 7-8V6L10 2z" stroke-linejoin="round"/></svg>
+            <h2 class="fl-section-title">Coberturas da Apólice</h2>
+          </div>
+          <div class="ap-list">${coberturasHtml}</div>
+        </div>
+
+        <div class="fl-report-section">
+          <div class="fl-section-head">
+            <svg class="fl-section-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10 3L2 17h16L10 3z" stroke-linejoin="round"/><path d="M10 10v3M10 15h.01" stroke-linecap="round"/></svg>
+            <h2 class="fl-section-title">Riscos Excluídos</h2>
+          </div>
+          <div class="ap-list">${excluidosHtml}</div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function buildApoliceDadoRow(cfg, item) {
+  const rawVal = item && typeof item === 'object' ? item.valor : item;
+  const fonte = item && typeof item === 'object' ? item.fonte : '';
+  let display = 'Não localizado';
+  if (rawVal !== null && rawVal !== undefined && rawVal !== 'null' && String(rawVal).trim() !== '') {
+    display = cfg.format === 'brl' && typeof rawVal === 'number' ? fmtBRL(rawVal) : String(rawVal);
+  }
+  return `<tr>
+    <td class="fl-dados-label">${esc(cfg.label)}</td>
+    <td class="fl-dados-value">${esc(display)}</td>
+    <td class="fl-dados-fonte"><em>${fonte ? esc(fonte) : '—'}</em></td>
+  </tr>`;
+}
+
+function buildApoliceList(items, emptyText) {
+  if (!Array.isArray(items) || items.length === 0) return `<p class="af-no-data">${esc(emptyText)}</p>`;
+  return items.map(item => {
+    const descricao = typeof item === 'string' ? item : (item.descricao || item.nome || item.valor || '');
+    const fonte = typeof item === 'object' ? item.fonte : '';
+    return `<div class="ap-list-item card">
+      <p class="ap-list-desc">${esc(descricao || 'Não localizado')}</p>
+      ${fonte ? `<p class="fl-fonte-cite"><em>${esc(fonte)}</em></p>` : ''}
+    </div>`;
+  }).join('');
+}
+
+async function downloadApoliceReport() {
+  const btn = document.getElementById('apExportBtn');
+  const btnOrigHTML = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Gerando PDF…'; }
+
+  const el = document.getElementById('apReportContent');
+  if (!el) { if (btn) { btn.disabled = false; btn.innerHTML = btnOrigHTML; } return; }
+
+  try {
+    const canvas = await html2canvas(el, {
+      scale: 1.5, useCORS: true, allowTaint: false, logging: false, backgroundColor: '#ffffff',
+    });
+    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+    const { jsPDF } = window.jspdf;
+    const pageW = 210;
+    const pageH = 297;
+    const imgH = (canvas.height * pageW) / canvas.width;
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    let posY = 0;
+    let remaining = imgH;
+    pdf.addImage(imgData, 'JPEG', 0, posY, pageW, imgH);
+    remaining -= pageH;
+    while (remaining > 0) {
+      posY -= pageH;
+      pdf.addPage();
+      pdf.addImage(imgData, 'JPEG', 0, posY, pageW, imgH);
+      remaining -= pageH;
+    }
+    const title = document.getElementById('apChatTitle').textContent || 'relatorio-analise-apolice';
+    const safeTitle = title.replace(/[^a-zA-Z0-9\s\-_]/g, '').trim() || 'relatorio-analise-apolice';
+    pdf.save(safeTitle + '.pdf');
+  } catch (err) {
+    console.error('Erro ao gerar PDF da análise de apólice:', err);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = btnOrigHTML; }
+  }
+}
+
 // -- Chart defaults
 Chart.defaults.font.family = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
 Chart.defaults.font.size = 11;
@@ -2113,10 +2338,21 @@ const AF_KPIS_CONFIG = [
 ];
 
 function fmtIndicador(val, format) {
-  if (val === null || val === undefined) return null;
-  if (format === 'brl') return fmtBRL(val);
-  if (format === 'pct') return Number(val).toFixed(2).replace('.', ',') + '%';
-  return Number(val).toFixed(2).replace('.', ',');
+  if (!hasIndicadorValue(val)) return null;
+  if (format === 'brl') return typeof val === 'number' ? fmtBRL(val) : String(val);
+  const num = Number(val);
+  if (!Number.isFinite(num)) return String(val);
+  if (format === 'pct') return num.toFixed(2).replace('.', ',') + '%';
+  return num.toFixed(2).replace('.', ',');
+}
+
+function hasIndicadorValue(val) {
+  if (val === null || val === undefined) return false;
+  if (typeof val === 'string') {
+    const normalized = val.trim().toLowerCase();
+    return normalized !== '' && normalized !== 'null' && normalized !== 'n/a' && normalized !== 'não informado' && normalized !== 'nao informado';
+  }
+  return true;
 }
 
 function riscoClass(risco) {
@@ -2139,20 +2375,21 @@ function capacidadeClass(cap) {
 
 function buildDocumentoCard(doc) {
   const ind = doc.indicadores || {};
-  const hasAny = AF_KPIS_CONFIG.some(k => ind[k.key] !== null && ind[k.key] !== undefined);
+  const indicadoresDisponiveis = AF_KPIS_CONFIG
+    .map(cfg => ({ ...cfg, value: ind[cfg.key] }))
+    .filter(cfg => hasIndicadorValue(cfg.value));
 
-  const rowsHtml = AF_KPIS_CONFIG.map(cfg => {
-    const val = ind[cfg.key];
-    const hasVal = val !== null && val !== undefined;
-    const display = hasVal ? fmtIndicador(val, cfg.format) : '—';
+  const rowsHtml = indicadoresDisponiveis.map(cfg => {
+    const val = cfg.value;
+    const display = fmtIndicador(val, cfg.format);
     const isNeg = typeof val === 'number' && val < 0;
-    return `<tr class="${cfg.priority ? 'af-kpi-row--priority' : ''}${!hasVal ? ' af-kpi-row--empty' : ''}${isNeg ? ' af-kpi-row--neg' : ''}">
+    return `<tr class="${isNeg ? 'af-kpi-row--neg' : ''}">
       <td class="af-kpi-label">${esc(cfg.label)}</td>
-      <td class="af-kpi-value mono">${display}</td>
+      <td class="af-kpi-value mono">${esc(String(display))}</td>
     </tr>`;
   }).join('');
 
-  const kpisHtml = hasAny
+  const kpisHtml = indicadoresDisponiveis.length > 0
     ? `<table class="af-kpis-table"><tbody>${rowsHtml}</tbody></table>`
     : '<p class="af-no-data">Indicadores não extraídos deste documento.</p>';
 

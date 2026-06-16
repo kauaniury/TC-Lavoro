@@ -336,6 +336,33 @@ Retorne APENAS este JSON (sem markdown, sem texto antes ou depois):
 Regras: monetarios como numero puro em reais (ex: 2500.00), null quando nao encontrado. Identifique TODAS as clausulas que impactam o risco da seguradora. Responda em portugues brasileiro.${blocoTexto ? '\n\nDOCUMENTOS PARA ANALISE:\n' + blocoTexto : ''}`;
 }
 
+function buildApoliceInstruction(nomesArquivos, blocoTexto) {
+  return `Voce e um especialista em leitura tecnica de APOLICES DE SEGURO para corretoras brasileiras. Analise os documentos enviados e extraia SOMENTE os dados essenciais pedidos.
+
+REGRAS ABSOLUTAS:
+1. Retorne APENAS JSON valido, sem markdown e sem texto antes ou depois.
+2. Nao invente, nao estime e nao complete dados ausentes.
+3. Use JSON null quando nao encontrar um campo.
+4. Para cada campo localizado, informe a fonte exata no documento quando possivel: pagina, item, clausula, secao, quadro ou trecho.
+5. Extraia somente: tomador, segurado, importancia segurada, vigencia, objeto da apolice, coberturas da apolice e riscos excluidos.
+
+ONDE PROCURAR:
+- tomador: campos "Tomador", "Contratante", "Estipulante" ou parte responsavel pela contratacao.
+- segurado: campos "Segurado", "Beneficiario", "Segurado/Beneficiario".
+- importancia_segurada: "Importancia Segurada", "Limite Maximo de Garantia", "LMG", "LMI", "Valor da garantia" ou "Valor segurado".
+- vigencia: datas de inicio e fim da vigencia da apolice, periodo de cobertura ou prazo.
+- objeto_apolice: campo "Objeto", "Objeto da apolice", "Descricao do risco", "Garantia" ou texto equivalente.
+- coberturas: coberturas contratadas, garantias, modalidades ou clausulas de cobertura.
+- riscos_excluidos: exclusoes, riscos excluidos, prejuizos nao cobertos ou itens de "Exclusoes".
+
+DOCUMENTOS ENVIADOS: ${nomesArquivos}
+
+Retorne APENAS este JSON:
+{"tipo":"Analise de Apolice","documentos_analisados":["nomes dos arquivos"],"dados_gerais":{"tomador":{"valor":"nome do tomador ou null","fonte":"..."},"segurado":{"valor":"nome do segurado ou null","fonte":"..."},"importancia_segurada":{"valor":0.00,"fonte":"..."},"vigencia":{"valor":"inicio e fim da vigencia ou null","fonte":"..."},"objeto_apolice":{"valor":"objeto da apolice ou null","fonte":"..."}},"coberturas":[{"descricao":"cobertura identificada","fonte":"localizacao no documento"}],"riscos_excluidos":[{"descricao":"risco excluido identificado","fonte":"localizacao no documento"}]}
+
+Regras de valores: valores monetarios como numero puro em reais (ex: 150000.50). Se a importancia segurada aparecer como texto composto ou por cobertura, preserve o texto no valor. Responda em portugues brasileiro.${blocoTexto ? '\n\nDOCUMENTOS PARA ANALISE:\n' + blocoTexto : ''}`;
+}
+
 function buildFinanceInstruction(blocoTexto) {
   return `Voce e um analista financeiro senior especializado em analise de credito para seguradoras brasileiras. Sua tarefa e analisar documentos financeiros com foco em subscricao de SEGURO GARANTIA e FIANCA LOCATICIA.
 
@@ -409,7 +436,14 @@ async function postJson(url, body) {
 }
 
 function shouldFallbackToLegacy(err) {
-  return err && (err.status === 404 || err.status === 405 || err.status === 501);
+  const msg = err && err.message ? err.message.toLowerCase() : '';
+  return err && (
+    err.status === 404 ||
+    err.status === 405 ||
+    err.status === 501 ||
+    msg.includes('flow invalido') ||
+    msg.includes('flow inválido')
+  );
 }
 
 async function executarAnaliseEmLotes(flow, arquivos) {
@@ -483,6 +517,26 @@ async function analisarFiancaLocaticiaLegacy(arquivos) {
     : '';
 
   const instrucao = buildFiancaInstruction(nomesArquivos, blocoTexto);
+  const mensagens = imagens.length > 0
+    ? [{ role: 'user', content: [{ type: 'text', text: instrucao }, ...imagens.map(img => ({ type: 'image_url', image_url: { url: img.conteudo } }))] }]
+    : [{ role: 'user', content: instrucao }];
+
+  const data = await chamarWorkerDireto(mensagens, 8192);
+  return parseJsonResult(parseDeepSeekContent(data));
+}
+
+async function analisarApoliceLegacy(arquivos) {
+  const extraidos = await Promise.all(
+    arquivos.map(async file => ({ nome: file.name, ...await extrairConteudoArquivo(file) }))
+  );
+  const textuais = extraidos.filter(a => a.tipo === 'texto');
+  const imagens = extraidos.filter(a => a.tipo === 'imagem');
+  const nomesArquivos = arquivos.map(f => f.name).join(', ');
+  const blocoTexto = textuais.length
+    ? textuais.map((a, i) => `--- DOCUMENTO ${i + 1}: ${a.nome} ---\n${String(a.conteudo || '').slice(0, 50000)}`).join('\n\n')
+    : '';
+
+  const instrucao = buildApoliceInstruction(nomesArquivos, blocoTexto);
   const mensagens = imagens.length > 0
     ? [{ role: 'user', content: [{ type: 'text', text: instrucao }, ...imagens.map(img => ({ type: 'image_url', image_url: { url: img.conteudo } }))] }]
     : [{ role: 'user', content: instrucao }];
@@ -602,6 +656,16 @@ async function analisarFiancaLocaticia(arquivos) {
   } catch (err) {
     if (!shouldFallbackToLegacy(err)) throw err;
     return analisarFiancaLocaticiaLegacy(arquivos);
+  }
+}
+
+async function analisarApolice(arquivos) {
+  try {
+    const result = await executarAnaliseEmLotes('analise-apolice', arquivos);
+    return parseJsonResult(result);
+  } catch (err) {
+    if (!shouldFallbackToLegacy(err)) throw err;
+    return analisarApoliceLegacy(arquivos);
   }
 }
 

@@ -1,11 +1,11 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versão: 2.3  
-> Atualizado em: 2026-06-15
+> Versão: 2.5  
+> Atualizado em: 2026-06-16
 
 ## 1. Visão Geral
 
-Aplicação web estática da **Lavoro Seguros** com quatro fluxos independentes:
+Aplicação web estática da **Lavoro Seguros** com cinco fluxos independentes:
 
 | Fluxo | Entrada | Saída |
 |---|---|---|
@@ -13,6 +13,7 @@ Aplicação web estática da **Lavoro Seguros** com quatro fluxos independentes:
 | Análise Financeira IA | DRE, Balanço, Balancete, CSV, PDF e imagem | JSON consolidado multiempresa/multiperíodo renderizado em cards |
 | Seguro Garantia IA | Edital, contrato, aditivos, apostilamentos, PDF/imagem/planilhas | Relatório técnico estruturado (primeira resposta) + chat conversacional + exportação PDF |
 | Fiança Locatícia IA | Contrato de locação, aditivos, laudos, PDF/imagem/planilhas | JSON contratual renderizado em tela |
+| Análise de Apólice IA | Apólice, endossos, condições particulares, PDF/imagem/planilhas | JSON objetivo com dados essenciais da apólice renderizado em relatório |
 
 O fluxo **T&C** continua estável e não deve ser alterado sem necessidade explícita.
 
@@ -42,7 +43,7 @@ TC Lavoro/
 
 - Nunca expor `DEEPSEEK_API_KEY`, `UPSTASH_REDIS_REST_URL` ou `UPSTASH_REDIS_REST_TOKEN` no front-end.
 - Secrets ficam somente no Cloudflare Worker.
-- Toda navegação da SPA deve continuar usando apenas `switchTab('upload' | 'dashboard' | 'analise-financeira' | 'seguro-garantia' | 'fianca-locaticia')`.
+- Toda navegação da SPA deve continuar usando apenas `switchTab('upload' | 'dashboard' | 'analise-financeira' | 'seguro-garantia' | 'fianca-locaticia' | 'analise-apolice')`.
 - Toda string inserida em `innerHTML` deve passar por `esc()`.
 
 ### 3.2 Front-end
@@ -113,6 +114,7 @@ O front-end agora possui dois modos:
 | Análise Financeira | deepseek-chat / 4.000 tokens | deepseek-chat / 8.000 tokens |
 | Seguro Garantia | deepseek-chat / 4.000 tokens | deepseek-chat / **10.000 tokens** |
 | Fiança Locatícia | deepseek-chat / 4.000 tokens | deepseek-chat / 8.000 tokens |
+| Análise de Apólice | deepseek-chat / 4.000 tokens | deepseek-chat / 8.000 tokens |
 
 ### 5.2 Worker com Memória Redis
 
@@ -158,7 +160,7 @@ Body:
 
 ```json
 {
-  "flow": "analise-financeira | seguro-garantia | fianca-locaticia",
+  "flow": "analise-financeira | seguro-garantia | fianca-locaticia | analise-apolice",
   "files": [
     {
       "nome": "arquivo.pdf",
@@ -211,6 +213,7 @@ Implementada em `deepseek.js`.
 | `extrairPDF(file)` | extrai até 250 páginas via PDF.js e agrupa várias páginas por chunk para reduzir latência |
 | `extrairImagem(file)` | gera DataURL |
 | `executarAnaliseEmLotes(flow, arquivos)` | cria job e itera até concluir |
+| `analisarApolice(arquivos)` | executa o fluxo de análise de apólice com job Redis e fallback legado |
 
 ### 5.5 Estratégia para PDFs grandes
 
@@ -270,10 +273,11 @@ O prompt de chunk (`analise-financeira`) detecta se o documento indica escala em
 
 ### 6.1b Renderização — Indicadores Financeiros
 
-`buildDocumentoCard` renderiza os 20 indicadores como tabela 2 colunas (label | valor):
-- Linhas com `.af-kpi-row--priority` destacadas (campos principais)
-- Linhas com `.af-kpi-row--empty` esmaecidas (valor null → "—")
-- Linhas com `.af-kpi-row--neg` em vermelho (valor negativo)
+`buildDocumentoCard` renderiza somente indicadores com valor disponível como tabela simples de 2 colunas (label | valor):
+- Valores ausentes (`null`, `undefined`, string vazia, `"null"`, `"N/A"`, `"não informado"`) não aparecem na tabela
+- Indicadores que não costumam existir no documento, como EBITDA em balanços, ficam ocultos quando não extraídos
+- Valores negativos recebem `.af-kpi-row--neg` em vermelho
+- A tabela financeira usa visual simplificado, sem linhas apagadas e sem destaque visual por prioridade
 
 ### 6.2 Função pública
 
@@ -504,7 +508,85 @@ analisarFiancaLocaticia(arquivos)
 }
 ```
 
-## 9. Dependências Externas
+## 9. Fluxo 5 — Análise de Apólice IA
+
+### 9.0 Entrada
+
+- máximo de 10 arquivos (`MAX_CONTRATO_FILES`)
+- formatos: `.pdf`, `.png`, `.jpg`, `.jpeg`, `.xlsx`, `.xls`, `.csv`
+- documentos esperados: apólice, endossos, condições particulares, condições especiais ou planilhas de dados da apólice
+
+### 9.1 Função pública
+
+```js
+analisarApolice(arquivos)
+```
+
+Comportamento:
+
+- tenta análise em lotes com `flow = "analise-apolice"`
+- se o Worker publicado ainda não reconhecer o novo flow, usa fallback legado pelo endpoint `/`
+- retorna somente JSON objetivo para renderização do relatório de apólice
+
+### 9.2 Contrato JSON Final
+
+```json
+{
+  "tipo": "Analise de Apolice",
+  "documentos_analisados": ["arquivo.pdf"],
+  "dados_gerais": {
+    "tomador": { "valor": "string|null", "fonte": "string" },
+    "segurado": { "valor": "string|null", "fonte": "string" },
+    "importancia_segurada": { "valor": 0, "fonte": "string" },
+    "vigencia": { "valor": "string|null", "fonte": "string" },
+    "objeto_apolice": { "valor": "string|null", "fonte": "string" }
+  },
+  "coberturas": [
+    {
+      "descricao": "string",
+      "fonte": "string"
+    }
+  ],
+  "riscos_excluidos": [
+    {
+      "descricao": "string",
+      "fonte": "string"
+    }
+  ]
+}
+```
+
+### 9.3 Renderização
+
+`app.js` adiciona:
+
+| Função | Responsabilidade |
+|---|---|
+| `processarAnaliseApolice()` | valida arquivos, chama `analisarApolice()` e controla loading/erro |
+| `renderAnaliseApolice(data)` | define título, arquivos analisados e renderiza o relatório |
+| `buildApoliceReportHtml(data, title)` | constrói relatório objetivo com dados, coberturas e riscos excluídos |
+| `buildApoliceDadoRow(cfg, item)` | renderiza linhas da tabela Campo/Valor/Fonte |
+| `buildApoliceList(items, emptyText)` | renderiza coberturas e riscos excluídos |
+| `downloadApoliceReport()` | exporta o relatório da apólice em PDF |
+| `resetAnaliseApolice()` | limpa arquivos e retorna ao upload |
+
+Classes CSS adicionadas:
+
+- `.upload-header-eyebrow--apolice`
+- `.upload-card--apolice`
+- `.badge-ia-tag--apolice`
+- `.drop-zone--apolice`
+- `.btn-apolice`
+- `.ap-chat-topbar`
+- `.ap-report-shell`
+- `.ap-report`
+- `.ap-report-masthead`
+- `.ap-dados-table`
+- `.ap-list`
+- `.ap-list-item`
+- `.ap-list-desc`
+
+## 10. Dependências Externas
 
 | Biblioteca | Versão | Uso |
 |---|---|---|
@@ -514,7 +596,7 @@ analisarFiancaLocaticia(arquivos)
 | jsPDF | 2.5.1 | geração de PDF |
 | PDF.js | 3.11.174 | extração de texto de PDFs |
 
-## 10. Observações de Deploy
+## 11. Observações de Deploy
 
 - O front-end já está preparado para o Worker novo.
 - Para ativar memória Redis de fato em produção, é necessário publicar `workers/deepseek-memory-worker.js` no mesmo domínio do Worker atual ou atualizar `DEEPSEEK_WORKER_URL`.

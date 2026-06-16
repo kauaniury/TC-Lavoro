@@ -5,7 +5,7 @@ const CORS_HEADERS = {
 };
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
-const WORKER_VERSION = '2026-06-09.1';
+const WORKER_VERSION = '2026-06-16.1';
 const PRIMARY_DEEPSEEK_MODEL = 'deepseek-chat';
 const FALLBACK_DEEPSEEK_MODEL = 'deepseek-chat';
 const JOB_TTL_SECONDS = 60 * 60 * 6;
@@ -138,7 +138,7 @@ async function handleRunJob(jobId, env) {
 
 function validateCreateJobBody(body) {
   if (!body || typeof body !== 'object') throw new Error('Body invalido.');
-  if (!['analise-financeira', 'seguro-garantia', 'fianca-locaticia'].includes(body.flow)) {
+  if (!['analise-financeira', 'seguro-garantia', 'fianca-locaticia', 'analise-apolice'].includes(body.flow)) {
     throw new Error('Flow invalido.');
   }
   if (!Array.isArray(body.files) || body.files.length === 0) {
@@ -259,6 +259,24 @@ Formato:
 Retorne apenas JSON.`;
   }
 
+  if (flow === 'analise-apolice') {
+    return `${content}
+
+Analise apenas este trecho e retorne um JSON resumido e compacto com fatos encontrados neste trecho.
+Extraia somente:
+- tomador
+- segurado
+- importancia segurada
+- vigencia
+- objeto da apolice
+- coberturas da apolice
+- riscos excluidos
+
+Formato:
+{"dados_gerais":{"tomador":null,"segurado":null,"importancia_segurada":null,"vigencia":null,"objeto_apolice":null},"coberturas":[{"descricao":"...","fonte":"..."}],"riscos_excluidos":[{"descricao":"...","fonte":"..."}],"notas":["resumo curto"]}
+Retorne apenas JSON.`;
+  }
+
   return `${content}
 
 Analise apenas este trecho e retorne um resumo tecnico estruturado e compacto com:
@@ -295,6 +313,20 @@ Arquivos analisados: ${fileNames.join(', ')}
 
 Retorne APENAS o JSON final no formato:
 {"tipo":"Fianca Locaticia","documentos_analisados":["nomes dos arquivos"],"dados_gerais":{"imovel":{"valor":"...","fonte":"..."},"locatario":{"valor":"...","fonte":"..."},"locador":{"valor":"...","fonte":"..."},"finalidade":{"valor":"...","fonte":"..."},"valor_aluguel":{"valor":0.00,"fonte":"..."},"encargos_mensais":{"valor":"...","fonte":"..."},"valor_garantia":{"valor":0.00,"fonte":"..."},"vigencia_inicio":{"valor":"...","fonte":"..."},"vigencia_fim":{"valor":"...","fonte":"..."},"indice_reajuste":{"valor":"...","fonte":"..."},"multa_rescisao":{"valor":"...","fonte":"..."},"sub_rogacao":{"valor":"...","fonte":"..."},"foro":{"valor":"...","fonte":"..."}},"clausulas_criticas":[{"titulo":"...","descricao":"...","fonte":"...","impacto":"Alto"}],"riscos":[{"descricao":"...","fonte":"...","nivel":"Alto"}],"parecer":{"recomendacao":"Emitir | Emitir com ressalvas | Declinar","justificativa":"...","condicoes":["..."]},"resumo":"..."}
+
+NOTAS PARCIAIS:
+${notesBlock}`;
+  }
+
+  if (flow === 'analise-apolice') {
+    return `Voce vai consolidar notas parciais de uma analise de apolice. Os arquivos completos foram processados em lotes e as notas abaixo representam TODO o documento.
+
+Arquivos analisados: ${fileNames.join(', ')}
+
+Retorne APENAS o JSON final no formato:
+{"tipo":"Analise de Apolice","documentos_analisados":["nomes dos arquivos"],"dados_gerais":{"tomador":{"valor":"nome do tomador ou null","fonte":"..."},"segurado":{"valor":"nome do segurado ou null","fonte":"..."},"importancia_segurada":{"valor":0.00,"fonte":"..."},"vigencia":{"valor":"inicio e fim da vigencia ou null","fonte":"..."},"objeto_apolice":{"valor":"objeto da apolice ou null","fonte":"..."}},"coberturas":[{"descricao":"cobertura identificada","fonte":"localizacao no documento"}],"riscos_excluidos":[{"descricao":"risco excluido identificado","fonte":"localizacao no documento"}]}
+
+Regras: nao inclua parecer, recomendacao, resumo ou campos extras. Use null quando nao encontrado. Valores monetarios como numero puro em reais quando possivel.
 
 NOTAS PARCIAIS:
 ${notesBlock}`;
