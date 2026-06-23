@@ -2547,18 +2547,18 @@ function buildTcEmailTableHtml(data) {
     const span = mods.length;
     mods.forEach((m, idx) => {
       const first = idx === 0;
-      const last = idx === mods.length - 1;
+      const last = idx === span - 1;
       const rowClass = last ? ' class="tc-email-row-last"' : '';
       tableRows.push(
         '<tr' + rowClass + '>' +
-          (first ? '<td rowspan="' + span + '" class="tc-email-seg tc-email-group-cell">' + esc(r.seguradora) + '</td>' : '') +
-          (first ? '<td rowspan="' + span + '" class="tc-email-money tc-email-group-cell">' + (r.limite > 0 ? fmtBRL(r.limite) : '-') + '</td>' : '') +
+          '<td class="tc-email-seg tc-email-group-cell">' + (first ? esc(r.seguradora) : '') + '</td>' +
+          '<td class="tc-email-money tc-email-group-cell">' + (first ? (r.limite > 0 ? fmtBRL(r.limite) : '-') : '') + '</td>' +
           '<td class="tc-email-text">' + esc(m ? tcEmpty(m.label) : '-') + '</td>' +
           '<td class="tc-email-money">' + (m && m.value > 0 ? fmtBRL(m.value) : '-') + '</td>' +
           '<td class="tc-email-rate">' + esc(m && m.taxa ? m.taxa : '-') + '</td>' +
-          (first ? '<td rowspan="' + span + '" class="tc-email-text tc-email-group-cell">' + esc(tcEmpty(r.statusCcg)) + '</td>' : '') +
-          (first ? '<td rowspan="' + span + '" class="tc-email-date tc-email-group-cell">' + esc(tcEmpty(r.venc)) + '</td>' : '') +
-          (first ? '<td rowspan="' + span + '" class="tc-email-group-cell"><span class="tc-email-status tc-email-status--' + esc(r.status) + '">' + esc(tcStatusText(r.status)) + '</span></td>' : '') +
+          '<td class="tc-email-text tc-email-group-cell">' + (first ? esc(tcEmpty(r.statusCcg)) : '') + '</td>' +
+          '<td class="tc-email-date tc-email-group-cell">' + (first ? esc(tcEmpty(r.venc)) : '') + '</td>' +
+          '<td class="tc-email-group-cell">' + (first ? '<span class="tc-email-status tc-email-status--' + esc(r.status) + '">' + esc(tcStatusText(r.status)) + '</span>' : '') + '</td>' +
         '</tr>'
       );
     });
