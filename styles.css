@@ -4960,11 +4960,19 @@ details[open] .fl-clausula-chevron { transform: rotate(180deg); }
 }
 
 .tc-email-row-last td {
-  border-bottom: 3px solid var(--color-border-strong);
+  border-bottom: 0;
 }
 
 .tc-email-group-cell {
-  border-bottom: 3px solid var(--color-border-strong) !important;
+  border-bottom: 0 !important;
+}
+
+.tc-email-group-div td {
+  height: 3px;
+  padding: 0;
+  border: 0;
+  background: var(--color-border-strong);
+  font-size: 0;
 }
 
 .tc-email-seg {

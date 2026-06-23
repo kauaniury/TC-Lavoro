@@ -2562,6 +2562,7 @@ function buildTcEmailTableHtml(data) {
         '</tr>'
       );
     });
+    tableRows.push('<tr class="tc-email-group-div"><td colspan="8"></td></tr>');
   });
 
   return '<div class="tc-email-sheet" id="tcEmailTableCapture">' +
