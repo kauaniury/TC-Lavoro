@@ -10,6 +10,7 @@ const RAW_TEXT_CHAT_LIMIT = 50000; // chars do texto bruto incluídos no context
 let _rawFinanceiro = '';
 let _rawSeguroGarantia = '';
 let _rawFianca = '';
+let _rawApolice = '';
 
 function parseDeepSeekContent(data) {
   const msg = data && data.choices && data.choices[0] && data.choices[0].message;
@@ -278,33 +279,32 @@ function extrairImagem(file) {
 }
 
 function buildSeguroGarantiaInstruction(nomesArquivos, blocoTexto) {
-  return `Voce e um especialista senior em subscricao de SEGURO GARANTIA para seguradoras brasileiras. Analise COMPLETAMENTE os documentos enviados (edital, contrato, aditivo, apostilamento, termo de referencia ou similares) e produza uma analise tecnica detalhada em portugues brasileiro.
+  return `Voce e um especialista em subscricao de SEGURO GARANTIA para seguradoras brasileiras. Analise os documentos fornecidos e extraia APENAS as informacoes necessarias para emissao da apolice.
 
-Para cada informacao extraida, informe a fonte exata no documento (clausula, item, artigo, pagina). Omita campos nao encontrados em vez de escrever "nao encontrado" ou similar.
+REGRAS ABSOLUTAS:
+1. Retorne APENAS JSON valido, sem markdown e sem texto antes ou depois.
+2. Nao invente, nao estime e nao complete dados ausentes.
+3. Use JSON null quando nao encontrar um campo.
+4. Para cada campo, informe a fonte exata (clausula, item, pagina ou trecho).
+5. Identifique TODAS as modalidades aplicaveis separadamente.
 
-Estruture sua resposta cobrindo obrigatoriamente:
+IDENTIFICACAO DE MODALIDADES:
+Verifique se os documentos exigem ou mencionam: Garantia de Proposta, Garantia de Execucao, Adiantamento, Retencao, Manutencao, Fiel Cumprimento ou outras. Inclua somente as presentes.
 
-## Partes e Dados Gerais
-- Tomador (empresa contratada), Segurado/Beneficiario (orgao contratante), objeto do contrato
-- Numero do edital/contrato, valor estimado, modalidade de licitacao
-- Vigencia inicio e fim, foro de eleicao
+ONDE PROCURAR:
+- tomador: empresa ou pessoa contratada (quem sera o tomador do seguro)
+- segurado: orgao ou pessoa beneficiaria (contratante, prefeitura, empresa, proprietario)
+- importancia_segurada: percentual ou valor exato exigido no edital/contrato; calcule o valor em reais se possivel
+- vigencia: periodo coberto; pode ser datas fixas ou prazo em dias/meses a partir de evento
+- objeto_apolice: texto a constar no campo Objeto da apolice (o que esta sendo garantido)
+- clausulas_necessarias: clausulas que DEVEM constar NA APOLICE conforme edital/contrato
 
-## Modalidades de Seguro Garantia Identificadas
-Para cada modalidade aplicavel: nome, importancia segurada, percentual, vigencia, fonte exata no documento e parecer (Emitir / Emitir com ressalvas / Declinar). Verifique: Garantia de Proposta, Garantia de Execucao, Adiantamento, Retencao, Manutencao, Fiel Cumprimento.
+DOCUMENTOS ENVIADOS: ${nomesArquivos}
 
-## Clausulas Criticas
-Liste as clausulas que impactam o risco da seguradora (penalidades, rescisao, reajuste, sub-rogacao) com localizacao exata.
+Retorne APENAS este JSON:
+{"tipo":"Seguro Garantia","documentos_analisados":["nomes dos arquivos"],"tomador":{"valor":"nome ou null","fonte":"..."},"segurado":{"valor":"nome ou null","fonte":"..."},"modalidades":[{"nome":"nome da modalidade","importancia_segurada":{"valor":0.00,"fonte":"..."},"vigencia_inicio":{"valor":"DD/MM/AAAA ou null","fonte":"..."},"vigencia_fim":{"valor":"DD/MM/AAAA ou null","fonte":"..."},"vigencia_obs":{"valor":"descricao do prazo quando nao houver datas fixas ou null","fonte":"..."},"objeto_apolice":{"valor":"texto do objeto para constar na apolice ou null","fonte":"..."},"clausulas_necessarias":[{"descricao":"clausula obrigatoria na apolice","fonte":"localizacao no documento"}]}],"parecer":{"recomendacao":"Emitir | Emitir com ressalvas | Declinar","justificativa":"justificativa objetiva","pendencias":["pendencia 1 se houver"]}}
 
-## Riscos Identificados
-Liste riscos Alto / Medio / Baixo com descricao objetiva e fonte no documento.
-
-## Parecer Geral de Emissao
-Recomendacao: Emitir, Emitir com ressalvas ou Declinar, com justificativa tecnica abrangente e condicoes se houver.
-
-## Resumo Executivo
-4-5 frases resumindo objeto, partes, modalidades aplicaveis e parecer.
-
-Documentos analisados: ${nomesArquivos}${blocoTexto ? '\n\nDOCUMENTOS PARA ANALISE:\n' + blocoTexto : ''}`;
+Regras: valores monetarios como numero puro em reais (ex: 8543.83), null quando nao encontrado. Responda em portugues brasileiro.${blocoTexto ? '\n\nDOCUMENTOS PARA ANALISE:\n' + blocoTexto : ''}`;
 }
 
 function buildFiancaInstruction(nomesArquivos, blocoTexto) {
@@ -331,7 +331,7 @@ ONDE ENCONTRAR CADA CAMPO NO CONTRATO DE LOCACAO:
 DOCUMENTOS ENVIADOS: ${nomesArquivos}
 
 Retorne APENAS este JSON (sem markdown, sem texto antes ou depois):
-{"tipo":"Fianca Locaticia","documentos_analisados":["nomes dos arquivos"],"dados_gerais":{"imovel":{"valor":"endereco completo do imovel ou null","fonte":"ex: Clausula 1a do Contrato"},"locatario":{"valor":"nome completo do locatario ou null","fonte":"..."},"locador":{"valor":"nome completo do locador ou null","fonte":"..."},"finalidade":{"valor":"Residencial | Comercial | Misto ou null","fonte":"..."},"valor_aluguel":{"valor":0.00,"fonte":"..."},"encargos_mensais":{"valor":"descricao dos encargos (condominio, IPTU, etc.) ou null","fonte":"..."},"valor_garantia":{"valor":0.00,"fonte":"..."},"vigencia_inicio":{"valor":"DD/MM/AAAA ou null","fonte":"..."},"vigencia_fim":{"valor":"DD/MM/AAAA ou null","fonte":"..."},"indice_reajuste":{"valor":"IGPM | IPCA | outro ou null","fonte":"..."},"multa_rescisao":{"valor":"valor ou formula da multa ou null","fonte":"..."},"sub_rogacao":{"valor":"Sim | Nao | Nao mencionado","fonte":"..."},"foro":{"valor":"foro de eleicao ou null","fonte":"..."}},"clausulas_criticas":[{"titulo":"nome da clausula","descricao":"transcricao ou resumo fiel do texto da clausula","fonte":"ex: Clausula 8a do Contrato de Locacao","impacto":"Alto"}],"riscos":[{"descricao":"descricao objetiva do risco identificado","fonte":"localizacao exata no documento","nivel":"Alto"}],"parecer":{"recomendacao":"Emitir | Emitir com ressalvas | Declinar","justificativa":"justificativa tecnica detalhada","condicoes":["condicao 1","condicao 2"]},"resumo":"resumo executivo de 3-4 frases sobre o contrato de locacao e a analise"}
+{"tipo":"Fianca Locaticia","documentos_analisados":["nomes dos arquivos"],"dados_gerais":{"imovel":{"valor":"endereco completo do imovel ou null","fonte":"ex: Clausula 1a do Contrato"},"locatario":{"valor":"nome completo do locatario ou null","fonte":"..."},"locador":{"valor":"nome completo do locador ou null","fonte":"..."},"finalidade":{"valor":"Residencial | Comercial | Misto ou null","fonte":"..."},"valor_aluguel":{"valor":0.00,"fonte":"..."},"encargos_mensais":{"valor":"descricao dos encargos (condominio, IPTU, etc.) ou null","fonte":"..."},"valor_garantia":{"valor":0.00,"fonte":"..."},"vigencia_inicio":{"valor":"DD/MM/AAAA ou null","fonte":"..."},"vigencia_fim":{"valor":"DD/MM/AAAA ou null","fonte":"..."},"indice_reajuste":{"valor":"IGPM | IPCA | outro ou null","fonte":"..."},"multa_rescisao":{"valor":"valor ou formula da multa ou null","fonte":"..."},"sub_rogacao":{"valor":"Sim | Nao | Nao mencionado","fonte":"..."},"foro":{"valor":"foro de eleicao ou null","fonte":"..."}},"objeto_apolice":{"valor":"texto do objeto para constar na apolice de fianca (imovel, locatario, periodo) ou null","fonte":"..."},"clausulas_necessarias":[{"descricao":"clausula que deve constar na apolice de fianca locaticia conforme o contrato","fonte":"localizacao no documento"}],"clausulas_criticas":[{"titulo":"nome da clausula","descricao":"transcricao ou resumo fiel do texto da clausula","fonte":"ex: Clausula 8a do Contrato de Locacao","impacto":"Alto"}],"riscos":[{"descricao":"descricao objetiva do risco identificado","fonte":"localizacao exata no documento","nivel":"Alto"}],"parecer":{"recomendacao":"Emitir | Emitir com ressalvas | Declinar","justificativa":"justificativa tecnica detalhada","condicoes":["condicao 1","condicao 2"]},"resumo":"resumo executivo de 3-4 frases sobre o contrato de locacao e a analise"}
 
 Regras: monetarios como numero puro em reais (ex: 2500.00), null quando nao encontrado. Identifique TODAS as clausulas que impactam o risco da seguradora. Responda em portugues brasileiro.${blocoTexto ? '\n\nDOCUMENTOS PARA ANALISE:\n' + blocoTexto : ''}`;
 }
@@ -442,6 +442,7 @@ function shouldFallbackToLegacy(err) {
     err.status === 405 ||
     err.status === 501 ||
     msg.includes('flow invalido') ||
+    msg.includes('redis error 414') ||
     msg.includes('flow inválido')
   );
 }
@@ -502,7 +503,7 @@ async function analisarSeguroGarantiaLegacy(arquivos) {
     : [{ role: 'user', content: instrucao }];
 
   const data = await chamarWorkerDireto(mensagens, 8192);
-  return parseDeepSeekContent(data);
+  return parseJsonResult(parseDeepSeekContent(data));
 }
 
 async function analisarFiancaLocaticiaLegacy(arquivos) {
@@ -575,7 +576,12 @@ async function analisarSeguroGarantia(arquivos) {
   _rawSeguroGarantia = await extrairTextosBrutos(arquivos);
   try {
     const result = await executarAnaliseEmLotes('seguro-garantia', arquivos);
-    return typeof result === 'string' ? result : String(result && result.resultado ? result.resultado : '');
+    try {
+      return parseJsonResult(result);
+    } catch (_jsonErr) {
+      // Worker antigo ainda retorna markdown — usa string para renderizar com renderer legado
+      return typeof result === 'string' ? result : String(result || '');
+    }
   } catch (err) {
     if (!shouldFallbackToLegacy(err)) throw err;
     return analisarSeguroGarantiaLegacy(arquivos);
@@ -584,13 +590,14 @@ async function analisarSeguroGarantia(arquivos) {
 
 function criarHistoricoSeguroGarantia(arquivos, analiseInicial) {
   const nomesArquivos = arquivos.map(f => f.name).join(', ');
+  const analiseStr = typeof analiseInicial === 'string' ? analiseInicial : JSON.stringify(analiseInicial, null, 2);
   const blocoRaw = _rawSeguroGarantia
     ? `\n\nTEXTO ORIGINAL DOS DOCUMENTOS (use para verificar dados diretamente):\n${_rawSeguroGarantia}\n`
     : '';
   return [
     {
       role: 'user',
-      content: `Você já concluiu a análise inicial dos seguintes documentos: ${nomesArquivos}.${blocoRaw}\nA partir de agora, responda perguntas adicionais do corretor em português brasileiro. Para verificar qualquer dado específico, consulte o texto original dos documentos acima. A análise consolidada está abaixo.\n\nAnálise consolidada:\n${analiseInicial}`,
+      content: `Você já concluiu a análise inicial dos seguintes documentos: ${nomesArquivos}.${blocoRaw}\nA partir de agora, responda perguntas adicionais do corretor em português brasileiro. Para verificar qualquer dado específico, consulte o texto original dos documentos acima. A análise consolidada está abaixo.\n\nAnálise consolidada:\n${analiseStr}`,
     },
     {
       role: 'assistant',
@@ -648,6 +655,28 @@ async function chatAnaliseFinanceira(history) {
   return parseDeepSeekContent(data);
 }
 
+function criarHistoricoApolice(arquivos, analiseJson) {
+  const nomesArquivos = arquivos.map(f => f.name).join(', ');
+  const blocoRaw = _rawApolice
+    ? `\n\nTEXTO ORIGINAL DOS DOCUMENTOS (use para verificar dados diretamente):\n${_rawApolice}\n`
+    : '';
+  return [
+    {
+      role: 'user',
+      content: `Voce ja concluiu a analise de apolice dos seguintes documentos: ${nomesArquivos}.${blocoRaw}\nResponda perguntas em portugues brasileiro sobre a apolice, tomador, segurado, importancia segurada, vigencia, objeto, coberturas e riscos excluidos. Para verificar qualquer dado especifico, consulte o texto original acima. O JSON com a analise extraida esta abaixo.\n\nJSON da analise:\n${analiseJson}`,
+    },
+    {
+      role: 'assistant',
+      content: 'Analise da apolice concluida. Pode me fazer perguntas sobre tomador, segurado, importancia segurada, vigencia, objeto, coberturas e riscos excluidos.',
+    },
+  ];
+}
+
+async function chatApolice(history) {
+  const data = await chamarWorkerDireto(history, 4096);
+  return parseDeepSeekContent(data);
+}
+
 async function analisarFiancaLocaticia(arquivos) {
   _rawFianca = await extrairTextosBrutos(arquivos);
   try {
@@ -660,6 +689,7 @@ async function analisarFiancaLocaticia(arquivos) {
 }
 
 async function analisarApolice(arquivos) {
+  _rawApolice = await extrairTextosBrutos(arquivos);
   try {
     const result = await executarAnaliseEmLotes('analise-apolice', arquivos);
     return parseJsonResult(result);

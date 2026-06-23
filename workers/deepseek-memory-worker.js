@@ -5,7 +5,7 @@ const CORS_HEADERS = {
 };
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
-const WORKER_VERSION = '2026-06-16.1';
+const WORKER_VERSION = '2026-06-16.4';
 const PRIMARY_DEEPSEEK_MODEL = 'deepseek-chat';
 const FALLBACK_DEEPSEEK_MODEL = 'deepseek-chat';
 const JOB_TTL_SECONDS = 60 * 60 * 6;
@@ -111,11 +111,18 @@ async function handleRunJob(jobId, env) {
     await redisSet(env, jobKey(jobId), manifest, JOB_TTL_SECONDS);
 
     const note = await analyzeChunk(env, manifest, chunk);
-    manifest.chunkNotes.push({
+    const noteData = {
       index: chunkIndex,
       fileName: chunk.fileName,
       chunkLabel: chunk.chunkLabel,
       note,
+    };
+    await redisSet(env, noteKey(jobId, chunkIndex), noteData, JOB_TTL_SECONDS);
+    manifest.chunkNotes.push({
+      index: chunkIndex,
+      fileName: chunk.fileName,
+      chunkLabel: chunk.chunkLabel,
+      noteKey: noteKey(jobId, chunkIndex),
     });
     manifest.nextChunkIndex = chunkIndex;
     manifest.updatedAt = new Date().toISOString();
@@ -227,7 +234,8 @@ async function analyzeChunk(env, manifest, chunk) {
 }
 
 async function synthesizeFinalResult(env, manifest) {
-  const prompt = buildFinalPrompt(manifest.flow, manifest.fileNames, manifest.chunkNotes);
+  const chunkNotes = await loadChunkNotes(env, manifest);
+  const prompt = buildFinalPrompt(manifest.flow, manifest.fileNames, chunkNotes);
   const payload = {
     model: PRIMARY_DEEPSEEK_MODEL,
     messages: [{ role: 'user', content: prompt }],
@@ -279,14 +287,30 @@ Retorne apenas JSON.`;
 
   return `${content}
 
-Analise apenas este trecho e retorne um resumo tecnico estruturado e compacto com:
-- Partes e dados gerais identificados
-- Modalidades de seguro garantia identificadas
-- Clausulas criticas com fonte
-- Riscos identificados com nivel e fonte
-- Parecer parcial deste trecho
+Analise apenas este trecho com foco em SEGURO GARANTIA para emissao de apolice. Retorne um JSON compacto com evidencias encontradas neste trecho.
+Formato:
+{"tomador":null,"segurado":null,"modalidades":[{"nome":"nome da modalidade ou null","importancia_segurada":null,"vigencia_obs":null,"objeto_pista":null,"clausulas_necessarias_pista":["clausula que deve constar na apolice"]}],"notas":["resumo curto do trecho"]}
+Retorne apenas JSON.`;
+}
 
-Retorne em markdown enxuto, sem introducao.`;
+async function loadChunkNotes(env, manifest) {
+  const refs = Array.isArray(manifest.chunkNotes) ? manifest.chunkNotes : [];
+  const notes = [];
+
+  for (const ref of refs) {
+    if (!ref || !ref.index) continue;
+
+    if (ref && ref.note) {
+      notes.push(ref);
+      continue;
+    }
+
+    const key = ref.noteKey || noteKey(manifest.jobId, ref.index);
+    const stored = await redisGet(env, key);
+    if (stored) notes.push(stored);
+  }
+
+  return notes.sort((a, b) => (a.index || 0) - (b.index || 0));
 }
 
 function buildFinalPrompt(flow, fileNames, chunkNotes) {
@@ -312,7 +336,7 @@ ${notesBlock}`;
 Arquivos analisados: ${fileNames.join(', ')}
 
 Retorne APENAS o JSON final no formato:
-{"tipo":"Fianca Locaticia","documentos_analisados":["nomes dos arquivos"],"dados_gerais":{"imovel":{"valor":"...","fonte":"..."},"locatario":{"valor":"...","fonte":"..."},"locador":{"valor":"...","fonte":"..."},"finalidade":{"valor":"...","fonte":"..."},"valor_aluguel":{"valor":0.00,"fonte":"..."},"encargos_mensais":{"valor":"...","fonte":"..."},"valor_garantia":{"valor":0.00,"fonte":"..."},"vigencia_inicio":{"valor":"...","fonte":"..."},"vigencia_fim":{"valor":"...","fonte":"..."},"indice_reajuste":{"valor":"...","fonte":"..."},"multa_rescisao":{"valor":"...","fonte":"..."},"sub_rogacao":{"valor":"...","fonte":"..."},"foro":{"valor":"...","fonte":"..."}},"clausulas_criticas":[{"titulo":"...","descricao":"...","fonte":"...","impacto":"Alto"}],"riscos":[{"descricao":"...","fonte":"...","nivel":"Alto"}],"parecer":{"recomendacao":"Emitir | Emitir com ressalvas | Declinar","justificativa":"...","condicoes":["..."]},"resumo":"..."}
+{"tipo":"Fianca Locaticia","documentos_analisados":["nomes dos arquivos"],"dados_gerais":{"imovel":{"valor":"...","fonte":"..."},"locatario":{"valor":"...","fonte":"..."},"locador":{"valor":"...","fonte":"..."},"finalidade":{"valor":"...","fonte":"..."},"valor_aluguel":{"valor":0.00,"fonte":"..."},"encargos_mensais":{"valor":"...","fonte":"..."},"valor_garantia":{"valor":0.00,"fonte":"..."},"vigencia_inicio":{"valor":"...","fonte":"..."},"vigencia_fim":{"valor":"...","fonte":"..."},"indice_reajuste":{"valor":"...","fonte":"..."},"multa_rescisao":{"valor":"...","fonte":"..."},"sub_rogacao":{"valor":"...","fonte":"..."},"foro":{"valor":"...","fonte":"..."}},"objeto_apolice":{"valor":"texto do objeto para constar na apolice (imovel, locatario, periodo) ou null","fonte":"..."},"clausulas_necessarias":[{"descricao":"clausula que deve constar na apolice de fianca locaticia","fonte":"localizacao no documento"}],"clausulas_criticas":[{"titulo":"...","descricao":"...","fonte":"...","impacto":"Alto"}],"riscos":[{"descricao":"...","fonte":"...","nivel":"Alto"}],"parecer":{"recomendacao":"Emitir | Emitir com ressalvas | Declinar","justificativa":"...","condicoes":["..."]},"resumo":"..."}
 
 NOTAS PARCIAIS:
 ${notesBlock}`;
@@ -332,19 +356,14 @@ NOTAS PARCIAIS:
 ${notesBlock}`;
   }
 
-  return `Voce vai consolidar notas parciais de uma analise de seguro garantia. Os arquivos completos foram processados em lotes e as notas abaixo representam TODO o documento.
+  return `Voce vai consolidar notas parciais de uma analise de SEGURO GARANTIA focada em emissao de apolice. Os arquivos completos foram processados em lotes e as notas abaixo representam TODO o documento.
 
 Arquivos analisados: ${fileNames.join(', ')}
 
-Retorne uma analise tecnica detalhada em markdown, em portugues brasileiro, com as secoes:
-- Partes e Dados Gerais
-- Modalidades de Seguro Garantia Identificadas
-- Clausulas Criticas
-- Riscos Identificados
-- Parecer Geral de Emissao
-- Resumo Executivo
+Retorne APENAS o JSON final no formato:
+{"tipo":"Seguro Garantia","documentos_analisados":["nomes dos arquivos"],"tomador":{"valor":"nome ou null","fonte":"..."},"segurado":{"valor":"nome ou null","fonte":"..."},"modalidades":[{"nome":"nome da modalidade","importancia_segurada":{"valor":0.00,"fonte":"..."},"vigencia_inicio":{"valor":"DD/MM/AAAA ou null","fonte":"..."},"vigencia_fim":{"valor":"DD/MM/AAAA ou null","fonte":"..."},"vigencia_obs":{"valor":"descricao do prazo quando nao houver datas fixas ou null","fonte":"..."},"objeto_apolice":{"valor":"texto do objeto para constar na apolice ou null","fonte":"..."},"clausulas_necessarias":[{"descricao":"clausula obrigatoria na apolice","fonte":"localizacao no documento"}]}],"parecer":{"recomendacao":"Emitir | Emitir com ressalvas | Declinar","justificativa":"justificativa objetiva","pendencias":["pendencia se houver"]}}
 
-Sempre cite a fonte exata quando a nota parcial trouxer evidencia.
+Regras: valores monetarios como numero puro em reais, null quando nao encontrado, inclua apenas modalidades presentes nos documentos.
 
 NOTAS PARCIAIS:
 ${notesBlock}`;
@@ -443,6 +462,10 @@ function chunkKey(jobId, index) {
   return `deepseek:job:${jobId}:chunk:${index}`;
 }
 
+function noteKey(jobId, index) {
+  return `deepseek:job:${jobId}:note:${index}`;
+}
+
 async function redisGet(env, key) {
   const res = await redisCall(env, ['GET', key]);
   return res.result ? JSON.parse(res.result) : null;
@@ -457,10 +480,13 @@ async function redisCall(env, command) {
     throw new Error('Configure UPSTASH_REDIS_REST_URL e UPSTASH_REDIS_REST_TOKEN no Worker.');
   }
 
-  const response = await fetch(`${env.UPSTASH_REDIS_REST_URL}/${command.map(encodeURIComponent).join('/')}`, {
+  const response = await fetch(env.UPSTASH_REDIS_REST_URL, {
+    method: 'POST',
     headers: {
       Authorization: `Bearer ${env.UPSTASH_REDIS_REST_TOKEN}`,
+      'Content-Type': 'application/json',
     },
+    body: JSON.stringify(command),
   });
 
   if (!response.ok) {

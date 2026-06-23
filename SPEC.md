@@ -1,7 +1,7 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versão: 2.5  
-> Atualizado em: 2026-06-16
+> Versao: 2.16  
+> Atualizado em: 2026-06-23
 
 ## 1. Visão Geral
 
@@ -71,7 +71,20 @@ Mantido sem alteração estrutural.
   - `rows[]`
 - Modalidades adicionais entram em `modalidades[]` do registro principal
 
-### 4.2 Estrutura Parsed
+### 4.2 Tabela Manual para E-mail
+
+Funcoes envolvidas em `app.js`:
+
+- `buildManualParsedData()` consolida o formulario manual em `rows[]` e inclui `statusCcg` apenas para seguradoras aprovadas
+- `fmtTcCnpj(el)` aplica mascara no CNPJ do tomador no formato `00.000.000/0000-00`
+- `fmtTcDate(el)` aplica mascara no vencimento no formato `DD/MM/AAAA`
+- `fmtTcTaxa(el)` normaliza a taxa digitada como percentual literal no campo manual
+- `renderTcEmailTable()` substitui a antiga exportacao XLSX, monta a tabela visual compacta fora da tela e baixa automaticamente a imagem PNG
+- `downloadTcEmailTableImage()` usa `html2canvas` para baixar a tabela renderizada como PNG
+
+A tabela de e-mail contem todas as colunas operacionais do formulario manual nesta ordem: seguradora, capacidade total, modalidades, limites por modalidade, taxa por modalidade, status CCG, vencimentos e status. Tomador e CNPJ aparecem no cabecalho. O campo Status CCG so aparece no formulario quando a seguradora esta com status Aprovado. A tabela nao fica visivel na tela; ela e renderizada temporariamente apenas para captura e download da imagem.
+
+### 4.3 Estrutura Parsed
 
 ```js
 {
@@ -79,6 +92,7 @@ Mantido sem alteração estrutural.
     {
       seguradora: string,
       status: 'aprovado' | 'declinado' | 'concorrente' | 'bloqueado',
+      statusCcg: string | null,
       limite: number,
       modalidade: string,
       valorModal: number,
@@ -360,56 +374,67 @@ Comportamento:
 
 ### 7.1a Prompt de síntese — Seguro Garantia
 
-O prompt final produz uma análise técnica completa em markdown com 12 seções numeradas:
+O prompt final produz JSON estruturado focado em emissão de apólice. O front-end renderiza um **card compacto de emissão** (`renderSeguroGarantiaCard`) em vez de relatório markdown.
 
-1. Classificação do documento
-2. Modalidade sugerida
-3. Partes identificadas (tabela: Papel | Nome/Razão Social | CPF/CNPJ | Fonte)
-4. Dados principais para emissão (tabela: Campo | Informação | Fonte/Trecho | Confiança)
-5. Cálculo da importância segurada
-6. Vigência recomendada
-7. Objeto sugerido para a apólice
-8. Cláusulas e coberturas recomendadas (tabela)
-9. Pontos de atenção
-10. Documentos ou informações pendentes
-11. Conclusão operacional
-12. Resumo final para cadastro *(seção especial — fundo verde escuro + campos monoespaçados)*
-
-A seção 12 é renderizada por `renderResumoFinalSection` como grade de campos `label: valor`, não como markdown genérico.
+A função `renderSeguroGarantiaReport` (markdown) é mantida como legado para fallback em caso de JSON inválido.
 
 ### 7.2 Funções de renderização (app.js)
 
 | Função | Responsabilidade |
 |---|---|
-| `renderSeguroGarantiaReport(text)` | entry-point: constrói todo o HTML do relatório (masthead, badge de veredicto, seções) |
-| `parseReportSections(text)` | divide o markdown por `##` em `[{ title, content }]` |
-| `getSectionMeta(title)` | mapeia título para tipo: `dados \| modalidades \| clausulas \| riscos \| parecer \| resumo \| default` |
-| `getSectionSvgIcon(type)` | retorna SVG inline por tipo de seção |
-| `detectVerdictFromText(text)` | detecta veredicto no texto e retorna `{ cls, label, icon }` para Emitir / Ressalvas / Declinar |
-| `renderReportSection(section)` | renderiza um card de seção com cabeçalho com ícone e corpo em markdown |
-| `renderReportMarkdown(text)` | markdown aprimorado: tabelas pipe `\| … \|`, `---` HR, headings, bullets, negrito |
+| `renderSeguroGarantiaCard(data)` | entry-point principal: renderiza card compacto de emissão a partir do JSON |
+| `buildSgModalidadeCard(modalidade)` | card de cada modalidade com IS, vigência, objeto e cláusulas necessárias |
+| `buildVigenciaSgHtml(modalidade)` | consolida vigencia_inicio, vigencia_fim e vigencia_obs num único campo |
+| `buildEmissaoPartBox(label, item)` | box de Tomador ou Segurado com fonte |
+| `buildEmissaoFieldRow(label, item, format)` | linha de campo IS/Objeto/Vigência com fonte |
+| `renderSeguroGarantiaReport(text)` | legado: renderiza markdown (usado como fallback se JSON inválido) |
 | `downloadSgReport()` | exportação A4 multi-página via html2canvas + jsPDF |
-| `syncAiChatStickyOffset()` | mede a topbar ativa do relatório e atualiza `--ai-sidebar-sticky-top` para manter o chat lateral visível abaixo dela |
+| `syncAiChatStickyOffset()` | atualiza `--ai-sidebar-sticky-top` para manter o chat lateral visível |
+
+### 7.2a JSON Final Esperado
+
+```json
+{
+  "tipo": "Seguro Garantia",
+  "documentos_analisados": ["arquivo.pdf"],
+  "tomador": { "valor": "Nome do Tomador", "fonte": "..." },
+  "segurado": { "valor": "Nome do Segurado/Beneficiário", "fonte": "..." },
+  "modalidades": [
+    {
+      "nome": "Garantia de Proposta",
+      "importancia_segurada": { "valor": 8543.83, "fonte": "Item 9.1, pág. 35" },
+      "vigencia_inicio": { "valor": null, "fonte": "..." },
+      "vigencia_fim": { "valor": null, "fonte": "..." },
+      "vigencia_obs": { "valor": "Prazo de validade da proposta: mínimo 120 dias", "fonte": "..." },
+      "objeto_apolice": { "valor": "Garantia de Proposta para participação no Pregão nº 012/2026...", "fonte": "..." },
+      "clausulas_necessarias": [
+        { "descricao": "Cláusula de manutenção de proposta", "fonte": "Item 9.1, pág. 35" }
+      ]
+    }
+  ],
+  "parecer": {
+    "recomendacao": "Emitir | Emitir com ressalvas | Declinar",
+    "justificativa": "...",
+    "pendencias": ["pendência 1"]
+  }
+}
+```
 
 ### 7.3 Arquitetura de renderização
 
-A primeira mensagem da IA no chat é renderizada como **relatório completo** (`div.sg-report-wrapper`). Mensagens subsequentes (perguntas e respostas do chat) usam o layout de balão padrão (`sg-chat-msg--user` / `sg-chat-msg--ai`).
+A primeira mensagem da IA no chat é renderizada como **card de emissão** (`div.sg-report-wrapper`). Mensagens subsequentes usam o layout de balão padrão (`sg-chat-msg--user` / `sg-chat-msg--ai`).
 
 Controlado pela flag `sgFirstAnalysis` em `app.js`:
 
 ```js
-// primeiro assistente → relatório estruturado
+// primeiro assistente → card de emissão (JSON object)
 if (role === 'assistant' && sgFirstAnalysis) {
   div.className = 'sg-report-wrapper';
-  div.innerHTML = renderSeguroGarantiaReport(text);
+  const isJsonData = text && typeof text === 'object' && text.tipo === 'Seguro Garantia';
+  div.innerHTML = isJsonData ? renderSeguroGarantiaCard(text) : renderSeguroGarantiaReport(String(text));
   sgFirstAnalysis = false;
-  // exibe botão "Exportar PDF"
-} else {
-  div.className = 'sg-chat-msg ' + (role === 'user' ? 'sg-chat-msg--user' : 'sg-chat-msg--ai');
 }
 ```
-
-Um divisor visual (`.sg-chat-divider` com texto "Perguntas sobre a análise") é inserido antes da primeira mensagem do usuário após o relatório.
 
 ### 7.4 Estrutura visual do relatório
 
@@ -484,6 +509,10 @@ analisarFiancaLocaticia(arquivos)
     "sub_rogacao": { "valor": "string|null", "fonte": "string" },
     "foro": { "valor": "string|null", "fonte": "string" }
   },
+  "objeto_apolice": { "valor": "string|null", "fonte": "string" },
+  "clausulas_necessarias": [
+    { "descricao": "string", "fonte": "string" }
+  ],
   "clausulas_criticas": [
     {
       "titulo": "string",

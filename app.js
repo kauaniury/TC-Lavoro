@@ -1,6 +1,8 @@
 ﻿// â"€â"€ State
 let chartBarInst, chartDoughnutInst;
 let parsedData = null;
+let _tcCounter = 0;
+let _tcModalCounters = {};
 
 // â"€â"€ Tab switching
 function switchTab(tab) {
@@ -927,8 +929,8 @@ async function processarSeguroGarantia() {
   document.getElementById('sgChatMessages').innerHTML = '';
 
   try {
-    const respText = await analisarSeguroGarantia(garantiaFiles);
-    sgChatHistory = criarHistoricoSeguroGarantia(garantiaFiles, respText);
+    const respData = await analisarSeguroGarantia(garantiaFiles);
+    sgChatHistory = criarHistoricoSeguroGarantia(garantiaFiles, respData);
 
     const title = garantiaFiles.length === 1 ? garantiaFiles[0].name : garantiaFiles.length + ' documentos analisados';
     const files = garantiaFiles.map(f => f.name).join(' · ');
@@ -937,7 +939,7 @@ async function processarSeguroGarantia() {
 
     document.getElementById('sgLoading').hidden = true;
     document.getElementById('sgChatArea').hidden = false;
-    appendSgChatMessage('assistant', respText);
+    appendSgChatMessage('assistant', respData);
   } catch (err) {
     document.getElementById('sgLoading').hidden = true;
     document.getElementById('sgUploadSection').hidden = false;
@@ -1102,7 +1104,8 @@ function appendSgChatMessage(role, text) {
   const div = document.createElement('div');
   if (role === 'assistant' && sgFirstAnalysis) {
     div.className = 'sg-report-wrapper';
-    div.innerHTML = renderSeguroGarantiaReport(text);
+    const isJsonData = text && typeof text === 'object' && text.tipo === 'Seguro Garantia';
+    div.innerHTML = isJsonData ? renderSeguroGarantiaCard(text) : renderSeguroGarantiaReport(String(text));
     sgFirstAnalysis = false;
     const exportBtn = document.getElementById('sgExportBtn');
     if (exportBtn) exportBtn.hidden = false;
@@ -1196,6 +1199,158 @@ function renderSeguroGarantiaReport(text) {
       </div>
     </div>`;
 }
+
+// ── Seguro Garantia — Emission Card (novo renderer compacto) ──────────────
+
+function renderSeguroGarantiaCard(data) {
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+  const docTitle = document.getElementById('sgChatTitle').textContent || 'Análise de Contrato';
+  const filesText = document.getElementById('sgChatFiles').textContent || '';
+
+  const parecer = data.parecer || {};
+  const rec = (parecer.recomendacao || '').toLowerCase();
+  const verdictCls = rec.includes('declinar') ? 'declinar' : rec.includes('ressalvas') ? 'ressalvas' : parecer.recomendacao ? 'emitir' : '';
+  const verdictLabel = parecer.recomendacao || '';
+  const verdictIcon = rec.includes('declinar') ? '✕' : rec.includes('ressalvas') ? '!' : '✓';
+
+  const docs = data.documentos_analisados || [];
+  const modalidades = data.modalidades || [];
+
+  const tomadorHtml = buildEmissaoPartBox('Tomador', data.tomador);
+  const seguradoHtml = buildEmissaoPartBox('Segurado / Beneficiário', data.segurado);
+  const temPartes = tomadorHtml || seguradoHtml;
+
+  const parecerPendHtml = (parecer.pendencias || []).filter(p => p).length > 0
+    ? `<ul class="sg-emission-pendencias">${(parecer.pendencias || []).map(p => `<li>${esc(p)}</li>`).join('')}</ul>`
+    : '';
+
+  const parecerHtml = verdictLabel ? `
+    <div class="sg-emission-parecer sg-emission-parecer--${verdictCls}">
+      <div class="sg-emission-parecer-hdr">
+        <span class="sg-emission-parecer-icon" aria-hidden="true">${verdictIcon}</span>
+        <div>
+          <p class="sg-emission-parecer-label">Parecer de Emissão</p>
+          <p class="sg-emission-parecer-rec">${esc(verdictLabel)}</p>
+        </div>
+      </div>
+      ${parecer.justificativa ? `<p class="sg-emission-parecer-just">${esc(parecer.justificativa)}</p>` : ''}
+      ${parecerPendHtml}
+    </div>` : '';
+
+  return `
+    <div class="sg-report" id="sgReportContent">
+      <div class="sg-report-masthead">
+        <div class="sg-report-masthead-left">
+          <p class="sg-report-eyebrow">Análise Técnica · Seguro Garantia IA</p>
+          <h2 class="sg-report-doc-title">${esc(docTitle)}</h2>
+          ${filesText && filesText !== docTitle ? `<p class="sg-report-files-label">${esc(filesText)}</p>` : ''}
+        </div>
+        <div class="sg-report-masthead-right">
+          ${verdictLabel ? `<div class="sg-report-verdict-badge sg-report-verdict-badge--${verdictCls}">
+            <span class="sg-report-verdict-icon">${verdictIcon}</span>
+            <span>${esc(verdictLabel)}</span>
+          </div>` : ''}
+          <p class="sg-report-gen-date">Gerado em ${dateStr}</p>
+        </div>
+      </div>
+
+      <div class="sg-emission-body">
+        ${docs.length > 0 ? `<div class="sg-docs-analisados">${docs.map(d => `<span class="sg-doc-badge">${esc(d)}</span>`).join('')}</div>` : ''}
+
+        ${temPartes ? `<div class="sg-emission-partes-grid">${tomadorHtml}${seguradoHtml}</div>` : ''}
+
+        ${modalidades.map(buildSgModalidadeCard).join('')}
+
+        ${parecerHtml}
+      </div>
+    </div>`;
+}
+
+function buildSgModalidadeCard(modalidade) {
+  const clausulas = modalidade.clausulas_necessarias || [];
+
+  const clausulasHtml = clausulas.length > 0
+    ? clausulas.map(c => `
+      <div class="sg-clausula-nec">
+        <p class="sg-clausula-nec-desc">${esc(c.descricao || '')}</p>
+        ${c.fonte ? `<span class="sg-dado-fonte"><span class="sg-fonte-arrow" aria-hidden="true">↳</span>${esc(c.fonte)}</span>` : ''}
+      </div>`).join('')
+    : '';
+
+  const vigenciaHtml = buildVigenciaSgHtml(modalidade);
+
+  return `
+    <div class="sg-modalidade-emission-card">
+      <div class="sg-modalidade-emission-head">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" width="16" height="16" aria-hidden="true"><path d="M10 2L3 6v5c0 4.4 3.1 7.6 7 8 3.9-.4 7-3.6 7-8V6L10 2z" stroke-linejoin="round"/></svg>
+        <h3 class="sg-modalidade-emission-nome">${esc(modalidade.nome || 'Modalidade')}</h3>
+      </div>
+      <div class="sg-modalidade-emission-body">
+        ${buildEmissaoFieldRow('IS (Importância Segurada)', modalidade.importancia_segurada, 'brl')}
+        ${vigenciaHtml}
+        ${buildEmissaoFieldRow('Objeto da Apólice', modalidade.objeto_apolice)}
+        ${clausulas.length > 0 ? `
+          <div class="sg-clausulas-nec-wrap">
+            <p class="sg-clausulas-nec-label">Cláusulas Necessárias na Apólice</p>
+            ${clausulasHtml}
+          </div>` : ''}
+      </div>
+    </div>`;
+}
+
+function buildVigenciaSgHtml(modalidade) {
+  const ini = modalidade.vigencia_inicio && modalidade.vigencia_inicio.valor;
+  const fim = modalidade.vigencia_fim && modalidade.vigencia_fim.valor;
+  const obs = modalidade.vigencia_obs && modalidade.vigencia_obs.valor;
+  if (!ini && !fim && !obs) return '';
+
+  let vigVal, vigFonte;
+  if (ini && fim) {
+    vigVal = `${ini} a ${fim}`;
+    vigFonte = (modalidade.vigencia_inicio.fonte || modalidade.vigencia_fim.fonte || '');
+  } else if (obs) {
+    vigVal = obs;
+    vigFonte = (modalidade.vigencia_obs && modalidade.vigencia_obs.fonte) || '';
+  } else {
+    vigVal = ini || fim || '';
+    vigFonte = (ini ? modalidade.vigencia_inicio : modalidade.vigencia_fim).fonte || '';
+  }
+  return `
+    <div class="sg-dado-item">
+      <span class="sg-dado-label">Vigência</span>
+      <div class="sg-dado-right">
+        <span class="sg-dado-valor">${esc(vigVal)}</span>
+        ${vigFonte ? `<span class="sg-dado-fonte"><span class="sg-fonte-arrow" aria-hidden="true">↳</span>${esc(vigFonte)}</span>` : ''}
+      </div>
+    </div>`;
+}
+
+function buildEmissaoPartBox(label, item) {
+  if (!item || item.valor === null || item.valor === undefined || String(item.valor) === 'null' || String(item.valor).trim() === '') return '';
+  return `
+    <div class="sg-emission-parte-box">
+      <p class="sg-emission-parte-label">${esc(label)}</p>
+      <p class="sg-emission-parte-valor">${esc(String(item.valor))}</p>
+      ${item.fonte ? `<p class="sg-emission-parte-fonte"><span class="sg-fonte-arrow" aria-hidden="true">↳</span>${esc(item.fonte)}</p>` : ''}
+    </div>`;
+}
+
+function buildEmissaoFieldRow(label, item, format) {
+  if (!item || item.valor === null || item.valor === undefined || String(item.valor) === 'null' || String(item.valor).trim() === '') return '';
+  let display = item.valor;
+  if (format === 'brl' && typeof item.valor === 'number') display = fmtBRL(item.valor);
+  return `
+    <div class="sg-dado-item">
+      <span class="sg-dado-label">${esc(label)}</span>
+      <div class="sg-dado-right">
+        <span class="sg-dado-valor">${esc(String(display))}</span>
+        ${item.fonte ? `<span class="sg-dado-fonte"><span class="sg-fonte-arrow" aria-hidden="true">↳</span>${esc(item.fonte)}</span>` : ''}
+      </div>
+    </div>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 function parseReportSections(text) {
   const sections = [];
@@ -1663,7 +1818,7 @@ function buildParecerHTML(parecer) {
 function buildFlReportHtml(data, locatario, imovel, dateStr) {
   const dados = data.dados_gerais || {};
   const clausulas = data.clausulas_criticas || [];
-  const riscos = data.riscos || [];
+  const clausulasNec = data.clausulas_necessarias || [];
   const docs = data.documentos_analisados || [];
   const parecer = data.parecer || {};
 
@@ -1673,25 +1828,60 @@ function buildFlReportHtml(data, locatario, imovel, dateStr) {
   const verdictLabel = parecer.recomendacao || '';
   const verdictIcon = rec.includes('declinar') ? '✕' : rec.includes('ressalvas') ? '!' : '✓';
 
-  // Tabela dados_gerais com 3 colunas: Campo | Valor | Fonte
-  const dadosRows = FL_DADOS_CONFIG.map(cfg => {
-    const item = dados[cfg.key];
-    if (!item) return null;
-    const rawVal = typeof item === 'object' ? item.valor : item;
-    const fonte = typeof item === 'object' ? (item.fonte || '—') : '—';
-    if (rawVal === null || rawVal === undefined || String(rawVal) === 'null') return null;
-    const display = cfg.format === 'brl' && typeof rawVal === 'number' ? fmtBRL(rawVal) : esc(String(rawVal));
-    return `<tr>
-      <td class="fl-dados-label">${esc(cfg.label)}</td>
-      <td class="fl-dados-value">${display}</td>
-      <td class="fl-dados-fonte"><em>${esc(fonte)}</em></td>
-    </tr>`;
-  }).filter(Boolean).join('');
+  // Partes: Locatário (Tomador) + Locador (Segurado) em grid
+  const locatarioHtml = buildEmissaoPartBox('Tomador (Locatário)', dados.locatario);
+  const locadorHtml = buildEmissaoPartBox('Segurado / Beneficiário (Locador)', dados.locador);
+  const temPartes = locatarioHtml || locadorHtml;
 
-  // Cláusulas com accordion
+  // Dados essenciais de emissão
+  const emissaoCfg = [
+    { key: 'valor_garantia',  label: 'IS (Valor da Garantia)',  format: 'brl' },
+    { key: 'vigencia_inicio', label: 'Início da Vigência' },
+    { key: 'vigencia_fim',    label: 'Fim da Vigência' },
+    { key: 'indice_reajuste', label: 'Índice de Reajuste' },
+    { key: 'valor_aluguel',   label: 'Valor do Aluguel',        format: 'brl' },
+  ];
+  const emissaoHtml = emissaoCfg
+    .map(cfg => buildDadoItem(cfg.label, dados[cfg.key], cfg.format))
+    .filter(Boolean).join('');
+
+  // Objeto da apólice
+  const objetoHtml = data.objeto_apolice && data.objeto_apolice.valor && String(data.objeto_apolice.valor) !== 'null'
+    ? `<div class="sg-dado-item">
+        <span class="sg-dado-label">Objeto da Apólice</span>
+        <div class="sg-dado-right">
+          <span class="sg-dado-valor">${esc(String(data.objeto_apolice.valor))}</span>
+          ${data.objeto_apolice.fonte ? `<span class="sg-dado-fonte"><span class="sg-fonte-arrow" aria-hidden="true">↳</span>${esc(data.objeto_apolice.fonte)}</span>` : ''}
+        </div>
+      </div>`
+    : '';
+
+  // Cláusulas necessárias na apólice
+  const clausulasNecHtml = clausulasNec.length > 0
+    ? clausulasNec.map(c => `
+      <div class="sg-clausula-nec">
+        <p class="sg-clausula-nec-desc">${esc(c.descricao || '')}</p>
+        ${c.fonte ? `<span class="sg-dado-fonte"><span class="sg-fonte-arrow" aria-hidden="true">↳</span>${esc(c.fonte)}</span>` : ''}
+      </div>`).join('')
+    : '';
+
+  // Dados complementares do contrato
+  const complementarCfg = [
+    { key: 'imovel',           label: 'Imóvel' },
+    { key: 'finalidade',       label: 'Finalidade' },
+    { key: 'encargos_mensais', label: 'Encargos Mensais' },
+    { key: 'multa_rescisao',   label: 'Multa por Rescisão' },
+    { key: 'sub_rogacao',      label: 'Sub-rogação' },
+    { key: 'foro',             label: 'Foro de Eleição' },
+  ];
+  const complementarHtml = complementarCfg
+    .map(cfg => buildDadoItem(cfg.label, dados[cfg.key]))
+    .filter(Boolean).join('');
+
+  // Cláusulas críticas do contrato
   const clausulasHtml = clausulas.length > 0
     ? clausulas.map((c, i) => {
-        const imp = (c.impacto || '').toLowerCase().replace('é', 'e').replace('é', 'e');
+        const imp = (c.impacto || '').toLowerCase().replace('é', 'e');
         return `<details class="fl-clausula-item"${i < 2 ? ' open' : ''}>
           <summary class="fl-clausula-summary">
             <span class="fl-nivel-badge fl-nivel--${imp}">${esc(c.impacto || '—')}</span>
@@ -1705,20 +1895,6 @@ function buildFlReportHtml(data, locatario, imovel, dateStr) {
         </details>`;
       }).join('')
     : '<p class="af-no-data">Nenhuma cláusula crítica identificada.</p>';
-
-  // Riscos
-  const riscosHtml = riscos.length > 0
-    ? riscos.map(r => {
-        const niv = (r.nivel || '').toLowerCase().replace('é', 'e').replace('é', 'e');
-        return `<div class="fl-risco-item">
-          <span class="fl-nivel-badge fl-nivel--${niv}">${esc(r.nivel || '—')}</span>
-          <div class="fl-risco-content">
-            <p>${esc(r.descricao || '')}</p>
-            ${r.fonte ? `<p class="fl-fonte-cite"><em>${esc(r.fonte)}</em></p>` : ''}
-          </div>
-        </div>`;
-      }).join('')
-    : '<p class="af-no-data">Nenhum risco identificado.</p>';
 
   return `
     <div class="fl-report" id="flReportContent">
@@ -1740,43 +1916,54 @@ function buildFlReportHtml(data, locatario, imovel, dateStr) {
       <div class="fl-report-body">
         ${docs.length > 0 ? `<div class="sg-docs-analisados">${docs.map(d => `<span class="sg-doc-badge">${esc(d)}</span>`).join('')}</div>` : ''}
 
+        ${temPartes ? `<div class="sg-emission-partes-grid">${locatarioHtml}${locadorHtml}</div>` : ''}
+
         <div class="fl-report-section">
           <div class="fl-section-head">
             <svg class="fl-section-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="14" height="14" rx="1.5"/><path d="M7 7h6M7 10h6M7 13h3" stroke-linecap="round"/></svg>
-            <h2 class="fl-section-title">Dados do Contrato</h2>
+            <h2 class="fl-section-title">Dados de Emissão</h2>
           </div>
-          ${dadosRows ? `<table class="fl-dados-table">
-            <thead><tr><th>Campo</th><th>Valor</th><th>Fonte no Documento</th></tr></thead>
-            <tbody>${dadosRows}</tbody>
-          </table>` : '<p class="af-no-data" style="padding:16px 20px">Dados não extraídos.</p>'}
+          <div class="sg-dados-card">
+            ${emissaoHtml || '<p class="af-no-data" style="padding:16px 20px">Dados não extraídos.</p>'}
+            ${objetoHtml}
+          </div>
         </div>
+
+        ${clausulasNecHtml ? `
+        <div class="fl-report-section">
+          <div class="fl-section-head">
+            <svg class="fl-section-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="2" width="12" height="16" rx="1.5"/><path d="M7 7h6M7 10.5h6M7 14h3" stroke-linecap="round"/></svg>
+            <h2 class="fl-section-title">Cláusulas Necessárias na Apólice</h2>
+          </div>
+          <div class="sg-clausulas-nec-wrap">${clausulasNecHtml}</div>
+        </div>` : ''}
+
+        ${complementarHtml ? `
+        <div class="fl-report-section">
+          <div class="fl-section-head">
+            <svg class="fl-section-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="2" width="12" height="16" rx="1.5"/><path d="M7 7h6M7 10.5h6M7 14h4" stroke-linecap="round"/></svg>
+            <h2 class="fl-section-title">Dados Complementares</h2>
+          </div>
+          <div class="sg-dados-card">${complementarHtml}</div>
+        </div>` : ''}
 
         <div class="fl-report-section">
           <div class="fl-section-head">
             <svg class="fl-section-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="2" width="12" height="16" rx="1.5"/><path d="M7 7h6M7 10.5h6M7 14h3" stroke-linecap="round"/></svg>
-            <h2 class="fl-section-title">Cláusulas Críticas</h2>
+            <h2 class="fl-section-title">Cláusulas do Contrato</h2>
           </div>
           <div class="fl-clausulas-list">${clausulasHtml}</div>
-        </div>
-
-        <div class="fl-report-section">
-          <div class="fl-section-head">
-            <svg class="fl-section-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10 3L2 17h16L10 3z" stroke-linejoin="round"/><path d="M10 10v3M10 15h.01" stroke-linecap="round"/></svg>
-            <h2 class="fl-section-title">Riscos Identificados</h2>
-          </div>
-          <div class="fl-riscos-list">${riscosHtml}</div>
         </div>
 
         ${(parecer.justificativa || data.resumo) ? `
         <div class="fl-report-section fl-report-section--parecer">
           <div class="fl-section-head">
             <svg class="fl-section-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="10" cy="10" r="7"/><path d="M7 10l2.5 2.5L14 8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            <h2 class="fl-section-title">Parecer e Resumo</h2>
+            <h2 class="fl-section-title">Parecer</h2>
           </div>
           <div class="fl-parecer-body">
             ${parecer.justificativa ? `<p class="fl-parecer-justificativa">${esc(parecer.justificativa)}</p>` : ''}
             ${parecer.condicoes && parecer.condicoes.length > 0 ? `<div class="fl-condicoes"><p class="fl-condicoes-label">Condições para emissão:</p><ul>${parecer.condicoes.map(c => `<li>${esc(c)}</li>`).join('')}</ul></div>` : ''}
-            ${data.resumo ? `<p class="fl-resumo-text">${esc(data.resumo)}</p>` : ''}
           </div>
         </div>` : ''}
       </div>
@@ -2076,6 +2263,368 @@ Chart.defaults.color = '#4b5563';
 // -- Financial Analysis State
 let financialFiles = [];
 const MAX_FINANCIAL_FILES = 6;
+
+// T&C Formulario Manual
+function switchTcMode(mode) {
+  const uploadCard = document.getElementById('tcUploadCard');
+  const manualCard = document.getElementById('tcManualCard');
+  const btnUpload  = document.getElementById('tcBtnUpload');
+  const btnManual  = document.getElementById('tcBtnManual');
+
+  if (mode === 'upload') {
+    uploadCard.hidden = false;
+    manualCard.hidden = true;
+    btnUpload.classList.add('tc-mode-btn--active');
+    btnManual.classList.remove('tc-mode-btn--active');
+    btnUpload.setAttribute('aria-selected', 'true');
+    btnManual.setAttribute('aria-selected', 'false');
+  } else {
+    uploadCard.hidden = true;
+    manualCard.hidden = false;
+    btnUpload.classList.remove('tc-mode-btn--active');
+    btnManual.classList.add('tc-mode-btn--active');
+    btnUpload.setAttribute('aria-selected', 'false');
+    btnManual.setAttribute('aria-selected', 'true');
+    if (document.getElementById('tcInsurerList').children.length === 0) addTcInsurer();
+  }
+}
+
+function addTcInsurer() {
+  const id   = ++_tcCounter;
+  _tcModalCounters[id] = 0;
+  const list = document.getElementById('tcInsurerList');
+  const n    = list.children.length + 1;
+
+  const div = document.createElement('div');
+  div.className = 'tc-insurer-block';
+  div.id = 'tcInsurer-' + id;
+  div.innerHTML =
+    '<div class="tc-insurer-head">' +
+      '<div class="tc-insurer-num">' + n + '</div>' +
+      '<div class="tc-head-seg">' +
+        '<input type="text" class="tc-input" id="tcSeg-' + id + '" list="tcSegList" placeholder="Seguradora" autocomplete="off">' +
+      '</div>' +
+      '<div class="tc-head-status">' +
+        '<select class="tc-select" id="tcStatus-' + id + '" onchange="onTcStatusChange(this,' + id + ')">' +
+          '<option value="">Status</option>' +
+          '<option value="aprovado">Aprovado</option>' +
+          '<option value="declinado">Declinado</option>' +
+          '<option value="concorrente">Concorrente</option>' +
+          '<option value="bloqueado">Bloqueado</option>' +
+        '</select>' +
+      '</div>' +
+      '<button type="button" class="tc-btn-icon" onclick="removeTcInsurer(' + id + ')" title="Remover seguradora" aria-label="Remover seguradora">' +
+        '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M2 2l10 10M12 2L2 12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>' +
+      '</button>' +
+    '</div>' +
+    '<div class="tc-insurer-body" id="tcBody-' + id + '" hidden>' +
+      '<div class="tc-body-meta">' +
+        '<div class="tc-form-group">' +
+          '<label class="tc-label" for="tcCapTotal-' + id + '">Capacidade Total</label>' +
+          '<input type="text" class="tc-input" id="tcCapTotal-' + id + '" placeholder="R$ 0,00" onfocus="this.select()" onblur="fmtTcMoney(this)">' +
+        '</div>' +
+        '<div class="tc-form-group">' +
+          '<label class="tc-label" for="tcVenc-' + id + '">Vencimento (opcional)</label>' +
+          '<input type="text" class="tc-input" id="tcVenc-' + id + '" placeholder="DD/MM/AAAA" inputmode="numeric" maxlength="10" oninput="fmtTcDate(this)">' +
+        '</div>' +
+        '<div class="tc-form-group">' +
+          '<label class="tc-label" for="tcStatusCcg-' + id + '">Status CCG</label>' +
+          '<input type="text" class="tc-input" id="tcStatusCcg-' + id + '" placeholder="Status CCG" autocomplete="off">' +
+        '</div>' +
+      '</div>' +
+      '<div class="tc-modalidades-section">' +
+        '<div class="tc-modalidades-header">' +
+          '<span class="tc-modalidades-title">Modalidades</span>' +
+        '</div>' +
+        '<div class="tc-modal-col-header">' +
+          '<span class="tc-col-label">Modalidade</span>' +
+          '<span class="tc-col-label">Limite</span>' +
+          '<span class="tc-col-label">Taxa</span>' +
+          '<span></span>' +
+        '</div>' +
+        '<div class="tc-modal-list" id="tcModalList-' + id + '"></div>' +
+        '<button type="button" class="tc-btn-add-modal" onclick="addTcModalidade(' + id + ')">' +
+          '+ Adicionar modalidade' +
+        '</button>' +
+      '</div>' +
+    '</div>';
+
+  list.appendChild(div);
+  addTcModalidade(id);
+  updateTcInsurerNums();
+}
+
+function removeTcInsurer(id) {
+  const el = document.getElementById('tcInsurer-' + id);
+  if (el) el.remove();
+  delete _tcModalCounters[id];
+  updateTcInsurerNums();
+}
+
+function updateTcInsurerNums() {
+  document.querySelectorAll('#tcInsurerList .tc-insurer-num').forEach((el, i) => {
+    el.textContent = i + 1;
+  });
+}
+
+function onTcStatusChange(select, id) {
+  const body  = document.getElementById('tcBody-' + id);
+  const block = document.getElementById('tcInsurer-' + id);
+  const isAprovado = select.value === 'aprovado';
+  body.hidden = !isAprovado;
+  block.classList.toggle('tc-insurer--approved', isAprovado);
+  const ccg = document.getElementById('tcStatusCcg-' + id);
+  if (!isAprovado && ccg) ccg.value = '';
+}
+
+function addTcModalidade(insurerId) {
+  if (_tcModalCounters[insurerId] === undefined) _tcModalCounters[insurerId] = 0;
+  const mid  = ++_tcModalCounters[insurerId];
+  const list = document.getElementById('tcModalList-' + insurerId);
+  if (!list) return;
+
+  const row = document.createElement('div');
+  row.className = 'tc-modal-row';
+  row.id = 'tcModal-' + insurerId + '-' + mid;
+  row.innerHTML =
+    '<input type="text" class="tc-input tc-input--modal" placeholder="Ex: Judicial Trabalhista" autocomplete="off">' +
+    '<input type="text" class="tc-input tc-input--limite" placeholder="R$ 0,00" onfocus="this.select()" onblur="fmtTcMoney(this)">' +
+    '<input type="text" class="tc-input tc-input--taxa" placeholder="0,00%" onfocus="this.select()" onblur="fmtTcTaxa(this)">' +
+    '<button type="button" class="tc-btn-icon" onclick="removeTcModalidade(\'' + insurerId + '-' + mid + '\')" title="Remover modalidade" aria-label="Remover modalidade">' +
+      '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M1.5 1.5l9 9M10.5 1.5l-9 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>' +
+    '</button>';
+  list.appendChild(row);
+}
+
+function removeTcModalidade(key) {
+  const el = document.getElementById('tcModal-' + key);
+  if (el) el.remove();
+}
+
+function onlyDigits(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
+function formatTcCnpj(value) {
+  const digits = onlyDigits(value).slice(0, 14);
+  return digits
+    .replace(/^(\d{2})(\d)/, '$1.$2')
+    .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
+    .replace(/\.(\d{3})(\d)/, '.$1/$2')
+    .replace(/(\d{4})(\d)/, '$1-$2');
+}
+
+function fmtTcCnpj(el) {
+  el.value = formatTcCnpj(el.value);
+}
+
+function fmtTcDate(el) {
+  const digits = onlyDigits(el.value).slice(0, 8);
+  el.value = digits
+    .replace(/^(\d{2})(\d)/, '$1/$2')
+    .replace(/^(\d{2})\/(\d{2})(\d)/, '$1/$2/$3');
+}
+
+function fmtTcMoney(el) {
+  const n = parseNum(el.value);
+  el.value = n > 0 ? fmtBRL(n) : '';
+}
+
+function parseTcTaxaPercentValue(val) {
+  if (val === null || val === undefined) return null;
+  const s = String(val).trim();
+  if (!s) return null;
+
+  const cleaned = s.replace('%', '').replace(/\s/g, '').replace(',', '.');
+  const n = Number(cleaned);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return n;
+}
+
+function formatTcTaxaPercent(val) {
+  const taxa = parseTcTaxaPercentValue(val);
+  if (taxa === null) return '';
+  return taxa.toFixed(2).replace('.', ',') + '%';
+}
+
+function fmtTcTaxa(el) {
+  const formatted = formatTcTaxaPercent(el.value);
+  el.value = formatted || '';
+}
+
+function showManualError(msg) {
+  const el  = document.getElementById('errorMsgManual');
+  const txt = document.getElementById('errorTextManual');
+  if (txt) txt.textContent = msg;
+  if (el)  el.classList.add('show');
+}
+
+function hideManualError() {
+  const el = document.getElementById('errorMsgManual');
+  if (el) el.classList.remove('show');
+}
+
+function buildManualParsedData() {
+  const tomador = document.getElementById('tcTomador').value.trim() || null;
+  const cnpjRaw = document.getElementById('tcCnpj').value.trim();
+  const cnpj    = cnpjRaw ? formatTcCnpj(cnpjRaw) : null;
+  const rows    = [];
+
+  document.querySelectorAll('#tcInsurerList .tc-insurer-block').forEach(block => {
+    const id       = block.id.replace('tcInsurer-', '');
+    const segInput = document.getElementById('tcSeg-' + id);
+    const statusEl = document.getElementById('tcStatus-' + id);
+    const ccgEl    = document.getElementById('tcStatusCcg-' + id);
+    const capEl    = document.getElementById('tcCapTotal-' + id);
+    const vencEl   = document.getElementById('tcVenc-' + id);
+
+    const seguradora = segInput ? segInput.value.trim() : '';
+    const status     = statusEl ? statusEl.value : '';
+    if (!seguradora || !status) return;
+
+    const isAprovado = status === 'aprovado';
+    const limite     = (isAprovado && capEl) ? parseNum(capEl.value) : 0;
+    const venc       = (isAprovado && vencEl && vencEl.value.trim()) ? vencEl.value.trim() : null;
+    const statusCcg  = isAprovado && ccgEl && ccgEl.value.trim() ? ccgEl.value.trim() : null;
+
+    const modalidades = [];
+    if (isAprovado) {
+      const modalList = document.getElementById('tcModalList-' + id);
+      if (modalList) {
+        modalList.querySelectorAll('.tc-modal-row').forEach(row => {
+          const inputs = row.querySelectorAll('.tc-input');
+          const label  = inputs[0] ? inputs[0].value.trim() : '';
+          const val    = inputs[1] ? parseNum(inputs[1].value) : 0;
+          const taxa   = inputs[2] ? formatTcTaxaPercent(inputs[2].value) : null;
+          if (label) modalidades.push({ label, value: val, taxa: taxa || null });
+        });
+      }
+    }
+
+    rows.push({
+      seguradora,
+      status,
+      statusCcg,
+      limite,
+      modalidade: modalidades.length > 0 ? modalidades[0].label : '',
+      valorModal: modalidades.length > 0 ? modalidades[0].value : 0,
+      taxa: modalidades.length > 0 ? modalidades[0].taxa : null,
+      venc,
+      modalidades,
+    });
+  });
+
+  if (!rows.length) return null;
+  return { rows, tomador, cnpj };
+}
+
+function generateDashboardFromForm() {
+  hideManualError();
+  const data = buildManualParsedData();
+  if (!data) {
+    showManualError('Adicione ao menos uma seguradora com nome e status preenchidos.');
+    return;
+  }
+  parsedData = data;
+  generateDashboard();
+}
+
+function tcStatusText(status) {
+  const labels = { aprovado: 'Aprovado', declinado: 'Declinado', concorrente: 'Concorrente', bloqueado: 'Bloqueado' };
+  return labels[status] || status || '-';
+}
+
+function tcEmpty(value) {
+  return value === null || value === undefined || value === '' ? '-' : value;
+}
+
+function buildTcEmailTableHtml(data) {
+  const rows = data.rows || [];
+  const tableRows = [];
+
+  rows.forEach(r => {
+    const mods = (r.modalidades && r.modalidades.length > 0) ? r.modalidades : [null];
+    const span = mods.length;
+    mods.forEach((m, idx) => {
+      const first = idx === 0;
+      const last = idx === mods.length - 1;
+      const rowClass = last ? ' class="tc-email-row-last"' : '';
+      tableRows.push(
+        '<tr' + rowClass + '>' +
+          (first ? '<td rowspan="' + span + '" class="tc-email-seg tc-email-group-cell">' + esc(r.seguradora) + '</td>' : '') +
+          (first ? '<td rowspan="' + span + '" class="tc-email-money tc-email-group-cell">' + (r.limite > 0 ? fmtBRL(r.limite) : '-') + '</td>' : '') +
+          '<td class="tc-email-text">' + esc(m ? tcEmpty(m.label) : '-') + '</td>' +
+          '<td class="tc-email-money">' + (m && m.value > 0 ? fmtBRL(m.value) : '-') + '</td>' +
+          '<td class="tc-email-rate">' + esc(m && m.taxa ? m.taxa : '-') + '</td>' +
+          (first ? '<td rowspan="' + span + '" class="tc-email-text tc-email-group-cell">' + esc(tcEmpty(r.statusCcg)) + '</td>' : '') +
+          (first ? '<td rowspan="' + span + '" class="tc-email-date tc-email-group-cell">' + esc(tcEmpty(r.venc)) + '</td>' : '') +
+          (first ? '<td rowspan="' + span + '" class="tc-email-group-cell"><span class="tc-email-status tc-email-status--' + esc(r.status) + '">' + esc(tcStatusText(r.status)) + '</span></td>' : '') +
+        '</tr>'
+      );
+    });
+  });
+
+  return '<div class="tc-email-sheet" id="tcEmailTableCapture">' +
+    '<div class="tc-email-headline">' +
+      '<div>' +
+        '<h3>Tabela Executiva</h3>' +
+        '<p>' + esc(rows.length + ' seguradora' + (rows.length === 1 ? '' : 's')) + '</p>' +
+      '</div>' +
+      '<div class="tc-email-meta">' +
+        '<span><strong>Tomador:</strong> ' + esc(tcEmpty(data.tomador)) + '</span>' +
+        '<span><strong>CNPJ:</strong> ' + esc(tcEmpty(data.cnpj)) + '</span>' +
+      '</div>' +
+    '</div>' +
+    '<table class="tc-email-table">' +
+      '<thead><tr>' +
+        '<th>Seguradora</th>' +
+        '<th>Capacidade Total</th>' +
+        '<th>Modalidades</th>' +
+        '<th>Limites por Modalidade</th>' +
+        '<th>Taxa por Modalidade</th>' +
+        '<th>Status CCG</th>' +
+        '<th>Vencimentos</th>' +
+        '<th>Status</th>' +
+      '</tr></thead>' +
+      '<tbody>' + tableRows.join('') + '</tbody>' +
+    '</table>' +
+  '</div>';
+}
+
+async function renderTcEmailTable() {
+  hideManualError();
+  const data = buildManualParsedData();
+  if (!data) {
+    showManualError('Preencha ao menos uma seguradora antes de gerar a tabela.');
+    return;
+  }
+
+  const mount = document.getElementById('tcEmailTableMount');
+  if (!mount) return;
+
+  mount.innerHTML = buildTcEmailTableHtml(data);
+  await new Promise(resolve => requestAnimationFrame(resolve));
+  await downloadTcEmailTableImage();
+}
+
+async function downloadTcEmailTableImage() {
+  const target = document.getElementById('tcEmailTableCapture');
+  if (!target) {
+    renderTcEmailTable();
+    return;
+  }
+  if (typeof html2canvas !== 'function') {
+    showManualError('Nao foi possivel gerar a imagem. Biblioteca html2canvas indisponivel.');
+    return;
+  }
+
+  const canvas = await html2canvas(target, { scale: 2, backgroundColor: '#ffffff' });
+  const link = document.createElement('a');
+  link.download = 'tabela-tc-email.png';
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+}
+
 const FINANCIAL_EXTENSIONS = ['xlsx', 'xls', 'csv', 'pdf', 'png', 'jpg', 'jpeg'];
 
 // Drop zone for financial files
