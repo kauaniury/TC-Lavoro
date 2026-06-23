@@ -2539,7 +2539,7 @@ function tcEmpty(value) {
 }
 
 function buildTcEmailTableHtml(data) {
-  const rows = data.rows || [];
+  const rows = [...(data.rows || [])].sort((a, b) => (a.seguradora || '').localeCompare(b.seguradora || '', 'pt-BR'));
   const tableRows = [];
 
   rows.forEach(r => {
@@ -2567,7 +2567,7 @@ function buildTcEmailTableHtml(data) {
   return '<div class="tc-email-sheet" id="tcEmailTableCapture">' +
     '<div class="tc-email-headline">' +
       '<div>' +
-        '<h3>Tabela Executiva</h3>' +
+        '<h3>T&amp;C</h3>' +
         '<p>' + esc(rows.length + ' seguradora' + (rows.length === 1 ? '' : 's')) + '</p>' +
       '</div>' +
       '<div class="tc-email-meta">' +
