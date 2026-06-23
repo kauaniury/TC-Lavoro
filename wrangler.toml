@@ -1,5 +1,4 @@
 name = "tc-lavoro"
 compatibility_date = "2026-06-23"
-compatibility_flags = ["nodejs_compat"]
 
 assets = { directory = "." }
