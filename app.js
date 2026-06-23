@@ -2626,6 +2626,170 @@ async function downloadTcEmailTableImage() {
   link.click();
 }
 
+function exportTcEmailTableXlsx() {
+  hideManualError();
+  const data = buildManualParsedData();
+  if (!data) { showManualError('Preencha ao menos uma seguradora antes de exportar.'); return; }
+  if (typeof XLSX === 'undefined') { showManualError('Biblioteca XLSX indisponível.'); return; }
+
+  const rows = [...(data.rows || [])].sort((a, b) =>
+    (a.seguradora || '').localeCompare(b.seguradora || '', 'pt-BR')
+  );
+
+  const CL = {
+    headerBg:   'F3F2EC',
+    cellBg:     'FFFFFF',
+    darkText:   '1F2937',
+    mutedText:  '6B7280',
+    thin:       'E5E7EB',
+    med:        'D1D5DB',
+    aprovado:   { bg: 'DCFCE7', fg: '16A34A' },
+    declinado:  { bg: 'FEE2E2', fg: 'DC2626' },
+    concorrente:{ bg: 'FEF3C7', fg: 'B45309' },
+    bloqueado:  { bg: 'EEEAD6', fg: '6B7280' },
+  };
+  function sc(status) { return CL[status] || { bg: 'F3F4F6', fg: CL.darkText }; }
+
+  const wb = XLSX.utils.book_new();
+  const ws = {};
+  const merges = [];
+  let R = 0;
+
+  function setCell(r, c, v, s) {
+    ws[XLSX.utils.encode_cell({ r, c })] = { v: v == null ? '' : v, t: 's', s: s || {} };
+  }
+  function mg(r1, c1, r2, c2) { merges.push({ s: { r: r1, c: c1 }, e: { r: r2, c: c2 } }); }
+
+  const hdrFill  = { patternType: 'solid', fgColor: { rgb: CL.headerBg } };
+  const whtFill  = { patternType: 'solid', fgColor: { rgb: CL.cellBg } };
+  const rgtBdr   = { style: 'thin', color: { rgb: CL.thin } };
+  const thinBdr  = { style: 'thin', color: { rgb: CL.thin } };
+  const medBdr   = { style: 'medium', color: { rgb: CL.med } };
+
+  // ── Título (linhas 0-1) ──────────────────────────────────────────────────
+  const blankHdr = { fill: hdrFill };
+
+  setCell(R, 0, 'T&C', { font: { bold: true, sz: 14, color: { rgb: CL.darkText } }, fill: hdrFill, alignment: { horizontal: 'left', vertical: 'center' } });
+  for (let c = 1; c <= 3; c++) setCell(R, c, '', blankHdr);
+  mg(R, 0, R, 3);
+  setCell(R, 4, 'Tomador: ' + (data.tomador || '-'), { font: { bold: true, sz: 9, color: { rgb: CL.darkText } }, fill: hdrFill, alignment: { horizontal: 'right', vertical: 'center' } });
+  for (let c = 5; c <= 7; c++) setCell(R, c, '', blankHdr);
+  mg(R, 4, R, 7);
+  R++;
+
+  setCell(R, 0, rows.length + ' seguradora' + (rows.length === 1 ? '' : 's'), { font: { sz: 9, color: { rgb: CL.mutedText } }, fill: hdrFill, alignment: { horizontal: 'left', vertical: 'center' } });
+  for (let c = 1; c <= 3; c++) setCell(R, c, '', blankHdr);
+  mg(R, 0, R, 3);
+  setCell(R, 4, 'CNPJ: ' + (data.cnpj || '-'), { font: { sz: 9, color: { rgb: CL.mutedText } }, fill: hdrFill, alignment: { horizontal: 'right', vertical: 'center' } });
+  for (let c = 5; c <= 7; c++) setCell(R, c, '', blankHdr);
+  mg(R, 4, R, 7);
+  R++;
+
+  // ── Cabeçalho da tabela (linha 2) ────────────────────────────────────────
+  const HDRS   = ['SEGURADORA', 'CAPACIDADE TOTAL', 'MODALIDADES', 'LIMITES POR MODALIDADE', 'TAXA POR MODALIDADE', 'STATUS CCG', 'VENCIMENTOS', 'STATUS'];
+  const HALIGN = ['left', 'right', 'left', 'right', 'right', 'left', 'left', 'center'];
+  HDRS.forEach((h, c) => {
+    setCell(R, c, h, {
+      font: { bold: true, sz: 8, color: { rgb: CL.darkText } },
+      fill: hdrFill,
+      alignment: { horizontal: HALIGN[c], vertical: 'center' },
+      border: { bottom: medBdr, right: c < 7 ? rgtBdr : undefined },
+    });
+  });
+  R++;
+
+  // ── Dados ────────────────────────────────────────────────────────────────
+  rows.forEach(r => {
+    const mods = (r.modalidades && r.modalidades.length > 0) ? r.modalidades : [null];
+    const span = mods.length;
+    const r0   = R;
+
+    mods.forEach((m, idx) => {
+      const isLast = idx === span - 1;
+      const rowBtm = isLast ? medBdr : thinBdr;
+
+      // colunas de grupo: borda inferior sempre médida (a merge cobre até o fim do grupo)
+      const grpBtm = medBdr;
+
+      // col 0 – Seguradora
+      setCell(R, 0, idx === 0 ? (r.seguradora || '') : '', {
+        font: { bold: true, sz: 9, color: { rgb: CL.darkText } }, fill: whtFill,
+        alignment: { horizontal: 'left', vertical: 'top' },
+        border: { bottom: grpBtm, right: rgtBdr },
+      });
+
+      // col 1 – Capacidade Total
+      setCell(R, 1, idx === 0 ? (r.limite > 0 ? fmtBRL(r.limite) : '-') : '', {
+        font: { sz: 9, color: { rgb: CL.darkText } }, fill: whtFill,
+        alignment: { horizontal: 'right', vertical: 'top' },
+        border: { bottom: grpBtm, right: rgtBdr },
+      });
+
+      // col 2 – Modalidade
+      setCell(R, 2, m ? (m.label || '-') : '-', {
+        font: { sz: 9, color: { rgb: CL.mutedText } }, fill: whtFill,
+        alignment: { horizontal: 'left', vertical: 'center' },
+        border: { bottom: rowBtm, right: rgtBdr },
+      });
+
+      // col 3 – Limite por Modalidade
+      setCell(R, 3, (m && m.value > 0) ? fmtBRL(m.value) : '-', {
+        font: { sz: 9, color: { rgb: CL.darkText } }, fill: whtFill,
+        alignment: { horizontal: 'right', vertical: 'center' },
+        border: { bottom: rowBtm, right: rgtBdr },
+      });
+
+      // col 4 – Taxa
+      setCell(R, 4, (m && m.taxa) ? m.taxa : '-', {
+        font: { sz: 9, color: { rgb: CL.darkText } }, fill: whtFill,
+        alignment: { horizontal: 'right', vertical: 'center' },
+        border: { bottom: rowBtm, right: rgtBdr },
+      });
+
+      // col 5 – Status CCG
+      setCell(R, 5, idx === 0 ? (r.statusCcg || '-') : '', {
+        font: { sz: 9, color: { rgb: CL.mutedText } }, fill: whtFill,
+        alignment: { horizontal: 'left', vertical: 'top' },
+        border: { bottom: grpBtm, right: rgtBdr },
+      });
+
+      // col 6 – Vencimentos
+      setCell(R, 6, idx === 0 ? (r.venc || '-') : '', {
+        font: { sz: 9, color: { rgb: CL.darkText } }, fill: whtFill,
+        alignment: { horizontal: 'left', vertical: 'top' },
+        border: { bottom: grpBtm, right: rgtBdr },
+      });
+
+      // col 7 – Status (com cor de fundo do badge)
+      const color = sc(r.status);
+      setCell(R, 7, idx === 0 ? tcStatusText(r.status) : '', {
+        font: { bold: true, sz: 9, color: { rgb: color.fg } },
+        fill: { patternType: 'solid', fgColor: { rgb: color.bg } },
+        alignment: { horizontal: 'center', vertical: 'top' },
+        border: { bottom: grpBtm },
+      });
+
+      R++;
+    });
+
+    // Mescla colunas de grupo quando há mais de 1 modalidade
+    if (span > 1) {
+      [0, 1, 5, 6, 7].forEach(col => mg(r0, col, r0 + span - 1, col));
+    }
+  });
+
+  ws['!ref']    = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: R - 1, c: 7 } });
+  ws['!merges'] = merges;
+  ws['!rows']   = [{ hpt: 26 }, { hpt: 14 }, { hpt: 20 }];
+  ws['!cols']   = [
+    { wch: 22 }, { wch: 18 }, { wch: 24 }, { wch: 22 },
+    { wch: 18 }, { wch: 16 }, { wch: 14 }, { wch: 14 },
+  ];
+
+  XLSX.utils.book_append_sheet(wb, ws, 'T&C');
+  XLSX.writeFile(wb, 'tabela-tc.xlsx', { cellStyles: true, bookType: 'xlsx' });
+}
+
 const FINANCIAL_EXTENSIONS = ['xlsx', 'xls', 'csv', 'pdf', 'png', 'jpg', 'jpeg'];
 
 // Drop zone for financial files
