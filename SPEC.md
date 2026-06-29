@@ -1,7 +1,7 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.16  
-> Atualizado em: 2026-06-23
+> Versao: 2.17  
+> Atualizado em: 2026-06-29
 
 ## 1. Visão Geral
 
@@ -83,6 +83,8 @@ Funcoes envolvidas em `app.js`:
 - `downloadTcEmailTableImage()` usa `html2canvas` para baixar a tabela renderizada como PNG
 
 A tabela de e-mail contem todas as colunas operacionais do formulario manual nesta ordem: seguradora, capacidade total, modalidades, limites por modalidade, taxa por modalidade, status CCG, vencimentos e status. Tomador e CNPJ aparecem no cabecalho. O campo Status CCG so aparece no formulario quando a seguradora esta com status Aprovado. A tabela nao fica visivel na tela; ela e renderizada temporariamente apenas para captura e download da imagem.
+
+As classes CSS `tc-email-status-ccg-head` e `tc-email-status-ccg-cell` mantem uma borda esquerda dedicada na coluna Status CCG para preservar a linha vertical entre Taxa por Modalidade e Status CCG durante a captura por html2canvas, inclusive quando ha multiplas modalidades com `rowspan`.
 
 ### 4.3 Estrutura Parsed
 

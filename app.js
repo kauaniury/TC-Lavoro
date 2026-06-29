@@ -2572,7 +2572,7 @@ function buildTcEmailTableHtml(data) {
           '<td class="tc-email-text">' + esc(m ? tcEmpty(m.label) : '-') + '</td>' +
           '<td class="tc-email-money">' + (m && m.value > 0 ? fmtBRL(m.value) : '-') + '</td>' +
           '<td class="tc-email-rate">' + esc(m && m.taxa ? m.taxa : '-') + '</td>' +
-          (first ? '<td class="tc-email-text"' + rs + vmid + '>' + esc(tcEmpty(r.statusCcg)) + '</td>' : '') +
+          (first ? '<td class="tc-email-text tc-email-status-ccg-cell"' + rs + vmid + '>' + esc(tcEmpty(r.statusCcg)) + '</td>' : '') +
           (first ? '<td class="tc-email-date"' + rs + vmid + '>' + esc(tcEmpty(r.venc)) + '</td>' : '') +
           (first ? '<td' + rs + vmid + '><span class="tc-email-status tc-email-status--' + esc(r.status) + '">' + esc(tcStatusText(r.status)) + '</span></td>' : '') +
         '</tr>'
@@ -2615,7 +2615,7 @@ function buildTcEmailTableHtml(data) {
         '<th>Modalidades</th>' +
         '<th>Limites por Modalidade</th>' +
         '<th>Taxa por Modalidade</th>' +
-        '<th>Status CCG</th>' +
+        '<th class="tc-email-status-ccg-head">Status CCG</th>' +
         '<th>Vencimentos</th>' +
         '<th>Status</th>' +
       '</tr></thead>' +

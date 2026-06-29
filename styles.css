@@ -4965,6 +4965,11 @@ details[open] .fl-clausula-chevron { transform: rotate(180deg); }
   border-right: 0;
 }
 
+.tc-email-status-ccg-head,
+.tc-email-status-ccg-cell {
+  border-left: 1px solid var(--color-border-strong);
+}
+
 .tc-email-row-last td {
   border-bottom: 0;
 }
