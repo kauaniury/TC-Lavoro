@@ -2540,6 +2540,20 @@ function tcEmpty(value) {
 
 function buildTcEmailTableHtml(data) {
   const rows = [...(data.rows || [])].sort((a, b) => (a.seguradora || '').localeCompare(b.seguradora || '', 'pt-BR'));
+
+  const aprovadas   = rows.filter(r => r.status === 'aprovado');
+  const declinadas  = rows.filter(r => r.status === 'declinado');
+  const concorr     = rows.filter(r => r.status === 'concorrente');
+  const bloqueadas  = rows.filter(r => r.status === 'bloqueado');
+  const totalAprov  = aprovadas.reduce((s, r) => s + (r.limite || 0), 0);
+  const maxLimite   = aprovadas.length ? Math.max(...aprovadas.map(r => r.limite || 0)) : 0;
+  const maxSeg      = aprovadas.filter(r => (r.limite || 0) === maxLimite).map(r => r.seguradora).join(' · ');
+  const totalCapStr = totalAprov >= 1e6 ? 'R$ ' + (totalAprov / 1e6).toFixed(0) + 'MM' : fmtBRL(totalAprov);
+  const maxCapStr   = maxLimite  >= 1e6 ? 'R$ ' + (maxLimite  / 1e6).toFixed(0) + 'MM' : fmtBRL(maxLimite);
+  const declSub     = bloqueadas.length > 0
+    ? 'sem disponibilidade · ' + bloqueadas.length + ' bloqueada' + (bloqueadas.length > 1 ? 's' : '')
+    : 'sem disponibilidade';
+
   const tableRows = [];
 
   rows.forEach(r => {
@@ -2565,17 +2579,33 @@ function buildTcEmailTableHtml(data) {
     tableRows.push('<tr class="tc-email-group-div"><td colspan="8"></td></tr>');
   });
 
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+
+  const headerHtml =
+    '<div class="tc-email-header">' +
+      '<div class="tc-email-header-content">' +
+        '<p class="tc-email-header-tomador">' + esc(tcEmpty(data.tomador)) + '</p>' +
+        '<p class="tc-email-header-cnpj">CNPJ ' + esc(tcEmpty(data.cnpj)) + '</p>' +
+      '</div>' +
+      '<div class="tc-email-header-logo-wrap">' +
+        '<img src="assets/img/Lavoro-logo_branca.png" alt="Lavoro Seguros" class="tc-email-logo">' +
+        '<p class="tc-email-header-date">Gerado em ' + esc(dateStr) + '</p>' +
+      '</div>' +
+    '</div>';
+
+  const kpisHtml =
+    '<div class="tc-email-kpis">' +
+      _tcKpi('COM LIMITE APROVADO',          aprovadas.length,  'com apetite ativo', 'aprovado') +
+      _tcKpi('SEM LIMITE DECLINADO',         declinadas.length, declSub,             'declinado') +
+      _tcKpi('NOMEADAS POR OUTRO CORRETOR',  concorr.length,    'outro corretor',    'concorrente') +
+      _tcKpi('CAPACIDADE TOTAL APROVADA',    totalCapStr,       fmtBRL(totalAprov),  'capacidade') +
+      _tcKpi('MAIOR LIMITE INDIVIDUAL',      maxCapStr,         maxSeg || '—',  'maior') +
+    '</div>';
+
   return '<div class="tc-email-sheet" id="tcEmailTableCapture">' +
-    '<div class="tc-email-headline">' +
-      '<div>' +
-        '<h3>T&amp;C</h3>' +
-        '<p>' + esc(rows.length + ' seguradora' + (rows.length === 1 ? '' : 's')) + '</p>' +
-      '</div>' +
-      '<div class="tc-email-meta">' +
-        '<span><strong>Tomador:</strong> ' + esc(tcEmpty(data.tomador)) + '</span>' +
-        '<span><strong>CNPJ:</strong> ' + esc(tcEmpty(data.cnpj)) + '</span>' +
-      '</div>' +
-    '</div>' +
+    headerHtml +
+    kpisHtml +
     '<table class="tc-email-table">' +
       '<thead><tr>' +
         '<th>Seguradora</th>' +
@@ -2589,6 +2619,15 @@ function buildTcEmailTableHtml(data) {
       '</tr></thead>' +
       '<tbody>' + tableRows.join('') + '</tbody>' +
     '</table>' +
+  '</div>';
+}
+
+function _tcKpi(label, value, sub, type) {
+  return '<div class="tc-email-kpi tc-email-kpi--' + type + '">' +
+    '<div class="tc-email-kpi-bar"></div>' +
+    '<p class="tc-email-kpi-label">' + esc(label) + '</p>' +
+    '<p class="tc-email-kpi-value">' + esc(String(value)) + '</p>' +
+    '<p class="tc-email-kpi-sub">' + esc(String(sub)) + '</p>' +
   '</div>';
 }
 
@@ -2619,7 +2658,7 @@ async function downloadTcEmailTableImage() {
     return;
   }
 
-  const canvas = await html2canvas(target, { scale: 2, backgroundColor: '#ffffff' });
+  const canvas = await html2canvas(target, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
   const link = document.createElement('a');
   link.download = 'tabela-tc-email.png';
   link.href = canvas.toDataURL('image/png');
