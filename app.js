@@ -2559,20 +2559,22 @@ function buildTcEmailTableHtml(data) {
   rows.forEach(r => {
     const mods = (r.modalidades && r.modalidades.length > 0) ? r.modalidades : [null];
     const span = mods.length;
+    const rs = span > 1 ? ' rowspan="' + span + '"' : '';
+    const vmid = ' style="vertical-align:middle"';
     mods.forEach((m, idx) => {
       const first = idx === 0;
       const last = idx === span - 1;
       const rowClass = last ? ' class="tc-email-row-last"' : '';
       tableRows.push(
         '<tr' + rowClass + '>' +
-          '<td class="tc-email-seg tc-email-group-cell">' + (first ? esc(r.seguradora) : '') + '</td>' +
-          '<td class="tc-email-money tc-email-group-cell">' + (first ? (r.limite > 0 ? fmtBRL(r.limite) : '-') : '') + '</td>' +
+          (first ? '<td class="tc-email-seg"' + rs + vmid + '>' + esc(r.seguradora) + '</td>' : '') +
+          (first ? '<td class="tc-email-money"' + rs + vmid + '>' + (r.limite > 0 ? fmtBRL(r.limite) : '-') + '</td>' : '') +
           '<td class="tc-email-text">' + esc(m ? tcEmpty(m.label) : '-') + '</td>' +
           '<td class="tc-email-money">' + (m && m.value > 0 ? fmtBRL(m.value) : '-') + '</td>' +
           '<td class="tc-email-rate">' + esc(m && m.taxa ? m.taxa : '-') + '</td>' +
-          '<td class="tc-email-text tc-email-group-cell">' + (first ? esc(tcEmpty(r.statusCcg)) : '') + '</td>' +
-          '<td class="tc-email-date tc-email-group-cell">' + (first ? esc(tcEmpty(r.venc)) : '') + '</td>' +
-          '<td class="tc-email-group-cell">' + (first ? '<span class="tc-email-status tc-email-status--' + esc(r.status) + '">' + esc(tcStatusText(r.status)) + '</span>' : '') + '</td>' +
+          (first ? '<td class="tc-email-text"' + rs + vmid + '>' + esc(tcEmpty(r.statusCcg)) + '</td>' : '') +
+          (first ? '<td class="tc-email-date"' + rs + vmid + '>' + esc(tcEmpty(r.venc)) + '</td>' : '') +
+          (first ? '<td' + rs + vmid + '><span class="tc-email-status tc-email-status--' + esc(r.status) + '">' + esc(tcStatusText(r.status)) + '</span></td>' : '') +
         '</tr>'
       );
     });

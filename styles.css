@@ -5108,7 +5108,7 @@ details[open] .fl-clausula-chevron { transform: rotate(180deg); }
 .tc-email-kpis {
   display: flex;
   gap: 8px;
-  padding: 12px 16px;
+  padding: 16px 16px 24px;
   background: var(--color-surface-soft);
   border-bottom: 2px solid var(--color-border-strong);
 }
@@ -5118,8 +5118,9 @@ details[open] .fl-clausula-chevron { transform: rotate(180deg); }
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
-  padding: 10px 12px;
+  padding: 14px 14px 22px;
   min-width: 0;
+  overflow: visible;
 }
 
 .tc-email-kpi-bar {
@@ -5162,8 +5163,6 @@ details[open] .fl-clausula-chevron { transform: rotate(180deg); }
   font-size: 9.5px;
   color: var(--color-text-secondary);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 @media (max-width: 760px) {
