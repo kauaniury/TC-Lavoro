@@ -10,7 +10,9 @@ const PRIMARY_DEEPSEEK_MODEL = 'deepseek-chat';
 const FALLBACK_DEEPSEEK_MODEL = 'deepseek-chat';
 const JOB_TTL_SECONDS = 60 * 60 * 6;
 const CHUNK_NOTE_MAX_TOKENS = 4000;
-const FINAL_RESULT_MAX_TOKENS = 8000;
+const FINAL_RESULT_MAX_TOKENS_DEFAULT = 8000;
+const FINAL_RESULT_MAX_TOKENS_SG = 10000;
+const FINAL_RESULT_MAX_TOKENS_AF = 12000;
 
 export default {
   async fetch(request, env) {
@@ -236,10 +238,15 @@ async function analyzeChunk(env, manifest, chunk) {
 async function synthesizeFinalResult(env, manifest) {
   const chunkNotes = await loadChunkNotes(env, manifest);
   const prompt = buildFinalPrompt(manifest.flow, manifest.fileNames, chunkNotes);
+  const maxTokens = manifest.flow === 'seguro-garantia'
+    ? FINAL_RESULT_MAX_TOKENS_SG
+    : manifest.flow === 'analise-financeira'
+      ? FINAL_RESULT_MAX_TOKENS_AF
+      : FINAL_RESULT_MAX_TOKENS_DEFAULT;
   const payload = {
     model: PRIMARY_DEEPSEEK_MODEL,
     messages: [{ role: 'user', content: prompt }],
-    max_tokens: FINAL_RESULT_MAX_TOKENS,
+    max_tokens: maxTokens,
   };
   const response = await callDeepSeek(env, payload);
   return extractMessageContent(response);
@@ -252,44 +259,61 @@ function buildChunkPrompt(flow, fileNames, chunk) {
   if (flow === 'analise-financeira') {
     return `${content}
 
-Analise apenas este trecho e retorne um JSON resumido e compacto com evidencias encontradas neste trecho.
-Formato:
-{"empresas":[{"empresa":"nome ou null","cnpj":"cnpj ou null","documentos":[{"tipo":"DRE|Balanco Patrimonial|Balancete|null","periodo":"periodo ou null","indicadores":{"receita_bruta":null,"receita_liquida":null,"lucro_bruto":null,"lucro_liquido":null,"ebitda":null,"margem_ebitda":null,"margem_liquida":null,"ativo_total":null,"ativo_circulante":null,"passivo_total":null,"passivo_circulante":null,"patrimonio_liquido":null,"divida_liquida":null,"capital_giro_liquido":null,"liquidez_corrente":null,"liquidez_geral":null,"endividamento_geral":null,"cobertura_juros":null,"divida_ebitda":null,"rentabilidade_pl":null},"observacoes":"evidencias deste trecho"}]}],"alertas":["lista curta de inconsistencias ou riscos encontrados no trecho"]}
-Retorne apenas JSON.`;
+Voce e um analista financeiro especializado em credito, seguro garantia e fianca locaticia. Analise APENAS este trecho do documento.
+
+ATENCAO ESCALA: Se o titulo/cabecalho indicar "em milhares", "R$ Mil", "Em R$ Mil" — registre escala "milhares". Os valores serao multiplicados por 1.000 na sintese final.
+
+ATENCAO CONSISTENCIA: Para Balanco Patrimonial, verifique se Ativo Total = Passivo Total + Patrimonio Liquido. Se divergir, marque balanco_consistente = false.
+
+CATEGORIAS DE BALANCETE: Se for balancete, agrupe contas em: caixa_e_equivalentes, clientes_a_receber, estoques, impostos_a_recuperar, imobilizado, fornecedores, emprestimos_e_financiamentos, obrigacoes_fiscais, obrigacoes_trabalhistas, capital_social, lucros_acumulados.
+
+Retorne JSON compacto com evidencias NESTE TRECHO:
+{"empresas":[{"empresa":"nome da empresa ou null","cnpj":"cnpj ou null","escala":"milhares|unidades|desconhecido","documentos":[{"tipo":"DRE|Balanco Patrimonial|Balancete|null","periodo":"ano ou periodo identificado ou null","indicadores":{"receita_bruta":null,"receita_liquida":null,"lucro_bruto":null,"resultado_operacional":null,"resultado_financeiro":null,"lucro_liquido":null,"ebitda":null,"margem_ebitda":null,"margem_bruta":null,"margem_operacional":null,"margem_liquida":null,"ativo_total":null,"ativo_circulante":null,"ativo_nao_circulante":null,"passivo_total":null,"passivo_circulante":null,"passivo_nao_circulante":null,"patrimonio_liquido":null,"divida_liquida":null,"capital_giro_liquido":null,"liquidez_corrente":null,"liquidez_seca":null,"liquidez_geral":null,"endividamento_geral":null,"cobertura_juros":null,"divida_ebitda":null,"rentabilidade_pl":null,"caixa_e_equivalentes":null,"clientes_a_receber":null,"estoques":null,"fornecedores":null,"emprestimos_e_financiamentos":null,"obrigacoes_fiscais":null,"obrigacoes_trabalhistas":null},"balanco_consistente":null,"observacoes":"observacoes tecnicas incluindo escala e sinais identificados"}]}],"sinais_pista":["PL negativo","liquidez < 1","prejuizo","endividamento alto","crescimento receita","caixa relevante"],"alertas":["alerta especifico com valores"]}
+
+Regras: valores numericos puros, null quando ausente. Retorne apenas JSON.`;
   }
 
   if (flow === 'fianca-locaticia') {
     return `${content}
 
-Analise apenas este trecho e retorne um JSON resumido e compacto com fatos deste trecho.
-Formato:
-{"dados_gerais":{"imovel":null,"locatario":null,"locador":null,"finalidade":null,"valor_aluguel":null,"encargos_mensais":null,"valor_garantia":null,"vigencia_inicio":null,"vigencia_fim":null,"indice_reajuste":null,"multa_rescisao":null,"sub_rogacao":null,"foro":null},"clausulas_criticas":[{"titulo":"...","descricao":"...","fonte":"...","impacto":"Alto|Medio|Baixo"}],"riscos":[{"descricao":"...","fonte":"...","nivel":"Alto|Medio|Baixo"}],"notas":["resumo curto"]}
+Voce e um subscritor de FIANCA LOCATICIA. Analise APENAS este trecho do contrato de locacao.
+
+Registre em "alertas_chunk" qualquer sinal de risco detectado: sub-rogacao ausente, prazo acima de 30 meses, finalidade comercial, valor de garantia suspeito, clausula que amplia exposicao da seguradora, multa rescisoria ausente.
+
+Retorne um JSON compacto com fatos presentes NESTE TRECHO:
+{"dados_gerais":{"imovel":null,"locatario":null,"locador":null,"finalidade":null,"valor_aluguel":null,"encargos_mensais":null,"valor_garantia":null,"vigencia_inicio":null,"vigencia_fim":null,"indice_reajuste":null,"multa_rescisao":null,"sub_rogacao":null,"foro":null},"clausulas_criticas":[{"titulo":"...","descricao":"transcricao fiel da clausula","fonte":"clausula X ou pagina Y","impacto":"Alto|Medio|Baixo"}],"alertas_chunk":["sub-rogacao ausente","prazo > 30 meses","finalidade comercial","garantia insuficiente"],"notas":["resumo tecnico do trecho"]}
 Retorne apenas JSON.`;
   }
 
   if (flow === 'analise-apolice') {
     return `${content}
 
-Analise apenas este trecho e retorne um JSON resumido e compacto com fatos encontrados neste trecho.
-Extraia somente:
-- tomador
-- segurado
-- importancia segurada
-- vigencia
-- objeto da apolice
-- coberturas da apolice
-- riscos excluidos
+Voce e um especialista em leitura tecnica de APOLICES DE SEGURO. Analise APENAS este trecho.
+
+Extraia somente o que esta explicitamente presente: tomador, segurado, importancia segurada, vigencia, objeto da apolice, coberturas, riscos excluidos. Em "lacunas_pista" registre coberturas que geralmente existem neste tipo de apolice mas NAO aparecem neste trecho (possivel gap de cobertura).
 
 Formato:
-{"dados_gerais":{"tomador":null,"segurado":null,"importancia_segurada":null,"vigencia":null,"objeto_apolice":null},"coberturas":[{"descricao":"...","fonte":"..."}],"riscos_excluidos":[{"descricao":"...","fonte":"..."}],"notas":["resumo curto"]}
+{"dados_gerais":{"tomador":null,"segurado":null,"importancia_segurada":null,"vigencia":null,"objeto_apolice":null},"coberturas":[{"descricao":"cobertura identificada","fonte":"pagina ou clausula"}],"riscos_excluidos":[{"descricao":"exclusao identificada","fonte":"pagina ou clausula"}],"lacunas_pista":["cobertura tipica ausente neste trecho"],"notas":["resumo tecnico do trecho"]}
 Retorne apenas JSON.`;
   }
 
   return `${content}
 
-Analise apenas este trecho com foco em SEGURO GARANTIA para emissao de apolice. Retorne um JSON compacto com evidencias encontradas neste trecho.
-Formato:
-{"tomador":null,"segurado":null,"modalidades":[{"nome":"nome da modalidade ou null","importancia_segurada":null,"vigencia_obs":null,"objeto_pista":null,"clausulas_necessarias_pista":["clausula que deve constar na apolice"]}],"notas":["resumo curto do trecho"]}
+Voce e um especialista em SEGURO GARANTIA. Analise APENAS este trecho do documento e extraia evidencias para a analise completa.
+
+IDENTIFIQUE TODAS AS MODALIDADES presentes — mesmo sem palavra-chave exata, infira pelo contexto:
+- Garantia de Proposta/Licitacao: exigida para participar da licitacao, antes do contrato
+- Garantia de Execucao/Fiel Cumprimento: exigida apos assinatura do contrato
+- Garantia de Adiantamento de Pagamento
+- Garantia de Retencao de Pagamento
+- Garantia de Manutencao Corretiva / Perfeito Funcionamento
+- Garantia Trabalhista e/ou Previdenciaria
+- Outras modalidades especificas
+
+PALAVRAS-CHAVE para buscar: "garantia de proposta", "garantia da proposta", "garantia contratual", "garantia de execucao", "fiel cumprimento", "seguro-garantia", "caucao", "fianca bancaria", "valor estimado", "valor global", "valor do contrato", "valor homologado", "valor adjudicado", "valor arrematado", "valor anual", "prazo de vigencia", "prazo de execucao", "assinatura do contrato", "ordem de servico", "vigencia da contratacao", "90 dias", "multas", "trabalhista", "previdenciaria", "clausula de retomada", "85%", "valor orcado pela Administracao".
+
+Retorne JSON compacto com evidencias NESTE TRECHO:
+{"tomador":{"nome":null,"cnpj":null},"segurado":{"nome":null,"cnpj":null,"endereco":null},"dados_licitacao":{"numero_edital":null,"numero_processo":null,"modalidade_licitacao":null,"numero_contrato":null,"numero_ata":null,"objeto":null},"valores":{"estimado":null,"orcado_administracao":null,"contrato":null,"adjudicado":null,"homologado":null,"arrematado":null,"anual":null,"mensal":null},"data_assinatura":null,"modalidades_encontradas":[{"nome":"nome da modalidade","percentual_exigido":null,"valor_is":null,"base_calculo_descricao":null,"vigencia_regra":null,"vigencia_ini":null,"vigencia_fim":null,"acrescimo_90_dias":false,"objeto_pista":null,"clausulas_pista":["clausula especifica"]}],"coberturas_exigidas":{"multas":false,"trabalhista":false,"fiscal":false,"retomada":false,"adiantamento":false,"retencao":false,"manutencao":false,"outras":[]},"apresentacao":{"prazo":null,"momento":null,"forma":null,"arquivo_pdf":false},"alertas":["alerta detectado"],"notas":["resumo tecnico do trecho"]}
 Retorne apenas JSON.`;
 }
 
@@ -319,51 +343,128 @@ function buildFinalPrompt(flow, fileNames, chunkNotes) {
     .join('\n\n');
 
   if (flow === 'analise-financeira') {
-    return `Voce vai consolidar notas parciais de uma analise financeira. Os arquivos completos foram processados em lotes e as notas abaixo representam TODO o documento.
+    return `Voce e um analista financeiro senior especializado em credito empresarial, seguro garantia e fianca locaticia para seguradoras brasileiras. Consolide as notas parciais abaixo em uma analise financeira completa.
 
 Arquivos analisados: ${fileNames.join(', ')}
 
-Consolide sem perder periodos ou misturar empresas diferentes. Retorne APENAS o JSON final no formato:
-{"empresas":[{"empresa":"Nome exato da empresa","cnpj":"XX.XXX.XXX/XXXX-XX ou null","documentos":[{"tipo":"DRE|Balanco Patrimonial|Balancete","periodo":"periodo identificado","indicadores":{"receita_bruta":null,"receita_liquida":null,"lucro_bruto":null,"lucro_liquido":null,"ebitda":null,"margem_ebitda":null,"margem_liquida":null,"ativo_total":null,"ativo_circulante":null,"passivo_total":null,"passivo_circulante":null,"patrimonio_liquido":null,"divida_liquida":null,"capital_giro_liquido":null,"liquidez_corrente":null,"liquidez_geral":null,"endividamento_geral":null,"cobertura_juros":null,"divida_ebitda":null,"rentabilidade_pl":null},"observacoes":"observacoes relevantes sobre este documento"}],"analise_credito":{"classificacao_risco":"Baixo|Moderado|Alto|Critico","resumo_executivo":"...","capacidade_seguro_garantia":"Alta|Moderada|Baixa|Inapta","justificativa_garantia":"...","capacidade_fianca_locaticia":"Alta|Moderada|Baixa|Inapta","justificativa_fianca":"...","pontos_positivos":["..."],"pontos_atencao":["..."],"recomendacao_seguradora":"..."}}]}
+REGRAS CRITICAS:
+1. Nao misture empresas diferentes. Crie uma entrada separada por empresa com CNPJ diferente ou nome diferente.
+2. Nao consolide periodos diferentes. Cada periodo e um objeto separado em "documentos".
+3. Se notas indicam escala "milhares", multiplique TODOS os valores monetarios por 1.000 e registre em "observacoes" e "observacao_escala".
+4. Use null para campos ausentes. Nunca estime valores.
+5. Se houver multiplos periodos, compare a tendencia de receita, lucro e PL em "analise_qualitativa.resultado".
+6. Verifique consistencia do Balanco: Ativo Total = Passivo Total + PL. Se divergir, registre em "inconsistencias_ou_limitacoes".
+
+CLASSIFICACAO FINANCEIRA — use criterios objetivos:
+- BOA: lucro positivo, PL positivo, liquidez corrente > 1.2, endividamento < 50%, capital de giro positivo
+- REGULAR: lucro baixo ou instavel, liquidez 0.8-1.2, endividamento 50-70%, alguns alertas sem sinal critico
+- FRACA: prejuizo, liquidez < 0.8, capital de giro negativo, endividamento > 70%
+- CRITICA: PL negativo, prejuizo relevante, passivo circulante >> ativo circulante, risco de insolvencia
+- INCONCLUSIVA: documentos incompletos, sem DRE, sem balanco, dados contraditórios
+
+NIVEL DE RISCO para analise_credito.classificacao_risco:
+- Baixo: PL solido positivo, liquidez > 1.5, endividamento < 40%, lucro consistente
+- Moderado: PL positivo, liquidez 1.0-1.5, endividamento 40-60%, resultado variavel
+- Alto: PL reduzido ou queda acentuada, liquidez < 1.0, endividamento > 60%, prejuizo recente
+- Critico: PL negativo (insolvencia tecnica), multiplos prejuizos, liquidez critica
+
+PARA INDICADORES CALCULADOS — calcule quando possivel:
+- liquidez_corrente = Ativo Circulante / Passivo Circulante (use o periodo mais recente)
+- liquidez_seca = (Ativo Circulante - Estoques) / Passivo Circulante
+- capital_de_giro_liquido = Ativo Circulante - Passivo Circulante
+- endividamento_geral = Passivo Total / Ativo Total (como decimal, ex: 0.65 para 65%)
+- divida_sobre_pl = Passivo Total / Patrimonio Liquido
+- composicao_endividamento = Passivo Circulante / Passivo Total
+- margem_bruta = Lucro Bruto / Receita Liquida (como decimal)
+- margem_operacional = Resultado Operacional / Receita Liquida (como decimal)
+- margem_liquida = Lucro Liquido / Receita Liquida (como decimal)
+- roe = Lucro Liquido / Patrimonio Liquido (como decimal)
+- roa = Lucro Liquido / Ativo Total (como decimal)
+
+PARA analise_credito.justificativa_garantia: mencione o valor exato do PL e o limite sugerido de SG (ate 15% do PL). Ex: "PL de R$ 5.000.000 permite SG ate R$ 750.000."
+PARA analise_credito.recomendacao_seguradora: inclua limite SG (PL x 0.15) e indicacao de FL. Se houver multiplos periodos, mencione tendencia.
+
+Retorne APENAS o JSON:
+{"empresas":[{"empresa":"Nome exato da empresa","cnpj":"XX.XXX.XXX/XXXX-XX ou null","periodo_analisado":"ex: 2022-2024 ou jan/2024","moeda":"BRL","observacao_escala":"Valores originais em milhares — multiplicados por 1.000 ou Valores em reais","demonstrativos_identificados":{"balanco_patrimonial":false,"dre":false,"balancete":false,"outros":[]},"documentos":[{"tipo":"DRE|Balanco Patrimonial|Balancete","periodo":"periodo identificado","indicadores":{"receita_bruta":null,"receita_liquida":null,"lucro_bruto":null,"resultado_operacional":null,"resultado_financeiro":null,"lucro_liquido":null,"ebitda":null,"margem_ebitda":null,"margem_bruta":null,"margem_operacional":null,"margem_liquida":null,"ativo_total":null,"ativo_circulante":null,"ativo_nao_circulante":null,"passivo_total":null,"passivo_circulante":null,"passivo_nao_circulante":null,"patrimonio_liquido":null,"divida_liquida":null,"capital_giro_liquido":null,"liquidez_corrente":null,"liquidez_seca":null,"liquidez_geral":null,"endividamento_geral":null,"cobertura_juros":null,"divida_ebitda":null,"rentabilidade_pl":null,"caixa_e_equivalentes":null,"clientes_a_receber":null,"estoques":null,"fornecedores":null,"emprestimos_e_financiamentos":null,"obrigacoes_fiscais":null,"obrigacoes_trabalhistas":null},"observacoes":"observacoes tecnicas incluindo ajuste de escala"}],"principais_numeros":{"ativo_total":null,"ativo_circulante":null,"passivo_total":null,"passivo_circulante":null,"patrimonio_liquido":null,"receita_bruta":null,"receita_liquida":null,"lucro_liquido":null,"caixa_e_equivalentes":null,"clientes_a_receber":null,"estoques":null,"fornecedores":null,"emprestimos_e_financiamentos":null,"obrigacoes_fiscais":null,"obrigacoes_trabalhistas":null},"indicadores_calculados":{"liquidez_corrente":{"valor":null,"interpretacao":""},"liquidez_seca":{"valor":null,"interpretacao":""},"capital_de_giro_liquido":{"valor":null,"interpretacao":""},"endividamento_geral":{"valor":null,"interpretacao":""},"divida_sobre_pl":{"valor":null,"interpretacao":""},"composicao_endividamento":{"valor":null,"interpretacao":""},"margem_bruta":{"valor":null,"interpretacao":""},"margem_operacional":{"valor":null,"interpretacao":""},"margem_liquida":{"valor":null,"interpretacao":""},"roe":{"valor":null,"interpretacao":""},"roa":{"valor":null,"interpretacao":""}},"analise_qualitativa":{"liquidez":"","endividamento":"","rentabilidade":"","patrimonio_liquido":"","resultado":"","capital_de_giro":"","capacidade_financeira":"","consistencia_contabil":""},"sinais_positivos":["sinal positivo concreto com valores"],"sinais_negativos":["sinal negativo concreto com valores"],"alertas_de_risco":["alerta especifico com valores e impacto"],"inconsistencias_ou_limitacoes":["inconsistencia detectada ou limitacao dos dados"],"documentos_adicionais_recomendados":["documento especifico recomendado"],"classificacao_financeira":{"situacao":"BOA|REGULAR|FRACA|CRITICA|INCONCLUSIVA","nivel_risco":"BAIXO|MODERADO|ALTO|CRITICO|INCONCLUSIVO","justificativa":"justificativa com valores concretos"},"analise_credito":{"classificacao_risco":"Baixo|Moderado|Alto|Critico","resumo_executivo":"analise objetiva em 3-4 frases com valores concretos","capacidade_seguro_garantia":"Alta|Moderada|Baixa|Inapta","justificativa_garantia":"justificativa com PL e limite sugerido","capacidade_fianca_locaticia":"Alta|Moderada|Baixa|Inapta","justificativa_fianca":"justificativa com liquidez e endividamento","pontos_positivos":["ponto positivo com valores"],"pontos_atencao":["ponto de atencao com valores"],"recomendacao_seguradora":"recomendacao com limites sugeridos para SG e FL"},"visao_para_seguro_garantia":{"capacidade_para_assumir_contratos":"boa|moderada|limitada|risco elevado|necessita analise manual","pontos_de_atencao_para_subscricao":["ponto especifico"],"recomendacao_operacional":"conclusao para o analista/corretor"},"conclusao_final":{"empresa_tem_bons_numeros":null,"empresa_tem_numeros_ruins":null,"resumo_da_conclusao":"conclusao operacional para uso interno em 2-4 frases","nivel_confianca_da_analise":"ALTO|MEDIO|BAIXO"}}]}
+
+Regras: monetarios como numero puro em reais (ex: 1500000.50), percentuais/indices como decimal (ex: 25.5 para 25,5%), null quando ausente.
 
 NOTAS PARCIAIS:
 ${notesBlock}`;
   }
 
   if (flow === 'fianca-locaticia') {
-    return `Voce vai consolidar notas parciais de uma analise de fianca locaticia. Os arquivos completos foram processados em lotes e as notas abaixo representam TODO o documento.
+    return `Voce e um subscritor senior de FIANCA LOCATICIA. Consolide as notas parciais abaixo em uma analise completa do contrato de locacao para emissao de apolice.
 
 Arquivos analisados: ${fileNames.join(', ')}
 
-Retorne APENAS o JSON final no formato:
-{"tipo":"Fianca Locaticia","documentos_analisados":["nomes dos arquivos"],"dados_gerais":{"imovel":{"valor":"...","fonte":"..."},"locatario":{"valor":"...","fonte":"..."},"locador":{"valor":"...","fonte":"..."},"finalidade":{"valor":"...","fonte":"..."},"valor_aluguel":{"valor":0.00,"fonte":"..."},"encargos_mensais":{"valor":"...","fonte":"..."},"valor_garantia":{"valor":0.00,"fonte":"..."},"vigencia_inicio":{"valor":"...","fonte":"..."},"vigencia_fim":{"valor":"...","fonte":"..."},"indice_reajuste":{"valor":"...","fonte":"..."},"multa_rescisao":{"valor":"...","fonte":"..."},"sub_rogacao":{"valor":"...","fonte":"..."},"foro":{"valor":"...","fonte":"..."}},"objeto_apolice":{"valor":"texto do objeto para constar na apolice (imovel, locatario, periodo) ou null","fonte":"..."},"clausulas_necessarias":[{"descricao":"clausula que deve constar na apolice de fianca locaticia","fonte":"localizacao no documento"}],"clausulas_criticas":[{"titulo":"...","descricao":"...","fonte":"...","impacto":"Alto"}],"riscos":[{"descricao":"...","fonte":"...","nivel":"Alto"}],"parecer":{"recomendacao":"Emitir | Emitir com ressalvas | Declinar","justificativa":"...","condicoes":["..."]},"resumo":"..."}
+REGRAS DE SUBSCRICAO — aplique automaticamente ao gerar "riscos[]":
+1. Se sub_rogacao = "Nao" ou "Nao mencionado": adicione risco nivel Alto "Ausencia de clausula de sub-rogacao expoe a seguradora a perdas sem direito de regresso".
+2. Se valor_garantia numericamente menor que (3 x valor_aluguel): adicione risco nivel Alto "Valor de garantia inferior a 3 alugueis mensais — cobertura possivelmente insuficiente".
+3. Se finalidade = "Comercial" ou "Misto": adicione risco nivel Medio "Imovel de uso comercial — risco de inadimplencia tipicamente maior que residencial".
+4. Se prazo de vigencia superar 30 meses: adicione risco nivel Medio "Contrato de longa duracao exige acompanhamento periodico da capacidade do locatario".
+5. Se multa_rescisao = null: adicione risco nivel Medio "Multa rescisoria nao localizada — verifique exposicao em caso de rescisao antecipada".
+6. Se alertas_chunk apareceram nas notas, consolide-os em riscos[] com nivel apropriado.
+
+Para "parecer": seja especifico na justificativa mencionando o valor do aluguel, valor da garantia e os principais riscos identificados.
+Para "objeto_apolice": redigir texto completo e preciso para constar na apolice (imovel, locatario, periodo de vigencia, valor garantido).
+
+Retorne APENAS o JSON:
+{"tipo":"Fianca Locaticia","documentos_analisados":["nomes dos arquivos"],"dados_gerais":{"imovel":{"valor":"endereco completo ou null","fonte":"..."},"locatario":{"valor":"nome completo ou null","fonte":"..."},"locador":{"valor":"nome completo ou null","fonte":"..."},"finalidade":{"valor":"Residencial|Comercial|Misto ou null","fonte":"..."},"valor_aluguel":{"valor":0.00,"fonte":"..."},"encargos_mensais":{"valor":"descricao dos encargos ou null","fonte":"..."},"valor_garantia":{"valor":0.00,"fonte":"..."},"vigencia_inicio":{"valor":"DD/MM/AAAA ou null","fonte":"..."},"vigencia_fim":{"valor":"DD/MM/AAAA ou null","fonte":"..."},"indice_reajuste":{"valor":"IGPM|IPCA|outro ou null","fonte":"..."},"multa_rescisao":{"valor":"formula ou valor da multa ou null","fonte":"..."},"sub_rogacao":{"valor":"Sim|Nao|Nao mencionado","fonte":"..."},"foro":{"valor":"foro de eleicao ou null","fonte":"..."}},"objeto_apolice":{"valor":"texto completo do objeto para a apolice ou null","fonte":"..."},"clausulas_necessarias":[{"descricao":"clausula que deve constar na apolice","fonte":"localizacao no documento"}],"clausulas_criticas":[{"titulo":"titulo da clausula","descricao":"transcricao ou resumo fiel","fonte":"localizacao","impacto":"Alto|Medio|Baixo"}],"riscos":[{"descricao":"descricao objetiva do risco incluindo alertas de subscricao","fonte":"localizacao ou 'Regra de subscricao'","nivel":"Alto|Medio|Baixo"}],"parecer":{"recomendacao":"Emitir|Emitir com ressalvas|Declinar","justificativa":"justificativa especifica com valores e riscos identificados","condicoes":["condicao especifica para emissao"]},"resumo":"resumo executivo de 3-4 frases com os dados essenciais do contrato"}
 
 NOTAS PARCIAIS:
 ${notesBlock}`;
   }
 
   if (flow === 'analise-apolice') {
-    return `Voce vai consolidar notas parciais de uma analise de apolice. Os arquivos completos foram processados em lotes e as notas abaixo representam TODO o documento.
+    return `Voce e um especialista em leitura tecnica de APOLICES DE SEGURO para corretoras. Consolide as notas parciais abaixo em uma analise objetiva da apolice.
 
 Arquivos analisados: ${fileNames.join(', ')}
 
-Retorne APENAS o JSON final no formato:
-{"tipo":"Analise de Apolice","documentos_analisados":["nomes dos arquivos"],"dados_gerais":{"tomador":{"valor":"nome do tomador ou null","fonte":"..."},"segurado":{"valor":"nome do segurado ou null","fonte":"..."},"importancia_segurada":{"valor":0.00,"fonte":"..."},"vigencia":{"valor":"inicio e fim da vigencia ou null","fonte":"..."},"objeto_apolice":{"valor":"objeto da apolice ou null","fonte":"..."}},"coberturas":[{"descricao":"cobertura identificada","fonte":"localizacao no documento"}],"riscos_excluidos":[{"descricao":"risco excluido identificado","fonte":"localizacao no documento"}]}
+INSTRUCOES:
+1. Extraia somente dados presentes explicitamente nos documentos: tomador, segurado, IS, vigencia, objeto, coberturas e riscos excluidos.
+2. Para "riscos_excluidos": inclua tanto as exclusoes explicitas quanto coberturas tipicamente presentes neste tipo de apolice que NAO foram encontradas (lacunas de cobertura) — identifique como "Cobertura nao localizada: [nome]" para que o corretor possa verificar.
+3. Se lacunas_pista foram registradas nas notas de chunk, inclua-as em riscos_excluidos.
+4. Use null para campos nao localizados. Nao estime valores.
 
-Regras: nao inclua parecer, recomendacao, resumo ou campos extras. Use null quando nao encontrado. Valores monetarios como numero puro em reais quando possivel.
+Retorne APENAS o JSON:
+{"tipo":"Analise de Apolice","documentos_analisados":["nomes dos arquivos"],"dados_gerais":{"tomador":{"valor":"nome do tomador ou null","fonte":"..."},"segurado":{"valor":"nome do segurado ou null","fonte":"..."},"importancia_segurada":{"valor":0.00,"fonte":"..."},"vigencia":{"valor":"inicio e fim da vigencia ou null","fonte":"..."},"objeto_apolice":{"valor":"objeto da apolice ou null","fonte":"..."}},"coberturas":[{"descricao":"cobertura contratada identificada","fonte":"pagina ou clausula"}],"riscos_excluidos":[{"descricao":"exclusao explicita ou gap de cobertura identificado","fonte":"pagina, clausula ou 'Cobertura nao localizada'"}]}
 
 NOTAS PARCIAIS:
 ${notesBlock}`;
   }
 
-  return `Voce vai consolidar notas parciais de uma analise de SEGURO GARANTIA focada em emissao de apolice. Os arquivos completos foram processados em lotes e as notas abaixo representam TODO o documento.
+  return `Voce e um especialista em SEGURO GARANTIA no Brasil, com foco em analise de editais, contratos administrativos, atas, termos de adjudicacao/homologacao, propostas, aditivos e minutas de apolice. Sua funcao e retornar uma analise tecnica, objetiva e operacional para cotacao/emissao de seguro garantia.
 
 Arquivos analisados: ${fileNames.join(', ')}
 
-Retorne APENAS o JSON final no formato:
-{"tipo":"Seguro Garantia","documentos_analisados":["nomes dos arquivos"],"tomador":{"valor":"nome ou null","fonte":"..."},"segurado":{"valor":"nome ou null","fonte":"..."},"modalidades":[{"nome":"nome da modalidade","importancia_segurada":{"valor":0.00,"fonte":"..."},"vigencia_inicio":{"valor":"DD/MM/AAAA ou null","fonte":"..."},"vigencia_fim":{"valor":"DD/MM/AAAA ou null","fonte":"..."},"vigencia_obs":{"valor":"descricao do prazo quando nao houver datas fixas ou null","fonte":"..."},"objeto_apolice":{"valor":"texto do objeto para constar na apolice ou null","fonte":"..."},"clausulas_necessarias":[{"descricao":"clausula obrigatoria na apolice","fonte":"localizacao no documento"}]}],"parecer":{"recomendacao":"Emitir | Emitir com ressalvas | Declinar","justificativa":"justificativa objetiva","pendencias":["pendencia se houver"]}}
+REGRAS CRITICAS:
+1. Nao invente informacoes. Se nao encontrado, use null.
+2. Identifique TODAS as modalidades presentes — mesmo sem palavra-chave exata, infira pelo contexto. Diferencie:
+   - Garantia de Proposta/Licitacao (exigida ANTES da assinatura do contrato, para participar da licitacao)
+   - Garantia de Execucao/Fiel Cumprimento (exigida APOS assinatura do contrato)
+   - Garantia de Adiantamento de Pagamento
+   - Garantia de Retencao de Pagamento
+   - Garantia de Manutencao Corretiva
+   - Garantia Trabalhista/Previdenciaria
+   - Outras modalidades especificas
+3. Para garantia de proposta: a base e geralmente o valor estimado. IS = valor_estimado * percentual_exigido.
+4. Para garantia de execucao: a base e geralmente o valor do contrato/adjudicado/homologado. IS = valor_base * percentual_exigido.
+5. Se o contrato diz "vigencia a partir da assinatura", procure a data de assinatura e calcule. Se nao encontrar, deixe vigencia_obs com a regra e vigencia_inicio/fim como null.
+6. Se houver clausula de acrescimo de 90 dias na apolice, aplique e marque exige_acrescimo_90_dias = true.
+7. Hierarquia de documentos: contrato assinado > aditivo > ata de registro/homologacao > edital > minuta contratual > proposta > demais.
+8. Calcule garantia adicional se proposta < 85% do valor orcado pela Administracao: garantia_adicional = (valor_orcado * 0.85) - valor_proposta.
 
-Regras: valores monetarios como numero puro em reais, null quando nao encontrado, inclua apenas modalidades presentes nos documentos.
+
+REGRAS DE CONCLUSAO:
+- pode_cotar: true quando ha informacoes suficientes para gerar cotacao preliminar.
+- pode_emitir: true SOMENTE quando ha dados suficientes para emissao segura (contrato assinado, valor base, percentual, vigencia).
+- nivel_confianca: ALTA (dados expressos no documento), MEDIA (parcial, com inferencia controlada), BAIXA (faltam dados essenciais).
+
+Retorne APENAS o JSON (sem markdown, sem texto antes ou depois):
+{"tipo":"Seguro Garantia","documentos_analisados":["nomes dos arquivos"],"resumo_executivo":"resumo operacional em 3-5 frases com os dados essenciais para cotacao/emissao","tipo_documento_analisado":"edital|contrato|ata|proposta|aditivo|minuta|misto","tomador":{"valor":"nome exato como deve constar na apolice ou null","cnpj":"XX.XXX.XXX/XXXX-XX ou null","fonte":"..."},"segurado":{"valor":"nome exato do beneficiario como deve constar na apolice ou null","cnpj":"XX.XXX.XXX/XXXX-XX ou null","endereco":"endereco ou null","fonte":"..."},"dados_licitacao_contrato":{"numero_edital":null,"numero_processo":null,"modalidade_licitacao":null,"numero_contrato":null,"numero_ata":null,"objeto":"resumo fiel do objeto ou null"},"modalidades":[{"nome":"nome da modalidade","importancia_segurada":{"valor":0.00,"fonte":"clausula ou item exato"},"base_calculo":{"valor":"descricao: ex: 5% do valor contratual de R$ X = R$ Y","fonte":"..."},"vigencia_inicio":{"valor":"DD/MM/AAAA ou null","fonte":"..."},"vigencia_fim":{"valor":"DD/MM/AAAA ou null","fonte":"..."},"vigencia_obs":{"valor":"descricao do prazo quando nao houver datas fixas ou null","fonte":"..."},"exige_acrescimo_90_dias":false,"objeto_apolice":{"valor":"texto completo para o campo Objeto da apolice mencionando edital/contrato e orgao ou null","fonte":"..."},"clausulas_necessarias":[{"descricao":"clausula especifica exigida na apolice","fonte":"item e pagina do documento"}]}],"coberturas_clausulas_exigidas":{"multas":false,"trabalhista_previdenciaria":false,"fiscal":false,"clausula_retomada":false,"adiantamento_pagamento":false,"retencao_pagamento":false,"manutencao_corretiva":false,"outras":[]},"prazo_e_forma_de_apresentacao":{"prazo":null,"momento":null,"forma_envio":null,"arquivo_unico_pdf":false},"trechos_relevantes":[{"tema":"tema do trecho","trecho":"transcricao do trecho relevante","pagina_ou_localizacao":"pag. X ou secao Y"}],"pendencias_para_emissao":["informacao faltante critica"],"perguntas_para_cliente_ou_comercial":["pergunta especifica para o cliente ou comercial"],"alertas_de_risco":["alerta tecnico de subscricao"],"conclusao_operacional":{"pode_cotar":false,"pode_emitir":false,"motivo":"justificativa da conclusao","nivel_confianca":"ALTA|MEDIA|BAIXA"},"parecer":{"recomendacao":"Emitir|Emitir com ressalvas|Declinar","justificativa":"justificativa tecnica especifica com valor de IS, percentual e prazo","pendencias":["pendencia critica para emissao"]}}
+
+Regras: valores monetarios como numero puro em reais (ex: 85430.00), null quando nao encontrado.
 
 NOTAS PARCIAIS:
 ${notesBlock}`;

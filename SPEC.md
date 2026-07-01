@@ -1,7 +1,7 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.17  
-> Atualizado em: 2026-06-29
+> Versao: 2.18  
+> Atualizado em: 2026-06-30
 
 ## 1. Visão Geral
 
@@ -384,11 +384,17 @@ A função `renderSeguroGarantiaReport` (markdown) é mantida como legado para f
 
 | Função | Responsabilidade |
 |---|---|
-| `renderSeguroGarantiaCard(data)` | entry-point principal: renderiza card compacto de emissão a partir do JSON |
-| `buildSgModalidadeCard(modalidade)` | card de cada modalidade com IS, vigência, objeto e cláusulas necessárias |
+| `renderSeguroGarantiaCard(data)` | entry-point principal: renderiza relatório completo de emissão a partir do JSON |
+| `buildSgModalidadeCard(modalidade)` | card de cada modalidade com IS, base de cálculo, vigência, objeto e cláusulas |
 | `buildVigenciaSgHtml(modalidade)` | consolida vigencia_inicio, vigencia_fim e vigencia_obs num único campo |
-| `buildEmissaoPartBox(label, item)` | box de Tomador ou Segurado com fonte |
+| `buildEmissaoPartBox(label, item)` | box de Tomador ou Segurado com CNPJ, endereço e fonte |
 | `buildEmissaoFieldRow(label, item, format)` | linha de campo IS/Objeto/Vigência com fonte |
+| `buildSgDadosLicitacao(d, tipo)` | card com nº edital, processo, contrato, ata e objeto |
+| `buildSgCoberturasHtml(cob)` | badges de coberturas/cláusulas exigidas (multas, trabalhista, etc.) |
+| `buildSgApresentacaoHtml(ap)` | card de prazo e forma de apresentação da garantia |
+| `buildSgListaHtml(itens, ...)` | lista genérica para alertas de risco e perguntas ao cliente |
+| `buildSgConclusaoHtml(c)` | card de conclusão operacional com pode_cotar, pode_emitir e nível de confiança |
+| `buildSgTrechosHtml(trechos)` | trechos relevantes do documento com citação e localização |
 | `renderSeguroGarantiaReport(text)` | legado: renderiza markdown (usado como fallback se JSON inválido) |
 | `downloadSgReport()` | exportação A4 multi-página via html2canvas + jsPDF |
 | `syncAiChatStickyOffset()` | atualiza `--ai-sidebar-sticky-top` para manter o chat lateral visível |
@@ -399,21 +405,61 @@ A função `renderSeguroGarantiaReport` (markdown) é mantida como legado para f
 {
   "tipo": "Seguro Garantia",
   "documentos_analisados": ["arquivo.pdf"],
-  "tomador": { "valor": "Nome do Tomador", "fonte": "..." },
-  "segurado": { "valor": "Nome do Segurado/Beneficiário", "fonte": "..." },
+  "resumo_executivo": "string — resumo operacional em 3-5 frases",
+  "tipo_documento_analisado": "edital|contrato|ata|proposta|aditivo|minuta|misto",
+  "tomador": { "valor": "Nome do Tomador", "cnpj": "XX.XXX.XXX/XXXX-XX | null", "fonte": "..." },
+  "segurado": { "valor": "Nome do Segurado/Beneficiário", "cnpj": "XX.XXX.XXX/XXXX-XX | null", "endereco": "string | null", "fonte": "..." },
+  "dados_licitacao_contrato": {
+    "numero_edital": "null | string",
+    "numero_processo": "null | string",
+    "modalidade_licitacao": "null | string",
+    "numero_contrato": "null | string",
+    "numero_ata": "null | string",
+    "objeto": "null | string"
+  },
   "modalidades": [
     {
       "nome": "Garantia de Proposta",
       "importancia_segurada": { "valor": 8543.83, "fonte": "Item 9.1, pág. 35" },
+      "base_calculo": { "valor": "1% do valor estimado de R$ 854.383,00", "fonte": "..." },
       "vigencia_inicio": { "valor": null, "fonte": "..." },
       "vigencia_fim": { "valor": null, "fonte": "..." },
       "vigencia_obs": { "valor": "Prazo de validade da proposta: mínimo 120 dias", "fonte": "..." },
+      "exige_acrescimo_90_dias": false,
       "objeto_apolice": { "valor": "Garantia de Proposta para participação no Pregão nº 012/2026...", "fonte": "..." },
       "clausulas_necessarias": [
         { "descricao": "Cláusula de manutenção de proposta", "fonte": "Item 9.1, pág. 35" }
       ]
     }
   ],
+  "coberturas_clausulas_exigidas": {
+    "multas": false,
+    "trabalhista_previdenciaria": false,
+    "fiscal": false,
+    "clausula_retomada": false,
+    "adiantamento_pagamento": false,
+    "retencao_pagamento": false,
+    "manutencao_corretiva": false,
+    "outras": []
+  },
+  "prazo_e_forma_de_apresentacao": {
+    "prazo": "null | string",
+    "momento": "null | string",
+    "forma_envio": "null | string",
+    "arquivo_unico_pdf": false
+  },
+  "trechos_relevantes": [
+    { "tema": "string", "trecho": "transcricao do trecho", "pagina_ou_localizacao": "pag. X" }
+  ],
+  "pendencias_para_emissao": ["string"],
+  "perguntas_para_cliente_ou_comercial": ["string"],
+  "alertas_de_risco": ["string"],
+  "conclusao_operacional": {
+    "pode_cotar": false,
+    "pode_emitir": false,
+    "motivo": "string",
+    "nivel_confianca": "ALTA | MEDIA | BAIXA"
+  },
   "parecer": {
     "recomendacao": "Emitir | Emitir com ressalvas | Declinar",
     "justificativa": "...",
@@ -594,12 +640,16 @@ Comportamento:
 | Função | Responsabilidade |
 |---|---|
 | `processarAnaliseApolice()` | valida arquivos, chama `analisarApolice()` e controla loading/erro |
-| `renderAnaliseApolice(data)` | define título, arquivos analisados e renderiza o relatório |
+| `renderAnaliseApolice(data)` | define título, arquivos analisados, renderiza relatório e inicia chat |
 | `buildApoliceReportHtml(data, title)` | constrói relatório objetivo com dados, coberturas e riscos excluídos |
 | `buildApoliceDadoRow(cfg, item)` | renderiza linhas da tabela Campo/Valor/Fonte |
 | `buildApoliceList(items, emptyText)` | renderiza coberturas e riscos excluídos |
 | `downloadApoliceReport()` | exporta o relatório da apólice em PDF |
-| `resetAnaliseApolice()` | limpa arquivos e retorna ao upload |
+| `resetAnaliseApolice()` | limpa arquivos, histórico e retorna ao upload |
+| `sendApoliceChatMessage()` | envia mensagem no chat da apólice |
+| `appendApSidebarMessage(role, text)` | adiciona balão de mensagem no sidebar da apólice |
+
+O estado do chat usa `apChatHistory` (inicializado via `criarHistoricoApolice()` em `renderAnaliseApolice`) e `_chatFiles.ap` para anexos durante o chat.
 
 Classes CSS adicionadas:
 

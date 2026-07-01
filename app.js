@@ -3,6 +3,15 @@ let chartBarInst, chartDoughnutInst;
 let parsedData = null;
 let _tcCounter = 0;
 let _tcModalCounters = {};
+const TC_SEGURADORAS = [
+  'AKAD','ALLIANZ','AUSTRAL','AVLA','AXA','BERKLEY','BTG','CESCE','CHUBB',
+  'DAYCOVAL','ESSOR','EZZE','FAIRFAX','FATOR','HDI','JNS','JUNTO','KOVR',
+  'LIBERTY','MITISUI','NEWE','POTTENCIAL','SOMBRERO','SOMPO',
+  'SWISS RE','THINKSEG','TOKIO','ZURICH',
+];
+let _tcTabs = [];
+let _tcActiveTabId = null;
+let _tcTabCounter = 0;
 
 // â"€â"€ Tab switching
 function switchTab(tab) {
@@ -940,6 +949,12 @@ async function processarSeguroGarantia() {
     document.getElementById('sgLoading').hidden = true;
     document.getElementById('sgChatArea').hidden = false;
     appendSgChatMessage('assistant', respData);
+    _addChatHint('sgSidebarMessages', [
+      'Qual é a importância segurada exata e como foi calculada?',
+      'Quais cláusulas devem constar na apólice?',
+      'Qual a vigência e o prazo da garantia?',
+      'Há algum risco ou pendência de subscrição?',
+    ]);
   } catch (err) {
     document.getElementById('sgLoading').hidden = true;
     document.getElementById('sgUploadSection').hidden = false;
@@ -968,7 +983,7 @@ function resetSeguroGarantia() {
 
 // ── Chat file attachments ─────────────────────────────────────────────────────
 
-const _chatFiles = { sg: [], fl: [], af: [] };
+const _chatFiles = { sg: [], fl: [], af: [], ap: [] };
 
 function handleChatFileSelect(event, flow) {
   const files = Array.from(event.target.files || []);
@@ -1200,7 +1215,7 @@ function renderSeguroGarantiaReport(text) {
     </div>`;
 }
 
-// ── Seguro Garantia — Emission Card (novo renderer compacto) ──────────────
+// ── Seguro Garantia — Emission Card (renderer completo) ──────────────
 
 function renderSeguroGarantiaCard(data) {
   const now = new Date();
@@ -1209,6 +1224,7 @@ function renderSeguroGarantiaCard(data) {
   const filesText = document.getElementById('sgChatFiles').textContent || '';
 
   const parecer = data.parecer || {};
+  const conclusao = data.conclusao_operacional || {};
   const rec = (parecer.recomendacao || '').toLowerCase();
   const verdictCls = rec.includes('declinar') ? 'declinar' : rec.includes('ressalvas') ? 'ressalvas' : parecer.recomendacao ? 'emitir' : '';
   const verdictLabel = parecer.recomendacao || '';
@@ -1220,6 +1236,15 @@ function renderSeguroGarantiaCard(data) {
   const tomadorHtml = buildEmissaoPartBox('Tomador', data.tomador);
   const seguradoHtml = buildEmissaoPartBox('Segurado / Beneficiário', data.segurado);
   const temPartes = tomadorHtml || seguradoHtml;
+
+  const resumoHtml = data.resumo_executivo ? `
+    <div class="sg-resumo-executivo">
+      <p class="sg-resumo-label">Resumo Executivo</p>
+      <p class="sg-resumo-texto">${esc(data.resumo_executivo)}</p>
+    </div>` : '';
+
+  const dadosLicitacao = data.dados_licitacao_contrato || {};
+  const dadosLicitacaoHtml = buildSgDadosLicitacao(dadosLicitacao, data.tipo_documento_analisado);
 
   const parecerPendHtml = (parecer.pendencias || []).filter(p => p).length > 0
     ? `<ul class="sg-emission-pendencias">${(parecer.pendencias || []).map(p => `<li>${esc(p)}</li>`).join('')}</ul>`
@@ -1237,6 +1262,25 @@ function renderSeguroGarantiaCard(data) {
       ${parecer.justificativa ? `<p class="sg-emission-parecer-just">${esc(parecer.justificativa)}</p>` : ''}
       ${parecerPendHtml}
     </div>` : '';
+
+  const coberturas = data.coberturas_clausulas_exigidas || {};
+  const coberturasHtml = buildSgCoberturasHtml(coberturas);
+
+  const apresentacaoHtml = buildSgApresentacaoHtml(data.prazo_e_forma_de_apresentacao || {});
+
+  const alertasHtml = buildSgListaHtml(
+    (data.alertas_de_risco || []).concat(data.pendencias_para_emissao || []),
+    'sg-alerta-lista', 'sg-alerta-item', 'Alertas e Pendências'
+  );
+
+  const perguntasHtml = buildSgListaHtml(
+    data.perguntas_para_cliente_ou_comercial || [],
+    'sg-perguntas-lista', 'sg-pergunta-item', 'Perguntas ao Cliente / Comercial'
+  );
+
+  const conclusaoHtml = buildSgConclusaoHtml(conclusao);
+
+  const trechosHtml = buildSgTrechosHtml(data.trechos_relevantes || []);
 
   return `
     <div class="sg-report" id="sgReportContent">
@@ -1258,9 +1302,25 @@ function renderSeguroGarantiaCard(data) {
       <div class="sg-emission-body">
         ${docs.length > 0 ? `<div class="sg-docs-analisados">${docs.map(d => `<span class="sg-doc-badge">${esc(d)}</span>`).join('')}</div>` : ''}
 
+        ${resumoHtml}
+
+        ${dadosLicitacaoHtml}
+
         ${temPartes ? `<div class="sg-emission-partes-grid">${tomadorHtml}${seguradoHtml}</div>` : ''}
 
         ${modalidades.map(buildSgModalidadeCard).join('')}
+
+        ${coberturasHtml}
+
+        ${apresentacaoHtml}
+
+        ${trechosHtml}
+
+        ${alertasHtml}
+
+        ${perguntasHtml}
+
+        ${conclusaoHtml}
 
         ${parecerHtml}
       </div>
@@ -1280,14 +1340,20 @@ function buildSgModalidadeCard(modalidade) {
 
   const vigenciaHtml = buildVigenciaSgHtml(modalidade);
 
+  const acrescimoBadge = modalidade.exige_acrescimo_90_dias
+    ? `<span class="sg-badge sg-badge--info">+90 dias na apólice</span>`
+    : '';
+
   return `
     <div class="sg-modalidade-emission-card">
       <div class="sg-modalidade-emission-head">
         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" width="16" height="16" aria-hidden="true"><path d="M10 2L3 6v5c0 4.4 3.1 7.6 7 8 3.9-.4 7-3.6 7-8V6L10 2z" stroke-linejoin="round"/></svg>
         <h3 class="sg-modalidade-emission-nome">${esc(modalidade.nome || 'Modalidade')}</h3>
+        ${acrescimoBadge}
       </div>
       <div class="sg-modalidade-emission-body">
         ${buildEmissaoFieldRow('IS (Importância Segurada)', modalidade.importancia_segurada, 'brl')}
+        ${buildEmissaoFieldRow('Base de Cálculo', modalidade.base_calculo)}
         ${vigenciaHtml}
         ${buildEmissaoFieldRow('Objeto da Apólice', modalidade.objeto_apolice)}
         ${clausulas.length > 0 ? `
@@ -1328,10 +1394,18 @@ function buildVigenciaSgHtml(modalidade) {
 
 function buildEmissaoPartBox(label, item) {
   if (!item || item.valor === null || item.valor === undefined || String(item.valor) === 'null' || String(item.valor).trim() === '') return '';
+  const cnpjHtml = item.cnpj && String(item.cnpj) !== 'null' && String(item.cnpj).trim()
+    ? `<p class="sg-emission-parte-cnpj">${esc(String(item.cnpj))}</p>`
+    : '';
+  const enderecoHtml = item.endereco && String(item.endereco) !== 'null' && String(item.endereco).trim()
+    ? `<p class="sg-emission-parte-endereco">${esc(String(item.endereco))}</p>`
+    : '';
   return `
     <div class="sg-emission-parte-box">
       <p class="sg-emission-parte-label">${esc(label)}</p>
       <p class="sg-emission-parte-valor">${esc(String(item.valor))}</p>
+      ${cnpjHtml}
+      ${enderecoHtml}
       ${item.fonte ? `<p class="sg-emission-parte-fonte"><span class="sg-fonte-arrow" aria-hidden="true">↳</span>${esc(item.fonte)}</p>` : ''}
     </div>`;
 }
@@ -1347,6 +1421,137 @@ function buildEmissaoFieldRow(label, item, format) {
         <span class="sg-dado-valor">${esc(String(display))}</span>
         ${item.fonte ? `<span class="sg-dado-fonte"><span class="sg-fonte-arrow" aria-hidden="true">↳</span>${esc(item.fonte)}</span>` : ''}
       </div>
+    </div>`;
+}
+
+function buildSgDadosLicitacao(d, tipoDocumento) {
+  const fields = [
+    { label: 'Tipo de Documento', val: tipoDocumento },
+    { label: 'Nº do Edital', val: d.numero_edital },
+    { label: 'Nº do Processo', val: d.numero_processo },
+    { label: 'Modalidade de Licitação', val: d.modalidade_licitacao },
+    { label: 'Nº do Contrato', val: d.numero_contrato },
+    { label: 'Nº da Ata', val: d.numero_ata },
+  ].filter(f => f.val && String(f.val) !== 'null' && String(f.val).trim());
+
+  const objetoHtml = d.objeto && String(d.objeto) !== 'null' && String(d.objeto).trim()
+    ? `<div class="sg-licitacao-objeto"><span class="sg-licitacao-objeto-label">Objeto:</span> ${esc(String(d.objeto))}</div>`
+    : '';
+
+  if (!fields.length && !objetoHtml) return '';
+
+  return `
+    <div class="sg-licitacao-card">
+      <p class="sg-section-mini-title">Dados da Licitação / Contrato</p>
+      ${fields.length > 0 ? `<div class="sg-licitacao-grid">${fields.map(f => `
+        <div class="sg-licitacao-field">
+          <span class="sg-licitacao-label">${esc(f.label)}</span>
+          <span class="sg-licitacao-valor">${esc(String(f.val))}</span>
+        </div>`).join('')}</div>` : ''}
+      ${objetoHtml}
+    </div>`;
+}
+
+function buildSgCoberturasHtml(cob) {
+  const mapa = [
+    { key: 'multas', label: 'Cobertura de Multas' },
+    { key: 'trabalhista_previdenciaria', label: 'Trabalhista / Previdenciária' },
+    { key: 'fiscal', label: 'Obrigações Fiscais' },
+    { key: 'clausula_retomada', label: 'Cláusula de Retomada' },
+    { key: 'adiantamento_pagamento', label: 'Adiantamento de Pagamento' },
+    { key: 'retencao_pagamento', label: 'Retenção de Pagamento' },
+    { key: 'manutencao_corretiva', label: 'Manutenção Corretiva' },
+  ];
+  const ativas = mapa.filter(m => cob[m.key] === true);
+  const outras = Array.isArray(cob.outras) ? cob.outras.filter(o => o) : [];
+
+  if (!ativas.length && !outras.length) return '';
+
+  return `
+    <div class="sg-coberturas-card">
+      <p class="sg-section-mini-title">Coberturas / Cláusulas Exigidas</p>
+      <div class="sg-coberturas-grid">
+        ${ativas.map(m => `<span class="sg-cobertura-badge">${esc(m.label)}</span>`).join('')}
+        ${outras.map(o => `<span class="sg-cobertura-badge sg-cobertura-badge--outra">${esc(o)}</span>`).join('')}
+      </div>
+    </div>`;
+}
+
+function buildSgApresentacaoHtml(ap) {
+  const campos = [
+    { label: 'Prazo', val: ap.prazo },
+    { label: 'Momento', val: ap.momento },
+    { label: 'Forma de Envio', val: ap.forma_envio },
+  ].filter(c => c.val && String(c.val) !== 'null' && String(c.val).trim());
+
+  const pdfBadge = ap.arquivo_unico_pdf
+    ? `<span class="sg-badge sg-badge--warn">Arquivo único PDF obrigatório</span>`
+    : '';
+
+  if (!campos.length && !pdfBadge) return '';
+
+  return `
+    <div class="sg-apresentacao-card">
+      <p class="sg-section-mini-title">Prazo e Forma de Apresentação</p>
+      <div class="sg-apresentacao-grid">
+        ${campos.map(c => `
+          <div class="sg-apresentacao-field">
+            <span class="sg-licitacao-label">${esc(c.label)}</span>
+            <span class="sg-licitacao-valor">${esc(String(c.val))}</span>
+          </div>`).join('')}
+      </div>
+      ${pdfBadge}
+    </div>`;
+}
+
+function buildSgListaHtml(itens, listaClass, itemClass, titulo) {
+  const validos = (itens || []).filter(i => i && String(i).trim());
+  if (!validos.length) return '';
+  return `
+    <div class="sg-lista-card">
+      <p class="sg-section-mini-title">${esc(titulo)}</p>
+      <ul class="${listaClass}">
+        ${validos.map(i => `<li class="${itemClass}">${esc(i)}</li>`).join('')}
+      </ul>
+    </div>`;
+}
+
+function buildSgConclusaoHtml(c) {
+  if (!c || (c.pode_cotar === undefined && c.pode_emitir === undefined)) return '';
+  const nivel = String(c.nivel_confianca || '').toUpperCase();
+  const nivelCls = nivel === 'ALTA' ? 'alta' : nivel === 'MEDIA' ? 'media' : 'baixa';
+  return `
+    <div class="sg-conclusao-card">
+      <p class="sg-section-mini-title">Conclusão Operacional</p>
+      <div class="sg-conclusao-grid">
+        <div class="sg-conclusao-item">
+          <span class="sg-conclusao-icone ${c.pode_cotar ? 'sg-conclusao-sim' : 'sg-conclusao-nao'}" aria-hidden="true">${c.pode_cotar ? '✓' : '✕'}</span>
+          <span class="sg-conclusao-label">Pode Cotar</span>
+        </div>
+        <div class="sg-conclusao-item">
+          <span class="sg-conclusao-icone ${c.pode_emitir ? 'sg-conclusao-sim' : 'sg-conclusao-nao'}" aria-hidden="true">${c.pode_emitir ? '✓' : '✕'}</span>
+          <span class="sg-conclusao-label">Pode Emitir</span>
+        </div>
+        <div class="sg-conclusao-item">
+          <span class="sg-badge sg-badge--confianca sg-badge--confianca-${nivelCls}">Confiança ${esc(nivel || 'N/D')}</span>
+        </div>
+      </div>
+      ${c.motivo ? `<p class="sg-conclusao-motivo">${esc(c.motivo)}</p>` : ''}
+    </div>`;
+}
+
+function buildSgTrechosHtml(trechos) {
+  const validos = (trechos || []).filter(t => t && (t.tema || t.trecho));
+  if (!validos.length) return '';
+  return `
+    <div class="sg-trechos-card">
+      <p class="sg-section-mini-title">Trechos Relevantes do Documento</p>
+      ${validos.map(t => `
+        <div class="sg-trecho-item">
+          ${t.tema ? `<p class="sg-trecho-tema">${esc(t.tema)}</p>` : ''}
+          ${t.trecho ? `<blockquote class="sg-trecho-texto">${esc(t.trecho)}</blockquote>` : ''}
+          ${t.pagina_ou_localizacao ? `<span class="sg-dado-fonte"><span class="sg-fonte-arrow" aria-hidden="true">↳</span>${esc(t.pagina_ou_localizacao)}</span>` : ''}
+        </div>`).join('')}
     </div>`;
 }
 
@@ -1680,6 +1885,13 @@ function renderFiancaLocaticia(data) {
 
   const exportBtn = document.getElementById('flExportBtn');
   if (exportBtn) exportBtn.hidden = false;
+
+  _addChatHint('flSidebarMessages', [
+    'Há cláusula de sub-rogação neste contrato?',
+    'O valor da garantia cobre 3 meses de aluguel?',
+    'Qual é o índice de reajuste e quando se aplica?',
+    'Quais riscos foram identificados para a seguradora?',
+  ]);
   requestAnimationFrame(syncAiChatStickyOffset);
 }
 
@@ -2103,11 +2315,14 @@ async function processarAnaliseApolice() {
 function resetAnaliseApolice() {
   apoliceFiles = [];
   apoliceAnaliseData = null;
+  apChatHistory = [];
+  _chatFiles.ap = [];
   renderContratoFileList(apoliceFiles, 'apoliceFileList', 'apolice');
   document.getElementById('btnAnalyzeApolice').disabled = true;
   document.getElementById('apResultArea').hidden = true;
   document.getElementById('apUploadSection').hidden = false;
   document.getElementById('apReportContainer').innerHTML = '';
+  document.getElementById('apSidebarMessages').innerHTML = '';
   const exportBtn = document.getElementById('apExportBtn');
   if (exportBtn) exportBtn.hidden = true;
   hideApoliceError();
@@ -2127,6 +2342,15 @@ function renderAnaliseApolice(data) {
 
   const exportBtn = document.getElementById('apExportBtn');
   if (exportBtn) exportBtn.hidden = false;
+
+  apChatHistory = criarHistoricoApolice(apoliceFiles, JSON.stringify(data));
+  document.getElementById('apSidebarMessages').innerHTML = '';
+  _addChatHint('apSidebarMessages', [
+    'Quais coberturas estão ativas nesta apólice?',
+    'O que está excluído da cobertura?',
+    'Qual é a importância segurada?',
+    'Qual é a vigência da apólice?',
+  ]);
   requestAnimationFrame(syncAiChatStickyOffset);
 }
 
@@ -2255,6 +2479,71 @@ async function downloadApoliceReport() {
   }
 }
 
+// ── Apólice Q&A chat ─────────────────────────────────────────────────────────
+let apChatHistory = [];
+
+function appendApSidebarMessage(role, text) {
+  const el = document.getElementById('apSidebarMessages');
+  const div = document.createElement('div');
+  div.className = 'sg-chat-msg ' + (role === 'user' ? 'sg-chat-msg--user' : 'sg-chat-msg--ai');
+  div.innerHTML = role === 'assistant' ? renderMarkdown(text) : '<p>' + esc(text) + '</p>';
+  el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
+}
+
+async function sendApoliceChatMessage() {
+  const input = document.getElementById('apChatInput');
+  const text = input.value.trim();
+  if ((!text && !_chatFiles.ap.length) || apChatHistory.length === 0) return;
+
+  input.value = '';
+  const displayText = text || _chatFiles.ap.map(f => f.name).join(', ');
+  appendApSidebarMessage('user', displayText);
+
+  const msgObj = await _buildChatMessage('ap', text);
+  _clearChatFiles('ap');
+  apChatHistory.push(msgObj);
+
+  const sendBtn = document.getElementById('apChatSend');
+  sendBtn.disabled = true;
+  input.disabled = true;
+
+  const sidebarEl = document.getElementById('apSidebarMessages');
+  const typingDiv = document.createElement('div');
+  typingDiv.className = 'sg-chat-msg sg-chat-msg--ai sg-chat-typing';
+  typingDiv.innerHTML = '<div class="sg-chat-dots"><span></span><span></span><span></span></div>';
+  sidebarEl.appendChild(typingDiv);
+  sidebarEl.scrollTop = sidebarEl.scrollHeight;
+
+  try {
+    const respText = await chatApolice(apChatHistory);
+    apChatHistory.push({ role: 'assistant', content: respText });
+    typingDiv.remove();
+    appendApSidebarMessage('assistant', respText);
+  } catch (err) {
+    typingDiv.remove();
+    appendApSidebarMessage('assistant', 'Erro ao processar resposta: ' + esc(err.message));
+  } finally {
+    sendBtn.disabled = false;
+    input.disabled = false;
+    input.focus();
+  }
+}
+
+// ── Chat hint helper ──────────────────────────────────────────────────────────
+function _addChatHint(messagesId, questions) {
+  const el = document.getElementById(messagesId);
+  if (!el) return;
+  const div = document.createElement('div');
+  div.className = 'ai-chat-hint';
+  div.innerHTML =
+    '<p class="ai-chat-hint-title">Sugestões de perguntas:</p>' +
+    '<ul class="ai-chat-hint-list">' +
+    questions.map(q => '<li>' + esc(q) + '</li>').join('') +
+    '</ul>';
+  el.appendChild(div);
+}
+
 // -- Chart defaults
 Chart.defaults.font.family = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
 Chart.defaults.font.size = 11;
@@ -2285,8 +2574,224 @@ function switchTcMode(mode) {
     btnManual.classList.add('tc-mode-btn--active');
     btnUpload.setAttribute('aria-selected', 'false');
     btnManual.setAttribute('aria-selected', 'true');
-    if (document.getElementById('tcInsurerList').children.length === 0) addTcInsurer();
+    if (_tcTabs.length === 0) initTcTabs();
   }
+}
+
+function initTcTabs() {
+  _tcTabs = [];
+  _tcTabCounter = 0;
+  const tabId = ++_tcTabCounter;
+  _tcTabs.push({
+    id: tabId,
+    label: 'Tomador 1',
+    tomador: '',
+    cnpj: '',
+    insurers: TC_SEGURADORAS.map(seg => ({ seguradora: seg, status: '', capTotal: '', venc: '', statusCcg: '', modalidades: [] })),
+  });
+  _tcActiveTabId = tabId;
+  renderTcTabBar();
+  rebuildTcForm(tabId);
+}
+
+function renderTcTabBar() {
+  const bar = document.getElementById('tcTabBar');
+  if (!bar) return;
+  bar.innerHTML = _tcTabs.map(tab =>
+    '<button type="button" class="tc-tab-btn' + (tab.id === _tcActiveTabId ? ' tc-tab-btn--active' : '') +
+    '" id="tcTabBtn-' + tab.id + '" onclick="switchTcTab(' + tab.id + ')">' +
+    '<span class="tc-tab-label">' + esc(tab.label) + '</span>' +
+    (_tcTabs.length > 1 ? '<span class="tc-tab-close" onclick="removeTcTab(event,' + tab.id + ')" title="Fechar aba" aria-label="Fechar aba">&times;</span>' : '') +
+    '</button>'
+  ).join('') +
+  '<button type="button" class="tc-tab-add" onclick="addTcTab()" title="Nova aba" aria-label="Nova aba">+</button>';
+}
+
+function saveTcTabState(tabId) {
+  const tab = _tcTabs.find(t => t.id === tabId);
+  if (!tab) return;
+  tab.tomador = (document.getElementById('tcTomador') || {}).value || '';
+  tab.cnpj = (document.getElementById('tcCnpj') || {}).value || '';
+  const idx = _tcTabs.indexOf(tab);
+  tab.label = tab.tomador || ('Tomador ' + (idx + 1));
+  tab.insurers = [];
+  document.querySelectorAll('#tcInsurerList .tc-insurer-block').forEach(block => {
+    const id = block.id.replace('tcInsurer-', '');
+    const segEl   = document.getElementById('tcSeg-' + id);
+    const statusEl = document.getElementById('tcStatus-' + id);
+    const capEl   = document.getElementById('tcCapTotal-' + id);
+    const vencEl  = document.getElementById('tcVenc-' + id);
+    const ccgEl   = document.getElementById('tcStatusCcg-' + id);
+    const modalidades = [];
+    const modalList = document.getElementById('tcModalList-' + id);
+    if (modalList) {
+      modalList.querySelectorAll('.tc-modal-row').forEach(row => {
+        const inputs = row.querySelectorAll('.tc-input');
+        modalidades.push({
+          label:  inputs[0] ? inputs[0].value : '',
+          limite: inputs[1] ? inputs[1].value : '',
+          taxa:   inputs[2] ? inputs[2].value : '',
+        });
+      });
+    }
+    tab.insurers.push({
+      seguradora: segEl   ? segEl.value   : '',
+      status:     statusEl ? statusEl.value : '',
+      capTotal:   capEl   ? capEl.value   : '',
+      venc:       vencEl  ? vencEl.value  : '',
+      statusCcg:  ccgEl   ? ccgEl.value   : '',
+      modalidades,
+    });
+  });
+}
+
+function rebuildTcForm(tabId) {
+  const tab = _tcTabs.find(t => t.id === tabId);
+  if (!tab) return;
+  const tomadorEl = document.getElementById('tcTomador');
+  const cnpjEl   = document.getElementById('tcCnpj');
+  if (tomadorEl) tomadorEl.value = tab.tomador || '';
+  if (cnpjEl)   cnpjEl.value   = tab.cnpj   || '';
+  const list = document.getElementById('tcInsurerList');
+  if (!list) return;
+  list.innerHTML = '';
+  _tcCounter = 0;
+  _tcModalCounters = {};
+  if (tab.insurers.length === 0) { addTcInsurer(); return; }
+  tab.insurers.forEach(ins => addTcInsurerWithData(ins));
+  updateTcInsurerNums();
+}
+
+function addTcInsurerWithData(data) {
+  const id = ++_tcCounter;
+  _tcModalCounters[id] = 0;
+  const list = document.getElementById('tcInsurerList');
+  const n = list.children.length + 1;
+  const isAprovado = data.status === 'aprovado';
+  const div = document.createElement('div');
+  div.className = 'tc-insurer-block' + (isAprovado ? ' tc-insurer--approved' : '');
+  div.id = 'tcInsurer-' + id;
+  div.innerHTML =
+    '<div class="tc-insurer-head">' +
+      '<div class="tc-insurer-num">' + n + '</div>' +
+      '<div class="tc-head-seg">' +
+        '<input type="text" class="tc-input" id="tcSeg-' + id + '" list="tcSegList" placeholder="Seguradora" autocomplete="off" value="' + esc(data.seguradora || '') + '">' +
+      '</div>' +
+      '<div class="tc-head-status">' +
+        '<select class="tc-select" id="tcStatus-' + id + '" onchange="onTcStatusChange(this,' + id + ')">' +
+          '<option value="">Status</option>' +
+          '<option value="aprovado"'   + (data.status === 'aprovado'   ? ' selected' : '') + '>Aprovado</option>' +
+          '<option value="declinado"'  + (data.status === 'declinado'  ? ' selected' : '') + '>Declinado</option>' +
+          '<option value="concorrente"' + (data.status === 'concorrente' ? ' selected' : '') + '>Concorrente</option>' +
+          '<option value="bloqueado"'  + (data.status === 'bloqueado'  ? ' selected' : '') + '>Bloqueado</option>' +
+        '</select>' +
+      '</div>' +
+      '<button type="button" class="tc-btn-icon" onclick="removeTcInsurer(' + id + ')" title="Remover seguradora" aria-label="Remover seguradora">' +
+        '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M2 2l10 10M12 2L2 12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>' +
+      '</button>' +
+    '</div>' +
+    '<div class="tc-insurer-body" id="tcBody-' + id + '"' + (isAprovado ? '' : ' hidden') + '>' +
+      '<div class="tc-body-meta">' +
+        '<div class="tc-form-group">' +
+          '<label class="tc-label" for="tcCapTotal-' + id + '">Capacidade Total</label>' +
+          '<input type="text" class="tc-input" id="tcCapTotal-' + id + '" placeholder="R$ 0,00" onfocus="this.select()" onblur="fmtTcMoney(this)" value="' + esc(data.capTotal || '') + '">' +
+        '</div>' +
+        '<div class="tc-form-group">' +
+          '<label class="tc-label" for="tcVenc-' + id + '">Vencimento (opcional)</label>' +
+          '<input type="text" class="tc-input" id="tcVenc-' + id + '" placeholder="DD/MM/AAAA" inputmode="numeric" maxlength="10" oninput="fmtTcDate(this)" value="' + esc(data.venc || '') + '">' +
+        '</div>' +
+        '<div class="tc-form-group">' +
+          '<label class="tc-label" for="tcStatusCcg-' + id + '">Status CCG</label>' +
+          '<input type="text" class="tc-input" id="tcStatusCcg-' + id + '" placeholder="Status CCG" autocomplete="off" value="' + esc(data.statusCcg || '') + '">' +
+        '</div>' +
+      '</div>' +
+      '<div class="tc-modalidades-section">' +
+        '<div class="tc-modalidades-header">' +
+          '<span class="tc-modalidades-title">Modalidades</span>' +
+        '</div>' +
+        '<div class="tc-modal-col-header">' +
+          '<span class="tc-col-label">Modalidade</span>' +
+          '<span class="tc-col-label">Limite</span>' +
+          '<span class="tc-col-label">Taxa</span>' +
+          '<span></span>' +
+        '</div>' +
+        '<div class="tc-modal-list" id="tcModalList-' + id + '"></div>' +
+        '<button type="button" class="tc-btn-add-modal" onclick="addTcModalidade(' + id + ')">+ Adicionar modalidade</button>' +
+      '</div>' +
+    '</div>';
+  list.appendChild(div);
+  if (data.modalidades && data.modalidades.length > 0) {
+    data.modalidades.forEach(m => addTcModalidadeWithData(id, m));
+  } else if (isAprovado) {
+    addTcModalidade(id);
+  }
+}
+
+function addTcModalidadeWithData(insurerId, data) {
+  if (_tcModalCounters[insurerId] === undefined) _tcModalCounters[insurerId] = 0;
+  const mid  = ++_tcModalCounters[insurerId];
+  const list = document.getElementById('tcModalList-' + insurerId);
+  if (!list) return;
+  const row = document.createElement('div');
+  row.className = 'tc-modal-row';
+  row.id = 'tcModal-' + insurerId + '-' + mid;
+  row.innerHTML =
+    '<input type="text" class="tc-input tc-input--modal" placeholder="Ex: Judicial Trabalhista" autocomplete="off" value="' + esc(data.label || '') + '">' +
+    '<input type="text" class="tc-input tc-input--limite" placeholder="R$ 0,00" onfocus="this.select()" onblur="fmtTcMoney(this)" value="' + esc(data.limite || '') + '">' +
+    '<input type="text" class="tc-input tc-input--taxa" placeholder="0,00%" onfocus="this.select()" onblur="fmtTcTaxa(this)" value="' + esc(data.taxa || '') + '">' +
+    '<button type="button" class="tc-btn-icon" onclick="removeTcModalidade(\'' + insurerId + '-' + mid + '\')" title="Remover modalidade" aria-label="Remover modalidade">' +
+      '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M1.5 1.5l9 9M10.5 1.5l-9 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>' +
+    '</button>';
+  list.appendChild(row);
+}
+
+function switchTcTab(tabId) {
+  if (tabId === _tcActiveTabId) return;
+  saveTcTabState(_tcActiveTabId);
+  _tcActiveTabId = tabId;
+  renderTcTabBar();
+  rebuildTcForm(tabId);
+}
+
+function addTcTab() {
+  saveTcTabState(_tcActiveTabId);
+  const tabId = ++_tcTabCounter;
+  const n = _tcTabs.length + 1;
+  _tcTabs.push({
+    id: tabId,
+    label: 'Tomador ' + n,
+    tomador: '',
+    cnpj: '',
+    insurers: TC_SEGURADORAS.map(seg => ({ seguradora: seg, status: '', capTotal: '', venc: '', statusCcg: '', modalidades: [] })),
+  });
+  _tcActiveTabId = tabId;
+  renderTcTabBar();
+  rebuildTcForm(tabId);
+}
+
+function removeTcTab(event, tabId) {
+  event.stopPropagation();
+  if (_tcTabs.length <= 1) return;
+  const idx = _tcTabs.findIndex(t => t.id === tabId);
+  _tcTabs.splice(idx, 1);
+  if (_tcActiveTabId === tabId) {
+    _tcActiveTabId = _tcTabs[Math.max(0, idx - 1)].id;
+    renderTcTabBar();
+    rebuildTcForm(_tcActiveTabId);
+  } else {
+    renderTcTabBar();
+  }
+}
+
+function updateTcActiveTabLabel() {
+  if (!_tcActiveTabId) return;
+  const tab = _tcTabs.find(t => t.id === _tcActiveTabId);
+  if (!tab) return;
+  const tomadorVal = (document.getElementById('tcTomador') || {}).value || '';
+  const idx = _tcTabs.indexOf(tab);
+  tab.label = tomadorVal || ('Tomador ' + (idx + 1));
+  const labelEl = document.querySelector('#tcTabBtn-' + _tcActiveTabId + ' .tc-tab-label');
+  if (labelEl) labelEl.textContent = tab.label;
 }
 
 function addTcInsurer() {
@@ -3018,6 +3523,12 @@ function renderAnaliseFinanceira(data) {
   // Init Q&A chat history with JSON context
   afChatHistory = criarHistoricoAnaliseFinanceira(financialFiles, JSON.stringify(data));
   document.getElementById('afQaMessages').innerHTML = '';
+  _addChatHint('afQaMessages', [
+    'Qual o índice de liquidez corrente e o que significa?',
+    'Qual o limite máximo sugerido para seguro garantia?',
+    'A empresa tem patrimônio líquido suficiente?',
+    'Houve crescimento ou queda de receita no período?',
+  ]);
 }
 
 // ── AF Q&A chat ──────────────────────────────────────────────────────────────
@@ -3134,19 +3645,30 @@ function buildDocumentoCard(doc) {
     .map(cfg => ({ ...cfg, value: ind[cfg.key] }))
     .filter(cfg => hasIndicadorValue(cfg.value));
 
-  const rowsHtml = indicadoresDisponiveis.map(cfg => {
-    const val = cfg.value;
-    const display = fmtIndicador(val, cfg.format);
-    const isNeg = typeof val === 'number' && val < 0;
-    return `<tr class="${isNeg ? 'af-kpi-row--neg' : ''}">
-      <td class="af-kpi-label">${esc(cfg.label)}</td>
-      <td class="af-kpi-value mono">${esc(String(display))}</td>
-    </tr>`;
-  }).join('');
+  const prioritarios = indicadoresDisponiveis.filter(cfg => cfg.priority);
+  const demais = indicadoresDisponiveis.filter(cfg => !cfg.priority);
 
-  const kpisHtml = indicadoresDisponiveis.length > 0
-    ? `<table class="af-kpis-table"><tbody>${rowsHtml}</tbody></table>`
-    : '<p class="af-no-data">Indicadores não extraídos deste documento.</p>';
+  function buildRows(lista) {
+    return lista.map(cfg => {
+      const val = cfg.value;
+      const display = fmtIndicador(val, cfg.format);
+      const isNeg = typeof val === 'number' && val < 0;
+      return `<tr class="${isNeg ? 'af-kpi-row--neg' : ''}">
+        <td class="af-kpi-label">${esc(cfg.label)}</td>
+        <td class="af-kpi-value mono">${esc(String(display))}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  let kpisHtml;
+  if (indicadoresDisponiveis.length === 0) {
+    kpisHtml = '<p class="af-no-data">Indicadores não extraídos deste documento.</p>';
+  } else {
+    kpisHtml = `<table class="af-kpis-table"><tbody>${buildRows(prioritarios)}</tbody></table>`;
+    if (demais.length > 0) {
+      kpisHtml += `<div class="af-kpis-divider">Outros indicadores</div><table class="af-kpis-table af-kpis-table--demais"><tbody>${buildRows(demais)}</tbody></table>`;
+    }
+  }
 
   return `
     <div class="af-doc-card">
@@ -3161,15 +3683,35 @@ function buildDocumentoCard(doc) {
 
 function buildEmpresaCard(emp, idx) {
   const ac = emp.analise_credito || {};
-  const risco = ac.classificacao_risco || '—';
+  const cf = emp.classificacao_financeira || {};
+  const vsg = emp.visao_para_seguro_garantia || {};
+  const conc = emp.conclusao_final || {};
+  const risco = ac.classificacao_risco || cf.nivel_risco || '—';
   const docs = emp.documentos || [];
 
   const docsHtml = docs.length > 0
     ? `<div class="af-docs-grid">${docs.map(buildDocumentoCard).join('')}</div>`
     : '<p class="af-no-data">Nenhum documento identificado.</p>';
 
-  const capGarantia  = ac.capacidade_seguro_garantia  || '—';
-  const capFianca    = ac.capacidade_fianca_locaticia  || '—';
+  const capGarantia = ac.capacidade_seguro_garantia || '—';
+  const capFianca   = ac.capacidade_fianca_locaticia || '—';
+
+  const classifHtml = buildAfClassificacaoHtml(cf);
+  const principaisHtml = buildAfPrincipaisNumerosHtml(emp.principais_numeros || {});
+  const indicadoresHtml = buildAfIndicadoresCalcHtml(emp.indicadores_calculados || {});
+  const qualitativaHtml = buildAfQualitativaHtml(emp.analise_qualitativa || {});
+  const sinaisHtml = buildAfSinaisHtml(emp.sinais_positivos || [], emp.sinais_negativos || [], ac.pontos_positivos || [], ac.pontos_atencao || []);
+  const alertasHtml = buildAfListaCard(emp.alertas_de_risco || [], 'af-alertas-list', 'af-alerta-item--risk', 'Alertas de Risco');
+  const inconsistHtml = buildAfListaCard(emp.inconsistencias_ou_limitacoes || [], 'af-incons-list', 'af-incons-item', 'Inconsistências / Limitações');
+  const docsAdicionaisHtml = buildAfListaCard(emp.documentos_adicionais_recomendados || [], 'af-docs-adicionais-list', 'af-docs-adicionais-item', 'Documentos Adicionais Recomendados');
+  const visaoSgHtml = buildAfVisaoSgHtml(vsg);
+  const conclusaoHtml = buildAfConclusaoHtml(conc);
+
+  const headerMeta = [
+    emp.periodo_analisado ? `Período: ${emp.periodo_analisado}` : '',
+    emp.moeda ? `Moeda: ${emp.moeda}` : '',
+    emp.observacao_escala && !emp.observacao_escala.toLowerCase().includes('reais') ? emp.observacao_escala : '',
+  ].filter(Boolean).join(' · ');
 
   return `
     <section class="af-empresa-section dashboard-section" aria-label="${esc(emp.empresa || 'Empresa')}">
@@ -3177,27 +3719,25 @@ function buildEmpresaCard(emp, idx) {
         <div class="af-empresa-identity">
           <h2 class="af-empresa-nome">${esc(emp.empresa || 'Empresa não identificada')}</h2>
           ${emp.cnpj ? `<span class="af-empresa-cnpj">CNPJ ${esc(emp.cnpj)}</span>` : ''}
+          ${headerMeta ? `<span class="af-empresa-meta">${esc(headerMeta)}</span>` : ''}
         </div>
         <span class="af-risco-badge ${riscoClass(risco)}">Risco ${esc(risco)}</span>
       </div>
 
-      <h3 class="af-subsection-title">Documentos Analisados</h3>
-      ${docsHtml}
+      ${classifHtml}
 
-      <h3 class="af-subsection-title">Análise de Crédito</h3>
       <div class="af-credito-card card">
-
         <div class="af-capacidades-row">
           <div class="af-cap-item ${capacidadeClass(capGarantia)}">
             <div class="af-cap-header">
-              <span class="af-cap-label">Capacidade · Seguro Garantia</span>
+              <span class="af-cap-label">Seguro Garantia</span>
               <span class="af-cap-chip ${capacidadeClass(capGarantia)}">${esc(capGarantia)}</span>
             </div>
             ${ac.justificativa_garantia ? `<span class="af-cap-just">${esc(ac.justificativa_garantia)}</span>` : ''}
           </div>
           <div class="af-cap-item ${capacidadeClass(capFianca)}">
             <div class="af-cap-header">
-              <span class="af-cap-label">Capacidade · Fiança Locatícia</span>
+              <span class="af-cap-label">Fiança Locatícia</span>
               <span class="af-cap-chip ${capacidadeClass(capFianca)}">${esc(capFianca)}</span>
             </div>
             ${ac.justificativa_fianca ? `<span class="af-cap-just">${esc(ac.justificativa_fianca)}</span>` : ''}
@@ -3210,27 +3750,230 @@ function buildEmpresaCard(emp, idx) {
           <p class="af-resumo-text">${esc(ac.resumo_executivo)}</p>
         </div>` : ''}
 
-        <div class="af-pontos-grid">
-          <div class="af-pontos-card af-pontos-card--pos">
-            <p class="af-card-label">Pontos Positivos</p>
-            <ul class="af-pontos-list">
-              ${(ac.pontos_positivos || []).map(p => `<li>${esc(p)}</li>`).join('') || '<li>Não identificados.</li>'}
-            </ul>
-          </div>
-          <div class="af-pontos-card af-pontos-card--atencao">
-            <p class="af-card-label">Pontos de Atenção</p>
-            <ul class="af-pontos-list">
-              ${(ac.pontos_atencao || []).map(p => `<li>${esc(p)}</li>`).join('') || '<li>Não identificados.</li>'}
-            </ul>
-          </div>
-        </div>
-
         ${ac.recomendacao_seguradora ? `
         <div class="af-recomendacao-block">
-          <p class="af-card-label">Recomendação para a Seguradora</p>
+          <p class="af-card-label">Recomendação para Emissão</p>
           <p class="af-recomendacao-text">${esc(ac.recomendacao_seguradora)}</p>
         </div>` : ''}
       </div>
+
+      ${principaisHtml}
+
+      ${indicadoresHtml}
+
+      <h3 class="af-subsection-title">Documentos Analisados por Período</h3>
+      ${docsHtml}
+
+      ${qualitativaHtml}
+
+      ${sinaisHtml}
+
+      ${alertasHtml}
+
+      ${inconsistHtml}
+
+      ${visaoSgHtml}
+
+      ${docsAdicionaisHtml}
+
+      ${conclusaoHtml}
     </section>`;
+}
+
+function classificacaoFinanceiraClass(sit) {
+  const s = (sit || '').toLowerCase();
+  if (s === 'boa' || s.startsWith('boa'))          return 'af-classif--boa';
+  if (s.includes('regular'))                        return 'af-classif--regular';
+  if (s.includes('fraca'))                          return 'af-classif--fraca';
+  if (s.includes('cr') || s.includes('criti'))     return 'af-classif--critica';
+  return 'af-classif--inconclusiva';
+}
+
+function buildAfClassificacaoHtml(cf) {
+  if (!cf || !cf.situacao) return '';
+  const cls = classificacaoFinanceiraClass(cf.situacao);
+  const riskLabel = cf.nivel_risco ? ` · Risco ${cf.nivel_risco}` : '';
+  return `
+    <div class="af-classif-banner ${cls}">
+      <span class="af-classif-situacao">${esc(cf.situacao)}${esc(riskLabel)}</span>
+      ${cf.justificativa ? `<span class="af-classif-just">${esc(cf.justificativa)}</span>` : ''}
+    </div>`;
+}
+
+function buildAfPrincipaisNumerosHtml(pn) {
+  const campos = [
+    { label: 'Ativo Total',             key: 'ativo_total' },
+    { label: 'Ativo Circulante',        key: 'ativo_circulante' },
+    { label: 'Passivo Total',           key: 'passivo_total' },
+    { label: 'Passivo Circulante',      key: 'passivo_circulante' },
+    { label: 'Patrimônio Líquido',      key: 'patrimonio_liquido' },
+    { label: 'Receita Bruta',           key: 'receita_bruta' },
+    { label: 'Receita Líquida',         key: 'receita_liquida' },
+    { label: 'Lucro Líquido',           key: 'lucro_liquido' },
+    { label: 'Caixa / Equivalentes',    key: 'caixa_e_equivalentes' },
+    { label: 'Clientes a Receber',      key: 'clientes_a_receber' },
+    { label: 'Estoques',                key: 'estoques' },
+    { label: 'Fornecedores',            key: 'fornecedores' },
+    { label: 'Empréstimos / Financ.',   key: 'emprestimos_e_financiamentos' },
+    { label: 'Obrigações Fiscais',      key: 'obrigacoes_fiscais' },
+    { label: 'Obrigações Trabalhistas', key: 'obrigacoes_trabalhistas' },
+  ].filter(c => hasIndicadorValue(pn[c.key]));
+
+  if (!campos.length) return '';
+  return `
+    <div class="af-principais-card">
+      <p class="af-subsection-title af-subsection-title--sm">Principais Números (período mais recente)</p>
+      <div class="af-principais-grid">
+        ${campos.map(c => {
+          const val = pn[c.key];
+          const isNeg = typeof val === 'number' && val < 0;
+          const display = typeof val === 'number' ? fmtBRL(val) : String(val);
+          return `<div class="af-principal-item${isNeg ? ' af-principal-item--neg' : ''}">
+            <span class="af-principal-label">${esc(c.label)}</span>
+            <span class="af-principal-valor">${esc(display)}</span>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+}
+
+function buildAfIndicadoresCalcHtml(ic) {
+  const config = [
+    { key: 'liquidez_corrente',        label: 'Liquidez Corrente',       format: 'dec' },
+    { key: 'liquidez_seca',            label: 'Liquidez Seca',           format: 'dec' },
+    { key: 'capital_de_giro_liquido',  label: 'Capital de Giro Líq.',    format: 'brl' },
+    { key: 'endividamento_geral',      label: 'Endividamento Geral',     format: 'pct' },
+    { key: 'divida_sobre_pl',          label: 'Dívida / PL',             format: 'dec' },
+    { key: 'composicao_endividamento', label: 'Composição Endiv. CP',    format: 'pct' },
+    { key: 'margem_bruta',             label: 'Margem Bruta',            format: 'pct' },
+    { key: 'margem_operacional',       label: 'Margem Operacional',      format: 'pct' },
+    { key: 'margem_liquida',           label: 'Margem Líquida',          format: 'pct' },
+    { key: 'roe',                      label: 'ROE',                     format: 'pct' },
+    { key: 'roa',                      label: 'ROA',                     format: 'pct' },
+  ].filter(c => ic[c.key] && hasIndicadorValue(ic[c.key].valor));
+
+  if (!config.length) return '';
+
+  return `
+    <div class="af-indicadores-calc-card">
+      <p class="af-subsection-title af-subsection-title--sm">Indicadores Calculados</p>
+      <div class="af-ind-calc-grid">
+        ${config.map(c => {
+          const item = ic[c.key];
+          const val = item.valor;
+          const isNeg = typeof val === 'number' && val < 0;
+          let display;
+          if (typeof val === 'number') {
+            if (c.format === 'pct')      display = (val * (Math.abs(val) <= 1.5 ? 100 : 1)).toFixed(1).replace('.', ',') + '%';
+            else if (c.format === 'brl') display = fmtBRL(val);
+            else                         display = val.toFixed(2).replace('.', ',');
+          } else display = String(val);
+          return `
+            <div class="af-ind-calc-item${isNeg ? ' af-ind-calc-item--neg' : ''}">
+              <span class="af-ind-calc-label">${esc(c.label)}</span>
+              <span class="af-ind-calc-valor">${esc(display)}</span>
+              ${item.interpretacao ? `<span class="af-ind-calc-interp">${esc(item.interpretacao)}</span>` : ''}
+            </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+}
+
+function buildAfQualitativaHtml(aq) {
+  const campos = [
+    { key: 'liquidez',              label: 'Liquidez' },
+    { key: 'endividamento',         label: 'Endividamento' },
+    { key: 'rentabilidade',         label: 'Rentabilidade' },
+    { key: 'patrimonio_liquido',    label: 'Patrimônio Líquido' },
+    { key: 'resultado',             label: 'Resultado / Evolução' },
+    { key: 'capital_de_giro',       label: 'Capital de Giro' },
+    { key: 'capacidade_financeira', label: 'Capacidade Financeira' },
+    { key: 'consistencia_contabil', label: 'Consistência Contábil' },
+  ].filter(c => aq[c.key] && String(aq[c.key]).trim());
+
+  if (!campos.length) return '';
+  return `
+    <div class="af-qualitativa-card">
+      <p class="af-subsection-title af-subsection-title--sm">Análise Qualitativa</p>
+      <div class="af-qualitativa-grid">
+        ${campos.map(c => `
+          <div class="af-qual-item">
+            <span class="af-qual-label">${esc(c.label)}</span>
+            <span class="af-qual-texto">${esc(aq[c.key])}</span>
+          </div>`).join('')}
+      </div>
+    </div>`;
+}
+
+function buildAfSinaisHtml(sinaisPos, sinaisNeg, pontosPos, pontosAtencao) {
+  const positivos = [...sinaisPos, ...pontosPos].filter((p, i, a) => p && a.indexOf(p) === i);
+  const negativos = [...sinaisNeg, ...pontosAtencao].filter((p, i, a) => p && a.indexOf(p) === i);
+  if (!positivos.length && !negativos.length) return '';
+
+  const posHtml = positivos.length
+    ? `<div class="af-pontos-card af-pontos-card--pos">
+        <p class="af-card-label">Sinais Positivos</p>
+        <ul class="af-pontos-list">${positivos.map(p => `<li>${esc(p)}</li>`).join('')}</ul>
+      </div>`
+    : '';
+  const negHtml = negativos.length
+    ? `<div class="af-pontos-card af-pontos-card--atencao">
+        <p class="af-card-label">Sinais Negativos / Pontos de Atenção</p>
+        <ul class="af-pontos-list">${negativos.map(p => `<li>${esc(p)}</li>`).join('')}</ul>
+      </div>`
+    : '';
+
+  return `<div class="af-pontos-grid">${posHtml}${negHtml}</div>`;
+}
+
+function buildAfListaCard(itens, listClass, itemClass, titulo) {
+  const validos = (itens || []).filter(i => i && String(i).trim());
+  if (!validos.length) return '';
+  return `
+    <div class="af-lista-generica-card">
+      <p class="af-subsection-title af-subsection-title--sm">${esc(titulo)}</p>
+      <ul class="${listClass}">
+        ${validos.map(i => `<li class="${itemClass}">${esc(i)}</li>`).join('')}
+      </ul>
+    </div>`;
+}
+
+function buildAfVisaoSgHtml(vsg) {
+  if (!vsg || (!vsg.capacidade_para_assumir_contratos && !vsg.recomendacao_operacional)) return '';
+  const c = (vsg.capacidade_para_assumir_contratos || '').toLowerCase();
+  const capCls = c.includes('boa') || c.includes('alta') ? 'af-vsg--boa'
+    : c.includes('moderada') ? 'af-vsg--moderada'
+    : c.includes('limitada') || c.includes('baixa') ? 'af-vsg--limitada'
+    : 'af-vsg--risco';
+
+  return `
+    <div class="af-visao-sg-card ${capCls}">
+      <p class="af-card-label">Visão para Seguro Garantia</p>
+      ${vsg.capacidade_para_assumir_contratos ? `<p class="af-vsg-capacidade">${esc(vsg.capacidade_para_assumir_contratos)}</p>` : ''}
+      ${(vsg.pontos_de_atencao_para_subscricao || []).filter(Boolean).length > 0 ? `
+        <ul class="af-vsg-pontos">
+          ${vsg.pontos_de_atencao_para_subscricao.filter(Boolean).map(p => `<li>${esc(p)}</li>`).join('')}
+        </ul>` : ''}
+      ${vsg.recomendacao_operacional ? `<p class="af-vsg-recomendacao">${esc(vsg.recomendacao_operacional)}</p>` : ''}
+    </div>`;
+}
+
+function buildAfConclusaoHtml(conc) {
+  if (!conc || !conc.resumo_da_conclusao) return '';
+  const nivel = String(conc.nivel_confianca_da_analise || '').toUpperCase();
+  const nivelCls = nivel === 'ALTO' ? 'af-conc--alto' : nivel === 'MEDIO' ? 'af-conc--medio' : 'af-conc--baixo';
+  return `
+    <div class="af-conclusao-final-card">
+      <p class="af-card-label">Conclusão Operacional</p>
+      <div class="af-conc-body">
+        ${conc.empresa_tem_bons_numeros !== null && conc.empresa_tem_bons_numeros !== undefined ? `
+          <div class="af-conc-flags">
+            <span class="af-conc-flag ${conc.empresa_tem_bons_numeros ? 'af-conc-flag--sim' : 'af-conc-flag--nao'}">${conc.empresa_tem_bons_numeros ? '✓ Bons números' : '✕ Bons números'}</span>
+            ${conc.empresa_tem_numeros_ruins !== null && conc.empresa_tem_numeros_ruins !== undefined ? `<span class="af-conc-flag ${conc.empresa_tem_numeros_ruins ? 'af-conc-flag--nao' : 'af-conc-flag--sim'}">${conc.empresa_tem_numeros_ruins ? '✕ Números ruins' : '✓ Sem números ruins críticos'}</span>` : ''}
+          </div>` : ''}
+        <p class="af-conc-texto">${esc(conc.resumo_da_conclusao)}</p>
+        ${nivel ? `<span class="af-conc-nivel ${nivelCls}">Confiança: ${esc(nivel)}</span>` : ''}
+      </div>
+    </div>`;
 }
 

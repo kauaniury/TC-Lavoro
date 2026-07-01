@@ -105,10 +105,12 @@
         </div>
         <div class="upload-card-body">
 
+          <div id="tcTabBar" class="tc-tab-bar"></div>
+
           <div class="tc-form-header">
             <div class="tc-form-group">
               <label class="tc-label" for="tcTomador">Tomador</label>
-              <input type="text" id="tcTomador" class="tc-input" placeholder="Nome do tomador" autocomplete="off">
+              <input type="text" id="tcTomador" class="tc-input" placeholder="Nome do tomador" autocomplete="off" oninput="updateTcActiveTabLabel()">
             </div>
             <div class="tc-form-group">
               <label class="tc-label" for="tcCnpj">CNPJ</label>
