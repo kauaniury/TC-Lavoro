@@ -290,10 +290,10 @@ Retorne apenas JSON.`;
 
 Voce e um especialista em leitura tecnica de APOLICES DE SEGURO. Analise APENAS este trecho.
 
-Extraia somente o que esta explicitamente presente: tomador, segurado, importancia segurada, vigencia, objeto da apolice, coberturas, riscos excluidos. Em "lacunas_pista" registre coberturas que geralmente existem neste tipo de apolice mas NAO aparecem neste trecho (possivel gap de cobertura).
+Extraia o MAXIMO de informacao explicitamente presente neste trecho: seguradora emissora, numero da apolice, ramo/modalidade, tomador/locatario, segurado/locador, CNPJ/CPF de tomador e segurado, importancia segurada (IS), premio, vigencia, objeto da apolice, coberturas (com limite/IS de cada uma), clausulas/condicoes e riscos excluidos. Em "lacunas_pista" registre coberturas que geralmente existem neste tipo de apolice mas NAO aparecem neste trecho (possivel gap de cobertura). Use null para o que nao estiver presente NESTE trecho.
 
 Formato:
-{"dados_gerais":{"tomador":null,"segurado":null,"importancia_segurada":null,"vigencia":null,"objeto_apolice":null},"coberturas":[{"descricao":"cobertura identificada","fonte":"pagina ou clausula"}],"riscos_excluidos":[{"descricao":"exclusao identificada","fonte":"pagina ou clausula"}],"lacunas_pista":["cobertura tipica ausente neste trecho"],"notas":["resumo tecnico do trecho"]}
+{"dados_gerais":{"seguradora":null,"numero_apolice":null,"ramo":null,"tomador":null,"tomador_documento":null,"segurado":null,"segurado_documento":null,"importancia_segurada":null,"premio":null,"vigencia":null,"objeto_apolice":null},"coberturas":[{"descricao":"cobertura identificada","limite":null,"fonte":"pagina ou clausula"}],"clausulas":[{"titulo":null,"descricao":"clausula/condicao identificada","fonte":"pagina ou clausula"}],"riscos_excluidos":[{"descricao":"exclusao identificada","fonte":"pagina ou clausula"}],"lacunas_pista":["cobertura tipica ausente neste trecho"],"notas":["resumo tecnico do trecho"]}
 Retorne apenas JSON.`;
   }
 
@@ -417,18 +417,21 @@ ${notesBlock}`;
   }
 
   if (flow === 'analise-apolice') {
-    return `Voce e um especialista em leitura tecnica de APOLICES DE SEGURO para corretoras. Consolide as notas parciais abaixo em uma analise objetiva da apolice.
+    return `Voce e um especialista em leitura tecnica de APOLICES DE SEGURO para corretoras. Consolide as notas parciais abaixo em uma analise objetiva e completa da apolice, trazendo o MAXIMO de informacao possivel.
 
 Arquivos analisados: ${fileNames.join(', ')}
 
 INSTRUCOES:
-1. Extraia somente dados presentes explicitamente nos documentos: tomador, segurado, IS, vigencia, objeto, coberturas e riscos excluidos.
-2. Para "riscos_excluidos": inclua tanto as exclusoes explicitas quanto coberturas tipicamente presentes neste tipo de apolice que NAO foram encontradas (lacunas de cobertura) — identifique como "Cobertura nao localizada: [nome]" para que o corretor possa verificar.
-3. Se lacunas_pista foram registradas nas notas de chunk, inclua-as em riscos_excluidos.
-4. Use null para campos nao localizados. Nao estime valores.
+1. Extraia somente dados presentes explicitamente nos documentos: seguradora emissora, numero da apolice, ramo/modalidade, tomador/locatario, segurado/locador, CNPJ/CPF de tomador e segurado, IS, premio, vigencia, objeto, coberturas (com limite/IS de cada), clausulas/condicoes e riscos excluidos.
+2. O tomador/locatario pode nao existir em alguns tipos de apolice — nesse caso use valor null. O segurado/locador quase sempre existe.
+3. Em "coberturas": liste TODAS as coberturas contratadas; para cada uma preencha o campo "limite" com o limite/IS especifico quando o documento informar.
+4. Em "clausulas": liste clausulas particulares, especiais, condicoes especificas, franquias e condicoes de indenizacao relevantes.
+5. Para "riscos_excluidos": inclua tanto as exclusoes explicitas quanto coberturas tipicamente presentes neste tipo de apolice que NAO foram encontradas (lacunas de cobertura) — identifique como "Cobertura nao localizada: [nome]" para que o corretor possa verificar.
+6. Se lacunas_pista foram registradas nas notas de chunk, inclua-as em riscos_excluidos.
+7. Use null para campos nao localizados. Nao estime valores. Monetarios como numero puro em reais (ex: 150000.50).
 
 Retorne APENAS o JSON:
-{"tipo":"Analise de Apolice","documentos_analisados":["nomes dos arquivos"],"dados_gerais":{"tomador":{"valor":"nome do tomador ou null","fonte":"..."},"segurado":{"valor":"nome do segurado ou null","fonte":"..."},"importancia_segurada":{"valor":0.00,"fonte":"..."},"vigencia":{"valor":"inicio e fim da vigencia ou null","fonte":"..."},"objeto_apolice":{"valor":"objeto da apolice ou null","fonte":"..."}},"coberturas":[{"descricao":"cobertura contratada identificada","fonte":"pagina ou clausula"}],"riscos_excluidos":[{"descricao":"exclusao explicita ou gap de cobertura identificado","fonte":"pagina, clausula ou 'Cobertura nao localizada'"}]}
+{"tipo":"Analise de Apolice","documentos_analisados":["nomes dos arquivos"],"dados_gerais":{"seguradora":{"valor":"nome da seguradora ou null","fonte":"..."},"numero_apolice":{"valor":"numero da apolice ou null","fonte":"..."},"ramo":{"valor":"ramo/modalidade ou null","fonte":"..."},"tomador":{"valor":"nome do tomador/locatario ou null","fonte":"..."},"tomador_documento":{"valor":"CNPJ/CPF ou null","fonte":"..."},"segurado":{"valor":"nome do segurado/locador ou null","fonte":"..."},"segurado_documento":{"valor":"CNPJ/CPF ou null","fonte":"..."},"importancia_segurada":{"valor":0.00,"fonte":"..."},"premio":{"valor":0.00,"fonte":"..."},"vigencia":{"valor":"inicio e fim da vigencia ou null","fonte":"..."},"objeto_apolice":{"valor":"objeto da apolice ou null","fonte":"..."}},"coberturas":[{"descricao":"cobertura contratada identificada","limite":"limite/IS da cobertura ou null","fonte":"pagina ou clausula"}],"clausulas":[{"titulo":"titulo da clausula ou null","descricao":"resumo fiel da clausula/condicao","fonte":"pagina ou clausula"}],"riscos_excluidos":[{"descricao":"exclusao explicita ou gap de cobertura identificado","fonte":"pagina, clausula ou 'Cobertura nao localizada'"}]}
 
 NOTAS PARCIAIS:
 ${notesBlock}`;

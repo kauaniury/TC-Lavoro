@@ -776,9 +776,15 @@ const FL_DADOS_CONFIG = [
 ];
 
 const APOLICE_DADOS_CONFIG = [
-  { key: 'tomador', label: 'Tomador' },
-  { key: 'segurado', label: 'Segurado' },
-  { key: 'importancia_segurada', label: 'Importância Segurada', format: 'brl' },
+  { key: 'seguradora', label: 'Seguradora Emissora' },
+  { key: 'numero_apolice', label: 'Nº da Apólice' },
+  { key: 'ramo', label: 'Ramo / Modalidade' },
+  { key: 'tomador', label: 'Tomador / Locatário' },
+  { key: 'tomador_documento', label: 'CNPJ/CPF do Tomador' },
+  { key: 'segurado', label: 'Segurado / Locador' },
+  { key: 'segurado_documento', label: 'CNPJ/CPF do Segurado' },
+  { key: 'importancia_segurada', label: 'Importância Segurada (IS)', format: 'brl' },
+  { key: 'premio', label: 'Prêmio', format: 'brl' },
   { key: 'vigencia', label: 'Vigência' },
   { key: 'objeto_apolice', label: 'Objeto da Apólice' },
 ];
@@ -2367,6 +2373,7 @@ function buildApoliceReportHtml(data, title) {
 
   const dadosRows = APOLICE_DADOS_CONFIG.map(cfg => buildApoliceDadoRow(cfg, dados[cfg.key])).join('');
   const coberturasHtml = buildApoliceList(data.coberturas, 'Nenhuma cobertura localizada.');
+  const clausulasHtml = buildApoliceList(data.clausulas, 'Nenhuma cláusula localizada.');
   const excluidosHtml = buildApoliceList(data.riscos_excluidos, 'Nenhum risco excluído localizado.');
 
   return `
@@ -2406,6 +2413,14 @@ function buildApoliceReportHtml(data, title) {
 
         <div class="fl-report-section">
           <div class="fl-section-head">
+            <svg class="fl-section-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="2.5" width="12" height="15" rx="1.5"/><path d="M7 6h6M7 9h6M7 12h4" stroke-linecap="round"/></svg>
+            <h2 class="fl-section-title">Cláusulas e Condições</h2>
+          </div>
+          <div class="ap-list">${clausulasHtml}</div>
+        </div>
+
+        <div class="fl-report-section">
+          <div class="fl-section-head">
             <svg class="fl-section-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10 3L2 17h16L10 3z" stroke-linejoin="round"/><path d="M10 10v3M10 15h.01" stroke-linecap="round"/></svg>
             <h2 class="fl-section-title">Riscos Excluídos</h2>
           </div>
@@ -2432,10 +2447,19 @@ function buildApoliceDadoRow(cfg, item) {
 function buildApoliceList(items, emptyText) {
   if (!Array.isArray(items) || items.length === 0) return `<p class="af-no-data">${esc(emptyText)}</p>`;
   return items.map(item => {
-    const descricao = typeof item === 'string' ? item : (item.descricao || item.nome || item.valor || '');
-    const fonte = typeof item === 'object' ? item.fonte : '';
+    const isObj = item && typeof item === 'object';
+    const titulo = isObj ? (item.titulo || item.nome || '') : '';
+    const descricao = typeof item === 'string' ? item : (item.descricao || item.valor || item.nome || '');
+    const fonte = isObj ? item.fonte : '';
+    const limiteRaw = isObj ? (item.limite ?? item.lmi ?? item.importancia_segurada) : null;
+    let limite = '';
+    if (limiteRaw !== null && limiteRaw !== undefined && limiteRaw !== 'null' && String(limiteRaw).trim() !== '') {
+      limite = typeof limiteRaw === 'number' ? fmtBRL(limiteRaw) : String(limiteRaw);
+    }
     return `<div class="ap-list-item card">
+      ${titulo ? `<p class="ap-list-title">${esc(titulo)}</p>` : ''}
       <p class="ap-list-desc">${esc(descricao || 'Não localizado')}</p>
+      ${limite ? `<p class="ap-list-limite"><strong>Limite / IS:</strong> ${esc(limite)}</p>` : ''}
       ${fonte ? `<p class="fl-fonte-cite"><em>${esc(fonte)}</em></p>` : ''}
     </div>`;
   }).join('');

@@ -612,14 +612,28 @@ Comportamento:
   "tipo": "Analise de Apolice",
   "documentos_analisados": ["arquivo.pdf"],
   "dados_gerais": {
+    "seguradora": { "valor": "string|null", "fonte": "string" },
+    "numero_apolice": { "valor": "string|null", "fonte": "string" },
+    "ramo": { "valor": "string|null", "fonte": "string" },
     "tomador": { "valor": "string|null", "fonte": "string" },
+    "tomador_documento": { "valor": "string|null", "fonte": "string" },
     "segurado": { "valor": "string|null", "fonte": "string" },
+    "segurado_documento": { "valor": "string|null", "fonte": "string" },
     "importancia_segurada": { "valor": 0, "fonte": "string" },
+    "premio": { "valor": 0, "fonte": "string" },
     "vigencia": { "valor": "string|null", "fonte": "string" },
     "objeto_apolice": { "valor": "string|null", "fonte": "string" }
   },
   "coberturas": [
     {
+      "descricao": "string",
+      "limite": "string|number|null",
+      "fonte": "string"
+    }
+  ],
+  "clausulas": [
+    {
+      "titulo": "string|null",
       "descricao": "string",
       "fonte": "string"
     }
@@ -633,6 +647,8 @@ Comportamento:
 }
 ```
 
+O `tomador` (Tomador/Locatário) pode ser `null` em apólices sem tomador; o `segurado` (Segurado/Locador) quase sempre existe. `tomador_documento` e `segurado_documento` armazenam CNPJ ou CPF. `premio` é o prêmio da apólice. Cada item de `coberturas` pode trazer o `limite`/IS específico da cobertura.
+
 ### 9.3 Renderização
 
 `app.js` adiciona:
@@ -641,9 +657,9 @@ Comportamento:
 |---|---|
 | `processarAnaliseApolice()` | valida arquivos, chama `analisarApolice()` e controla loading/erro |
 | `renderAnaliseApolice(data)` | define título, arquivos analisados, renderiza relatório e inicia chat |
-| `buildApoliceReportHtml(data, title)` | constrói relatório objetivo com dados, coberturas e riscos excluídos |
-| `buildApoliceDadoRow(cfg, item)` | renderiza linhas da tabela Campo/Valor/Fonte |
-| `buildApoliceList(items, emptyText)` | renderiza coberturas e riscos excluídos |
+| `buildApoliceReportHtml(data, title)` | constrói relatório objetivo com dados gerais, coberturas, cláusulas e riscos excluídos |
+| `buildApoliceDadoRow(cfg, item)` | renderiza linhas da tabela Campo/Valor/Fonte (configurado por `APOLICE_DADOS_CONFIG`) |
+| `buildApoliceList(items, emptyText)` | renderiza coberturas (com título/limite opcional), cláusulas e riscos excluídos |
 | `downloadApoliceReport()` | exporta o relatório da apólice em PDF |
 | `resetAnaliseApolice()` | limpa arquivos, histórico e retorna ao upload |
 | `sendApoliceChatMessage()` | envia mensagem no chat da apólice |
@@ -666,6 +682,8 @@ Classes CSS adicionadas:
 - `.ap-list`
 - `.ap-list-item`
 - `.ap-list-desc`
+- `.ap-list-title`
+- `.ap-list-limite`
 
 ## 10. Dependências Externas
 

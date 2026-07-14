@@ -353,24 +353,31 @@ REGRAS ABSOLUTAS:
 1. Retorne APENAS JSON valido, sem markdown e sem texto antes ou depois.
 2. Nao invente, nao estime e nao complete dados ausentes. Use null.
 3. Para cada campo, informe a fonte exata: pagina, item, clausula, secao ou quadro.
-4. Extraia: tomador, segurado, importancia segurada, vigencia, objeto, coberturas e riscos excluidos.
+4. Extraia o MAXIMO de informacao possivel da apolice: seguradora emissora, numero da apolice, ramo/modalidade, tomador/locatario, segurado/locador, CNPJ/CPF de tomador e segurado, importancia segurada, premio, vigencia, objeto, coberturas (com limites), clausulas/condicoes e riscos excluidos.
 5. Em "riscos_excluidos" inclua TAMBEM coberturas tipicamente presentes neste tipo de apolice que NAO foram localizadas — registre como "Cobertura nao localizada: [nome]" para alertar o corretor sobre possiveis gaps.
 
 ONDE PROCURAR:
-- tomador: "Tomador", "Contratante", "Estipulante" — parte que contrata e paga o seguro.
-- segurado: "Segurado", "Beneficiario" — parte protegida pela apolice.
-- importancia_segurada: "Importancia Segurada", "LMG", "LMI", "Limite Maximo de Garantia", "Valor segurado".
+- seguradora: nome da companhia seguradora que emitiu a apolice ("Seguradora", "Companhia", logotipo/cabecalho, CNPJ da seguradora).
+- numero_apolice: "Apolice n", "Numero da apolice", "Proposta".
+- ramo: ramo ou modalidade do seguro (ex: Seguro Garantia, Fianca Locaticia, Automovel, Vida, Patrimonial, RC).
+- tomador: "Tomador", "Contratante", "Estipulante", "Locatario" — parte que contrata e paga o seguro. Pode nao existir (ex.: apolices sem tomador).
+- tomador_documento: CNPJ ou CPF do tomador/locatario.
+- segurado: "Segurado", "Beneficiario", "Locador" — parte protegida pela apolice.
+- segurado_documento: CNPJ ou CPF do segurado/locador.
+- importancia_segurada: "Importancia Segurada", "IS", "LMG", "LMI", "Limite Maximo de Garantia", "Valor segurado".
+- premio: "Premio", "Premio total", "Premio liquido", "Premio a pagar", valor pago pelo seguro.
 - vigencia: datas de inicio e fim, ou periodo de cobertura com prazo.
 - objeto_apolice: campo "Objeto", "Objeto da apolice", "Descricao do risco" — o que a apolice garante.
-- coberturas: coberturas contratadas, modalidades, clausulas de cobertura, garantias adicionais.
+- coberturas: coberturas contratadas, modalidades, garantias; para cada uma capture o limite/IS quando informado.
+- clausulas: clausulas particulares, especiais, condicoes especificas, franquias, condicoes de indenizacao.
 - riscos_excluidos: exclusoes explicitas do contrato + gaps de cobertura identificados pelo corretor.
 
 DOCUMENTOS ENVIADOS: ${nomesArquivos}
 
 Retorne APENAS este JSON:
-{"tipo":"Analise de Apolice","documentos_analisados":["nomes dos arquivos"],"dados_gerais":{"tomador":{"valor":"nome do tomador ou null","fonte":"..."},"segurado":{"valor":"nome do segurado ou null","fonte":"..."},"importancia_segurada":{"valor":0.00,"fonte":"..."},"vigencia":{"valor":"inicio e fim da vigencia ou null","fonte":"..."},"objeto_apolice":{"valor":"objeto da apolice ou null","fonte":"..."}},"coberturas":[{"descricao":"cobertura contratada identificada","fonte":"pagina ou clausula"}],"riscos_excluidos":[{"descricao":"exclusao explicita ou gap: 'Cobertura nao localizada: X'","fonte":"pagina, clausula ou 'Cobertura nao localizada'"}]}
+{"tipo":"Analise de Apolice","documentos_analisados":["nomes dos arquivos"],"dados_gerais":{"seguradora":{"valor":"nome da seguradora ou null","fonte":"..."},"numero_apolice":{"valor":"numero da apolice ou null","fonte":"..."},"ramo":{"valor":"ramo/modalidade ou null","fonte":"..."},"tomador":{"valor":"nome do tomador/locatario ou null","fonte":"..."},"tomador_documento":{"valor":"CNPJ/CPF ou null","fonte":"..."},"segurado":{"valor":"nome do segurado/locador ou null","fonte":"..."},"segurado_documento":{"valor":"CNPJ/CPF ou null","fonte":"..."},"importancia_segurada":{"valor":0.00,"fonte":"..."},"premio":{"valor":0.00,"fonte":"..."},"vigencia":{"valor":"inicio e fim da vigencia ou null","fonte":"..."},"objeto_apolice":{"valor":"objeto da apolice ou null","fonte":"..."}},"coberturas":[{"descricao":"cobertura contratada identificada","limite":"limite/IS da cobertura ou null","fonte":"pagina ou clausula"}],"clausulas":[{"titulo":"titulo da clausula ou null","descricao":"resumo fiel da clausula/condicao","fonte":"pagina ou clausula"}],"riscos_excluidos":[{"descricao":"exclusao explicita ou gap: 'Cobertura nao localizada: X'","fonte":"pagina, clausula ou 'Cobertura nao localizada'"}]}
 
-Regras: valores monetarios como numero puro em reais (ex: 150000.50). Se IS aparecer por cobertura, preserve o texto. Responda em portugues brasileiro.${blocoTexto ? '\n\nDOCUMENTOS PARA ANALISE:\n' + blocoTexto : ''}`;
+Regras: valores monetarios como numero puro em reais (ex: 150000.50). Se a IS ou o limite aparecer por cobertura, preserve o texto. Responda em portugues brasileiro.${blocoTexto ? '\n\nDOCUMENTOS PARA ANALISE:\n' + blocoTexto : ''}`;
 }
 
 function buildFinanceInstruction(blocoTexto) {
@@ -685,11 +692,11 @@ function criarHistoricoApolice(arquivos, analiseJson) {
   return [
     {
       role: 'user',
-      content: `Voce ja concluiu a analise de apolice dos seguintes documentos: ${nomesArquivos}.${blocoRaw}\nResponda perguntas em portugues brasileiro sobre a apolice, tomador, segurado, importancia segurada, vigencia, objeto, coberturas e riscos excluidos. Para verificar qualquer dado especifico, consulte o texto original acima. O JSON com a analise extraida esta abaixo.\n\nJSON da analise:\n${analiseJson}`,
+      content: `Voce ja concluiu a analise de apolice dos seguintes documentos: ${nomesArquivos}.${blocoRaw}\nResponda perguntas em portugues brasileiro sobre a apolice: seguradora emissora, numero da apolice, ramo/modalidade, tomador/locatario, segurado/locador, CNPJ/CPF de cada parte, importancia segurada, premio, vigencia, objeto, coberturas (com limites), clausulas e riscos excluidos. Para verificar qualquer dado especifico, consulte o texto original acima. O JSON com a analise extraida esta abaixo.\n\nJSON da analise:\n${analiseJson}`,
     },
     {
       role: 'assistant',
-      content: 'Analise da apolice concluida. Pode me fazer perguntas sobre tomador, segurado, importancia segurada, vigencia, objeto, coberturas e riscos excluidos.',
+      content: 'Analise da apolice concluida. Pode me fazer perguntas sobre seguradora, numero da apolice, ramo, tomador, segurado, CNPJ/CPF, importancia segurada, premio, vigencia, objeto, coberturas, clausulas e riscos excluidos.',
     },
   ];
 }

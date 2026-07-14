@@ -4377,6 +4377,20 @@ body.pdf-generating.has-comparison .comparison-section {
   line-height: var(--leading-normal);
 }
 
+.ap-list-title {
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+  margin-bottom: var(--space-1);
+}
+
+.ap-list-limite {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+  margin-top: var(--space-1);
+}
+
 /* ── Page-level: SG and FL with chat ── */
 .page-seguro-garantia.active,
 .page-fianca-locaticia.active,
