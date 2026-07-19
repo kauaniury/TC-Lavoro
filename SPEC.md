@@ -1,6 +1,6 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.19  
+> Versao: 2.20  
 > Atualizado em: 2026-07-18
 
 ## 1. Visão Geral
@@ -708,7 +708,23 @@ Consulta em tempo real (sem upload de arquivo) do limite disponível para um CNP
 - Campo de CNPJ + checkboxes de seguradoras + botão "Consultar".
 - `deepseek.js`: `consultarLimitesSeguradoras(cnpj, seguradoras)` — `POST` para `${DEEPSEEK_WORKER_URL}/v1/limits/query`.
 - `app.js`: `consultarLimitesUI()` valida CNPJ (14 dígitos) e ao menos 1 seguradora selecionada, chama `consultarLimitesSeguradoras` e renderiza via `renderLimitesResults(data)`.
-- **Importante:** o schema de resposta de cada seguradora (`dados`) ainda não foi normalizado por seguradora — o front-end exibe o JSON bruto retornado por cada uma (`<pre class="lim-raw-json">`) porque os endpoints de consulta de cada seguradora não têm o formato de resposta documentado, apenas o request. Ao validar uma consulta real, extrair os campos de limite/modalidade de cada seguradora e atualizar `renderLimitesResults` para uma tabela normalizada.
+- Renderização em **cards por seguradora** (grid `.lim-cards-grid`): logo da seguradora (`LIM_LOGO_MAP` → `assets/*.png`, via `limLogoHtml()`), nome, badge de status colorido e botão "Ver limites do tomador" que abre um modal (`openLimiteModal` / `closeLimiteModal`) listando cada modalidade com valor (`fmtBRL`) e taxa.
+- Cabeçalho `.lim-tomador-header` exibe nome e CNPJ do tomador, extraídos do primeiro resultado que os retornar (nem toda seguradora devolve o nome).
+
+### 10.1a Normalização por seguradora (app.js)
+
+Cada seguradora tem um formato de resposta próprio; `normalizeLimiteResultado(r)` despacha para o normalizador correto e retorna sempre `{ statusKey, modalidades[], mensagem?, nomeTomador?, cnpjTomador? }`:
+
+| Função | Seguradora(s) | Lógica |
+|---|---|---|
+| `normalizeLimiteJns` | `jns` | `dados.product_limits[]` vazio → `sem_limite`; senão `aprovado` com um item por produto (`product_name`, `limit_available`, `tax`, `product_branch`) |
+| `normalizeLimiteJunto` | `junto` | `dados` é array de modalidades com `submodalities[]` — **não traz valor nem taxa**, só confirma habilitação. Lista vazia → `sem_limite`; senão `aprovado` com `valor`/`taxa` nulos e mensagem explicando a limitação |
+| `normalizeLimiteOnpoint` | `essor`, `sombrero`, `newe`, `mitsui`, `axa` | `dados.Response[0]`; se `CanSetupAProposal` e `LimitsAndRates[]` presentes → `aprovado` (usa `AvailableLimit` como valor, não `LimitRevised`); senão lê `Reasons[]` — se contém "bloquead" → `bloqueado`, senão `sem_limite` |
+| `normalizeLimiteFator` | `fator` | Resposta é `{ cd_retorno, nm_retorno }` (não é a mesma forma de limite) — presença de `cd_retorno` indica corretor não associado ao tomador → status `nomeado` |
+
+`LIM_STATUS_CONFIG` mapeia `statusKey` para label e classe de badge: `aprovado` (verde), `bloqueado`/`nomeado` (âmbar), `sem_limite` (cinza neutro), `erro` (vermelho).
+
+**Nota:** a Junto não retorna valor de limite nesta chamada (`/policyholders/{cnpj}/modalities`) — só a lista de modalidades habilitadas. Para valores reais seria necessário chamar `/modalities/{id}/rates` por submodalidade (não implementado; ver seção 10.2 da doc original da API).
 
 ### 10.2 Worker — endpoint
 

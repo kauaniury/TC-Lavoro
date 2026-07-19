@@ -3806,6 +3806,23 @@ function buildEmpresaCard(emp, idx) {
 
 // ── Consulta de Limites por Seguradora ──
 
+const LIM_LOGO_MAP = {
+  jns: 'assets/jns-logo.png',
+  junto: 'assets/junto-logo.png',
+  essor: 'assets/essor-logo.png',
+  sombrero: 'assets/Sombrero-logo.png',
+  newe: 'assets/Newe-logo.png',
+  mitsui: 'assets/Mitisui-logo.png',
+  axa: 'assets/axa-logo.png',
+  fator: 'assets/fator.png',
+};
+
+function limLogoHtml(seguradora) {
+  const src = LIM_LOGO_MAP[seguradora];
+  if (!src) return '';
+  return `<img src="${esc(src)}" alt="" class="lim-card-logo" onerror="this.style.display='none'">`;
+}
+
 function showLimError(msg) {
   document.getElementById('limErrorText').textContent = msg;
   document.getElementById('limErrorMsg').classList.add('show');
@@ -3852,33 +3869,197 @@ async function consultarLimitesUI() {
   }
 }
 
+const LIM_STATUS_CONFIG = {
+  aprovado:   { label: 'Aprovado',   cls: 'lim-badge--aprovado' },
+  bloqueado:  { label: 'Bloqueado',  cls: 'lim-badge--bloqueado' },
+  nomeado:    { label: 'Nomeado',    cls: 'lim-badge--nomeado' },
+  sem_limite: { label: 'Sem limite', cls: 'lim-badge--semlimite' },
+  erro:       { label: 'Erro',       cls: 'lim-badge--erro' },
+};
+
+let _ultimoLimitesData = null;
+
+// Cada seguradora tem um formato de resposta proprio — normaliza para { statusKey, modalidades[], mensagem, nomeTomador, cnpjTomador }
+function normalizeLimiteResultado(r) {
+  if (r.status !== 'ok') {
+    return { statusKey: 'erro', modalidades: [], mensagem: r.erro || 'Falha na consulta.' };
+  }
+  const key = r.seguradora;
+  if (key === 'jns') return normalizeLimiteJns(r.dados);
+  if (key === 'junto') return normalizeLimiteJunto(r.dados);
+  if (key === 'fator') return normalizeLimiteFator(r.dados);
+  if (['essor', 'sombrero', 'newe', 'mitsui', 'axa'].includes(key)) return normalizeLimiteOnpoint(r.dados);
+  return { statusKey: 'erro', modalidades: [], mensagem: 'Seguradora desconhecida.' };
+}
+
+function normalizeLimiteJns(d) {
+  const produtos = (d && d.product_limits) || [];
+  if (!produtos.length) {
+    return { statusKey: 'sem_limite', modalidades: [], mensagem: 'Nenhum limite disponível.', nomeTomador: d && d.name, cnpjTomador: d && d.document };
+  }
+  const modalidades = produtos.map(p => ({
+    label: String(p.product_name || '').trim(),
+    segurado: String(p.product_branch || '').replace(/^SEGURADO:\s*/i, ''),
+    valor: p.limit_available,
+    taxa: p.tax,
+  }));
+  return { statusKey: 'aprovado', modalidades, nomeTomador: d && d.name, cnpjTomador: d && d.document };
+}
+
+function normalizeLimiteJunto(d) {
+  const lista = Array.isArray(d) ? d : [];
+  const modalidades = [];
+  lista.forEach(mod => {
+    (mod.submodalities || []).forEach(sub => {
+      modalidades.push({
+        label: `${mod.description || ''} — ${String(sub.description || '').replace(/^_/, '')}`,
+        segurado: mod.isJudicial ? 'Judicial' : null,
+        valor: null,
+        taxa: null,
+      });
+    });
+  });
+  if (!modalidades.length) {
+    return { statusKey: 'sem_limite', modalidades: [], mensagem: 'Nenhuma modalidade habilitada para este tomador.' };
+  }
+  return { statusKey: 'aprovado', modalidades, mensagem: 'Tomador habilitado. Esta consulta não retorna valores de limite por modalidade — apenas as modalidades disponíveis.' };
+}
+
+function normalizeLimiteOnpoint(d) {
+  const item = d && Array.isArray(d.Response) ? d.Response[0] : null;
+  if (!item) return { statusKey: 'erro', modalidades: [], mensagem: 'Resposta inesperada da seguradora.' };
+
+  const nomeTomador = item.PolicyHolderName || null;
+  const cnpjTomador = item.PolicyHolderCnpj || null;
+
+  if (item.CanSetupAProposal && Array.isArray(item.LimitsAndRates) && item.LimitsAndRates.length) {
+    const modalidades = item.LimitsAndRates.map(m => ({
+      label: [m.ModalityGroupName, m.ModalityName].filter(Boolean).join(' — '),
+      segurado: m.BranchName || null,
+      valor: m.AvailableLimit,
+      taxa: m.Tax,
+    }));
+    return { statusKey: 'aprovado', modalidades, nomeTomador, cnpjTomador };
+  }
+
+  const motivo = (item.Reasons || []).join(' ');
+  const bloqueado = /bloquead/i.test(motivo);
+  return {
+    statusKey: bloqueado ? 'bloqueado' : 'sem_limite',
+    modalidades: [],
+    mensagem: motivo || 'Tomador não aprovado nas regras de crédito da seguradora.',
+    nomeTomador,
+    cnpjTomador,
+  };
+}
+
+function normalizeLimiteFator(d) {
+  if (d && d.cd_retorno) {
+    return { statusKey: 'nomeado', modalidades: [], mensagem: d.nm_retorno || 'Corretor não associado ao tomador nesta seguradora.' };
+  }
+  return { statusKey: 'erro', modalidades: [], mensagem: 'Resposta inesperada da seguradora.' };
+}
+
+function fmtLimiteTimestamp(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('pt-BR') + ', ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function fmtCnpjDisplay(cnpj) {
+  const c = String(cnpj || '').replace(/\D/g, '');
+  if (c.length !== 14) return cnpj || '';
+  return `${c.slice(0, 2)}.${c.slice(2, 5)}.${c.slice(5, 8)}/${c.slice(8, 12)}-${c.slice(12, 14)}`;
+}
+
 function renderLimitesResults(data) {
   const results = document.getElementById('limResults');
   const resultados = (data && data.resultados) || [];
+  _ultimoLimitesData = data;
 
   if (resultados.length === 0) {
     results.innerHTML = '<p class="lim-empty">Nenhum resultado retornado.</p>';
     return;
   }
 
-  results.innerHTML = resultados.map(r => {
-    const statusBadge = r.status === 'ok'
-      ? '<span class="lim-badge lim-badge--ok">Consultado</span>'
-      : '<span class="lim-badge lim-badge--erro">Erro</span>';
+  const normalizados = resultados.map(r => ({ ...r, _norm: normalizeLimiteResultado(r) }));
+  const comNome = normalizados.find(r => r._norm.nomeTomador);
+  const tomadorNome = comNome ? comNome._norm.nomeTomador : null;
+  const tomadorCnpj = (comNome && comNome._norm.cnpjTomador) || data.cnpj;
 
-    const body = r.status === 'ok'
-      ? `<pre class="lim-raw-json">${esc(JSON.stringify(r.dados, null, 2))}</pre>`
-      : `<p class="lim-erro-text">${esc(r.erro || 'Falha na consulta.')}</p>`;
+  const headerHtml = `
+    <div class="lim-tomador-header">
+      <div>
+        <p class="lim-tomador-eyebrow">Tomador consultado</p>
+        <p class="lim-tomador-nome">${esc(tomadorNome || 'Não identificado')}${tomadorCnpj ? ' - ' + esc(fmtCnpjDisplay(tomadorCnpj)) : ''}</p>
+      </div>
+    </div>`;
 
+  const cardsHtml = normalizados.map((r, i) => {
+    const cfg = LIM_STATUS_CONFIG[r._norm.statusKey] || LIM_STATUS_CONFIG.erro;
+    const temModalidades = r._norm.modalidades && r._norm.modalidades.length > 0;
     return `
-      <div class="lim-result-card card">
-        <div class="lim-result-header">
-          <p class="lim-result-label">${esc(r.label || r.seguradora)}</p>
-          ${statusBadge}
+      <div class="lim-card">
+        <div class="lim-card-top">
+          <p class="lim-card-eyebrow">Seguradora</p>
+          <span class="lim-badge2 ${cfg.cls}">${esc(cfg.label)}</span>
         </div>
-        <div class="lim-result-body">${body}</div>
+        <div class="lim-card-brand">
+          ${limLogoHtml(r.seguradora)}
+          <p class="lim-card-nome">${esc(r.label || r.seguradora)}</p>
+        </div>
+        <button type="button" class="lim-card-btn" ${temModalidades ? `onclick="openLimiteModal(${i})"` : 'disabled'}>
+          Ver limites do tomador
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+        <p class="lim-card-updated">Atualizado: ${esc(fmtLimiteTimestamp(data.consultadoEm))}</p>
       </div>`;
   }).join('');
+
+  results.innerHTML = `${headerHtml}<div class="lim-cards-grid">${cardsHtml}</div><div class="lim-modal-overlay" id="limModalOverlay" hidden onclick="if(event.target===this) closeLimiteModal()"></div>`;
+}
+
+function openLimiteModal(index) {
+  const resultados = (_ultimoLimitesData && _ultimoLimitesData.resultados) || [];
+  const r = resultados[index];
+  if (!r) return;
+  const n = normalizeLimiteResultado(r);
+  const cfg = LIM_STATUS_CONFIG[n.statusKey] || LIM_STATUS_CONFIG.erro;
+
+  const itemsHtml = n.modalidades.length
+    ? n.modalidades.map(m => `
+        <div class="lim-modal-item">
+          <p class="lim-modal-item-label">${esc(m.label)}</p>
+          <p class="lim-modal-item-valor">${m.valor !== null && m.valor !== undefined ? fmtBRL(m.valor) : '—'}</p>
+          ${m.taxa !== null && m.taxa !== undefined ? `<p class="lim-modal-item-taxa">Taxa: ${esc(String(m.taxa).replace('.', ','))}%</p>` : ''}
+          ${m.segurado ? `<p class="lim-modal-item-segurado">Segurado: ${esc(m.segurado)}</p>` : ''}
+        </div>`).join('')
+    : `<p class="lim-modal-empty">${esc(n.mensagem || 'Nenhum limite disponível.')}</p>`;
+
+  const overlay = document.getElementById('limModalOverlay');
+  overlay.innerHTML = `
+    <div class="lim-modal" role="dialog" aria-modal="true">
+      <div class="lim-modal-header">
+        ${limLogoHtml(r.seguradora)}
+        <div>
+          <p class="lim-card-eyebrow">Seguradora</p>
+          <p class="lim-modal-nome">${esc(r.label || r.seguradora)}</p>
+        </div>
+        <span class="lim-badge2 ${cfg.cls}">${esc(cfg.label)}</span>
+        <button type="button" class="lim-modal-close" onclick="closeLimiteModal()" aria-label="Fechar">
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="lim-modal-body">${itemsHtml}</div>
+      <p class="lim-modal-updated">Atualizado: ${esc(fmtLimiteTimestamp(_ultimoLimitesData && _ultimoLimitesData.consultadoEm))}</p>
+    </div>`;
+  overlay.hidden = false;
+}
+
+function closeLimiteModal() {
+  const overlay = document.getElementById('limModalOverlay');
+  if (overlay) { overlay.hidden = true; overlay.innerHTML = ''; }
 }
 
 function classificacaoFinanceiraClass(sit) {
