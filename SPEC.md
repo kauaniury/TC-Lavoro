@@ -1,11 +1,11 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versão: 2.1  
-> Atualizado em: 2026-06-11
+> Versão: 2.2  
+> Atualizado em: 2026-07-18
 
 ## 1. Visão Geral
 
-Aplicação web estática da **Lavoro Seguros** com quatro fluxos independentes:
+Aplicação web estática da **Lavoro Seguros** com cinco fluxos independentes:
 
 | Fluxo | Entrada | Saída |
 |---|---|---|
@@ -13,6 +13,7 @@ Aplicação web estática da **Lavoro Seguros** com quatro fluxos independentes:
 | Análise Financeira IA | DRE, Balanço, Balancete, CSV, PDF e imagem | JSON consolidado multiempresa/multiperíodo renderizado em cards |
 | Seguro Garantia IA | Edital, contrato, aditivos, apostilamentos, PDF/imagem/planilhas | Relatório técnico estruturado (primeira resposta) + chat conversacional + exportação PDF |
 | Fiança Locatícia IA | Contrato de locação, aditivos, laudos, PDF/imagem/planilhas | JSON contratual renderizado em tela |
+| Consulta de Limites | CNPJ do tomador | Consulta em tempo real dos limites disponíveis em cada seguradora integrada (JNS, Junto, Onpoint/Essor/Sombrero/NEWE/Mitsui, AXA, Fator) |
 
 O fluxo **T&C** continua estável e não deve ser alterado sem necessidade explícita.
 
@@ -42,7 +43,8 @@ TC Lavoro/
 
 - Nunca expor `DEEPSEEK_API_KEY`, `UPSTASH_REDIS_REST_URL` ou `UPSTASH_REDIS_REST_TOKEN` no front-end.
 - Secrets ficam somente no Cloudflare Worker.
-- Toda navegação da SPA deve continuar usando apenas `switchTab('upload' | 'dashboard' | 'analise-financeira' | 'seguro-garantia' | 'fianca-locaticia')`.
+- Toda navegação da SPA deve continuar usando apenas `switchTab('upload' | 'dashboard' | 'analise-financeira' | 'seguro-garantia' | 'fianca-locaticia' | 'consulta-limites')`.
+- Credenciais das APIs de seguradoras (`JNS_*`, `JUNTO_*`, `ONPOINT_*`, `FATOR_*`) seguem a mesma regra: só existem como secrets do Worker, nunca no front-end.
 - Toda string inserida em `innerHTML` deve passar por `esc()`.
 
 ### 3.2 Front-end
@@ -501,7 +503,78 @@ analisarFiancaLocaticia(arquivos)
 }
 ```
 
-## 9. Dependências Externas
+## 9. Fluxo 5 — Consulta de Limites por Seguradora
+
+### 9.0 Visão geral
+
+Consulta em tempo real (sem upload de arquivo) do limite disponível para um CNPJ em cada seguradora integrada. O front-end envia apenas `{ cnpj, seguradoras[] }` para o Worker; toda credencial fica nos secrets do Worker.
+
+### 9.1 Front-end
+
+- Aba `consulta-limites` (`index.html`), sem dependência de IA/chat.
+- Campo de CNPJ + checkboxes de seguradoras + botão "Consultar".
+- `deepseek.js`: `consultarLimitesSeguradoras(cnpj, seguradoras)` — `POST` para `${DEEPSEEK_WORKER_URL}/v1/limits/query`.
+- `app.js`: `consultarLimitesUI()` valida CNPJ (14 dígitos) e ao menos 1 seguradora selecionada, chama `consultarLimitesSeguradoras` e renderiza via `renderLimitesResults(data)`.
+- **Importante:** o schema de resposta de cada seguradora (`dados`) ainda não foi normalizado por seguradora — o front-end exibe o JSON bruto retornado por cada uma (`<pre class="lim-raw-json">`) porque os endpoints de consulta de cada seguradora não têm o formato de resposta documentado, apenas o request. Ao validar uma consulta real, extrair os campos de limite/modalidade de cada seguradora e atualizar `renderLimitesResults` para uma tabela normalizada.
+
+### 9.2 Worker — endpoint
+
+#### `POST /v1/limits/query`
+
+Body:
+```json
+{ "cnpj": "00000000000000", "seguradoras": ["jns","junto","essor","sombrero","newe","mitsui","axa","fator"] }
+```
+`seguradoras` é opcional — se omitido, consulta todas as 8.
+
+Resposta:
+```json
+{
+  "version": "...",
+  "cnpj": "00000000000000",
+  "consultadoEm": "ISO-8601",
+  "resultados": [
+    { "seguradora": "jns", "label": "JNS Seguros", "status": "ok", "dados": { } },
+    { "seguradora": "junto", "label": "Junto Seguros", "status": "erro", "erro": "mensagem" }
+  ]
+}
+```
+
+### 9.3 Seguradoras integradas e autenticação
+
+| Seguradora(s) | Chave interna | Autenticação | Secrets |
+|---|---|---|---|
+| JNS Seguros | `jns` | login (`username`+`password`+`token`) → Bearer, com retry automático em `401` | `JNS_USERNAME`, `JNS_PASSWORD`, `JNS_TOKEN` |
+| Junto Seguros | `junto` | `clientId`+`clientSecret` → `accessToken`; cadastra o tomador automaticamente se `policyholders/{cnpj}` ainda não existir | `JUNTO_CLIENT_ID`, `JUNTO_CLIENT_SECRET` |
+| Essor / Sombrero / NEWE / Mitsui Sumitomo (via Onpoint) | `essor`, `sombrero`, `newe`, `mitsui` | header fixo `application-key-v2`, sem login | `ONPOINT_APPLICATION_KEY_V2`, `ONPOINT_BROKER_CNPJ` |
+| AXA (via Onpoint, rota dedicada `/axa/...`) | `axa` | mesma auth do Onpoint acima | idem |
+| Fator Seguradora | `fator` | OAuth2 `client_credentials` (Basic + `grant_type=client_credentials`) → Bearer | `FATOR_CLIENT_ID`, `FATOR_CLIENT_SECRET`, `FATOR_CORRETOR_ID`, `FATOR_NM_LOGIN` |
+
+**Regra crítica — Onpoint/AXA não aceitam chamadas paralelas para o mesmo CNPJ.** O Worker consulta `jns`/`junto`/`fator` em paralelo (`Promise.all`) mas processa `essor`/`sombrero`/`newe`/`mitsui`/`axa` sequencialmente num loop `for...of`.
+
+### 9.4 Cache de token no Redis
+
+Tokens de login (JNS, Junto, Fator) são cacheados no Redis para evitar novo login a cada consulta:
+
+| Chave | TTL |
+|---|---|
+| `limits:token:jns` | 25 min (fixo — API não informa `expires_in`) |
+| `limits:token:junto` | `expiresIn` da resposta menos 30s de margem |
+| `limits:token:fator` | `expires_in` da resposta menos 30s de margem |
+
+Em caso de `401`, o token é invalidado e a consulta refeita uma vez com login novo.
+
+### 9.5 Onpoint — IDs estáticos de seguradora
+
+| Seguradora | `InsuranceUniqueId` |
+|---|---|
+| Essor Seguros S.A. | `406fecd8-bfd7-4cba-a9bd-87efcfd38288` |
+| SOMBRERO SEGUROS S/A | `7e3b3e1a-e0db-4067-876f-350f73a38acd` |
+| NEWE Seguros S.A. | `d53bda2d-0710-4bff-b5be-51f2ab377362` |
+| Mitsui Sumitomo Seguros S.A. | `ff4a046b-d047-4bec-9253-1e3bc83c2df1` |
+| AXA Seguros S.A. | `555b5249-1f74-4681-9f49-5958ad720cfb` (rota própria) |
+
+## 10. Dependências Externas
 
 | Biblioteca | Versão | Uso |
 |---|---|---|
@@ -511,8 +584,10 @@ analisarFiancaLocaticia(arquivos)
 | jsPDF | 2.5.1 | geração de PDF |
 | PDF.js | 3.11.174 | extração de texto de PDFs |
 
-## 10. Observações de Deploy
+## 11. Observações de Deploy
 
 - O front-end já está preparado para o Worker novo.
 - Para ativar memória Redis de fato em produção, é necessário publicar `workers/deepseek-memory-worker.js` no mesmo domínio do Worker atual ou atualizar `DEEPSEEK_WORKER_URL`.
 - Se o Worker novo ainda não estiver publicado, o front-end usa fallback automático para o endpoint legado `/`.
+- Para a Consulta de Limites, publicar o Worker atualizado (`/v1/limits/query`) e configurar todos os secrets listados na seção 9.3, incluindo `ONPOINT_BROKER_CNPJ` e `FATOR_CORRETOR_ID`.
+- CORS do Worker hoje libera `Access-Control-Allow-Origin: '*'` para todos os endpoints. Como a Consulta de Limites expõe dados de crédito mais sensíveis que o proxy de IA, considerar restringir a origem ao domínio de produção do front-end.

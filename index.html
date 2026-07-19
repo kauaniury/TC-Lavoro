@@ -26,6 +26,7 @@
       <button type="button" class="topbar-tab tab-btn" id="tab-analise-financeira" data-page="analise-financeira" onclick="switchTab('analise-financeira')">Análise Financeira</button>
       <button type="button" class="topbar-tab tab-btn" id="tab-seguro-garantia" data-page="seguro-garantia" onclick="switchTab('seguro-garantia')">Seg. Garantia</button>
       <button type="button" class="topbar-tab tab-btn" id="tab-fianca-locaticia" data-page="fianca-locaticia" onclick="switchTab('fianca-locaticia')">Fiança Loc.</button>
+      <button type="button" class="topbar-tab tab-btn" id="tab-consulta-limites" data-page="consulta-limites" onclick="switchTab('consulta-limites')">Consulta de Limites</button>
     </nav>
     <div class="topbar-actions">
       <button type="button" class="btn-secondary btn-download topbar-download" id="btnDownloadTop" onclick="downloadComparativo()" aria-label="Exportar relatório em PDF" hidden>
@@ -580,6 +581,56 @@
           A IA pode cometer erros. Verifique informações importantes.
         </p>
       </aside>
+    </div>
+  </div>
+</main>
+
+<!-- ── Página: Consulta de Limites por Seguradora ── -->
+<main class="page page-consulta-limites" id="page-consulta-limites" aria-label="Consulta de Limites por Seguradora">
+  <div class="tab-upload-section">
+    <div class="tab-upload-inner">
+      <div class="upload-header">
+        <p class="upload-header-eyebrow">Consulta de Limites</p>
+        <h1 class="upload-header-title">Consultar limites por CNPJ</h1>
+        <p class="upload-header-sub">Consulta em tempo real dos limites disponíveis para o tomador em cada seguradora integrada.</p>
+      </div>
+
+      <div class="upload-card card">
+        <div class="upload-card-header">
+          <p class="upload-card-title">Dados da consulta</p>
+        </div>
+        <div class="upload-card-body">
+          <label class="lim-field-label" for="limCnpjInput">CNPJ do tomador</label>
+          <input type="text" id="limCnpjInput" class="lim-input" placeholder="00.000.000/0000-00" inputmode="numeric" maxlength="18">
+
+          <p class="lim-field-label">Seguradoras</p>
+          <div class="lim-checkbox-grid" id="limSeguradorasGrid">
+            <label class="lim-checkbox"><input type="checkbox" value="jns" checked> JNS Seguros</label>
+            <label class="lim-checkbox"><input type="checkbox" value="junto" checked> Junto Seguros</label>
+            <label class="lim-checkbox"><input type="checkbox" value="essor" checked> Essor Seguros</label>
+            <label class="lim-checkbox"><input type="checkbox" value="sombrero" checked> Sombrero Seguros</label>
+            <label class="lim-checkbox"><input type="checkbox" value="newe" checked> NEWE Seguros</label>
+            <label class="lim-checkbox"><input type="checkbox" value="mitsui" checked> Mitsui Sumitomo</label>
+            <label class="lim-checkbox"><input type="checkbox" value="axa" checked> AXA Seguros</label>
+            <label class="lim-checkbox"><input type="checkbox" value="fator" checked> Fator Seguradora</label>
+          </div>
+
+          <div class="error-msg" id="limErrorMsg" role="alert" aria-live="polite">
+            <p id="limErrorText">Erro.</p>
+          </div>
+
+          <button type="button" class="btn-primary btn-generate" id="limBtnConsultar" onclick="consultarLimitesUI()">
+            <span class="btn-label">Consultar</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="lim-loading" id="limLoading" hidden>
+        <div class="af-spinner" aria-hidden="true"></div>
+        <p class="af-loading-text">Consultando seguradoras…</p>
+      </div>
+
+      <div class="lim-results" id="limResults" aria-live="polite"></div>
     </div>
   </div>
 </main>

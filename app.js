@@ -2221,3 +2221,80 @@ function buildEmpresaCard(emp, idx) {
     </section>`;
 }
 
+// ── Consulta de Limites por Seguradora ──
+
+function showLimError(msg) {
+  document.getElementById('limErrorText').textContent = msg;
+  document.getElementById('limErrorMsg').classList.add('show');
+}
+function hideLimError() {
+  document.getElementById('limErrorMsg').classList.remove('show');
+}
+
+function getSelectedSeguradoras() {
+  return Array.from(document.querySelectorAll('#limSeguradorasGrid input[type="checkbox"]:checked'))
+    .map(el => el.value);
+}
+
+async function consultarLimitesUI() {
+  hideLimError();
+  const cnpjRaw = document.getElementById('limCnpjInput').value;
+  const cnpj = String(cnpjRaw || '').replace(/\D/g, '');
+  if (cnpj.length !== 14) {
+    showLimError('Informe um CNPJ válido com 14 dígitos.');
+    return;
+  }
+
+  const seguradoras = getSelectedSeguradoras();
+  if (seguradoras.length === 0) {
+    showLimError('Selecione ao menos uma seguradora.');
+    return;
+  }
+
+  const btn = document.getElementById('limBtnConsultar');
+  const loading = document.getElementById('limLoading');
+  const results = document.getElementById('limResults');
+  btn.disabled = true;
+  loading.hidden = false;
+  results.innerHTML = '';
+
+  try {
+    const data = await consultarLimitesSeguradoras(cnpj, seguradoras);
+    renderLimitesResults(data);
+  } catch (err) {
+    showLimError('Erro ao consultar limites: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    loading.hidden = true;
+  }
+}
+
+function renderLimitesResults(data) {
+  const results = document.getElementById('limResults');
+  const resultados = (data && data.resultados) || [];
+
+  if (resultados.length === 0) {
+    results.innerHTML = '<p class="lim-empty">Nenhum resultado retornado.</p>';
+    return;
+  }
+
+  results.innerHTML = resultados.map(r => {
+    const statusBadge = r.status === 'ok'
+      ? '<span class="lim-badge lim-badge--ok">Consultado</span>'
+      : '<span class="lim-badge lim-badge--erro">Erro</span>';
+
+    const body = r.status === 'ok'
+      ? `<pre class="lim-raw-json">${esc(JSON.stringify(r.dados, null, 2))}</pre>`
+      : `<p class="lim-erro-text">${esc(r.erro || 'Falha na consulta.')}</p>`;
+
+    return `
+      <div class="lim-result-card card">
+        <div class="lim-result-header">
+          <p class="lim-result-label">${esc(r.label || r.seguradora)}</p>
+          ${statusBadge}
+        </div>
+        <div class="lim-result-body">${body}</div>
+      </div>`;
+  }).join('');
+}
+

@@ -615,3 +615,18 @@ async function analisarDocumentosFinanceiros(arquivos) {
     return analisarDocumentosFinanceirosLegacy(arquivos);
   }
 }
+
+async function consultarLimitesSeguradoras(cnpj, seguradoras) {
+  const resp = await fetch(DEEPSEEK_WORKER_URL.replace(/\/+$/, '') + '/v1/limits/query', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cnpj, seguradoras }),
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`Consulta de limites falhou (${resp.status}): ${text}`);
+  }
+
+  return resp.json();
+}
