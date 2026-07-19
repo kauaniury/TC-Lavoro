@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
@@ -26,6 +26,7 @@
       <button type="button" class="topbar-tab tab-btn" id="tab-analise-financeira" data-page="analise-financeira" onclick="switchTab('analise-financeira')">Análise Financeira</button>
       <button type="button" class="topbar-tab tab-btn" id="tab-seguro-garantia" data-page="seguro-garantia" onclick="switchTab('seguro-garantia')">Seg. Garantia</button>
       <button type="button" class="topbar-tab tab-btn" id="tab-fianca-locaticia" data-page="fianca-locaticia" onclick="switchTab('fianca-locaticia')">Fiança Loc.</button>
+      <button type="button" class="topbar-tab tab-btn" id="tab-analise-apolice" data-page="analise-apolice" onclick="switchTab('analise-apolice')">Análise de Apólice</button>
       <button type="button" class="topbar-tab tab-btn" id="tab-consulta-limites" data-page="consulta-limites" onclick="switchTab('consulta-limites')">Consulta de Limites</button>
     </nav>
     <div class="topbar-actions">
@@ -47,7 +48,18 @@
         <p class="upload-header-sub">Carregue o arquivo Excel com as respostas das seguradoras para gerar o dashboard executivo.</p>
       </div>
 
-      <div class="upload-card card">
+      <div class="tc-mode-toggle" role="tablist" aria-label="Método de entrada">
+        <button type="button" class="tc-mode-btn tc-mode-btn--active" id="tcBtnUpload" role="tab" aria-selected="true" onclick="switchTcMode('upload')">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2" y="3" width="12" height="9" rx="1.2" stroke="currentColor" stroke-width="1.4"/><path d="M5 7.5h6M5 10h4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M8 3V1.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          Importar Planilha Excel
+        </button>
+        <button type="button" class="tc-mode-btn" id="tcBtnManual" role="tab" aria-selected="false" onclick="switchTcMode('manual')">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2" y="1.5" width="9" height="12" rx="1" stroke="currentColor" stroke-width="1.4"/><path d="M4.5 5.5h5M4.5 8h3.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M11 10l1.5 1.5-2.5 2.5-1.5-1.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Preencher Manualmente
+        </button>
+      </div>
+
+      <div class="upload-card card" id="tcUploadCard">
         <div class="upload-card-header">
           <p class="upload-card-title">Selecione o arquivo</p>
         </div>
@@ -88,6 +100,80 @@
         </div>
       </div>
 
+      <div class="upload-card card tc-manual-card" id="tcManualCard" hidden>
+        <div class="upload-card-header">
+          <p class="upload-card-title">Preencher dados manualmente</p>
+        </div>
+        <div class="upload-card-body">
+
+          <div id="tcTabBar" class="tc-tab-bar"></div>
+
+          <div class="tc-form-header">
+            <div class="tc-form-group">
+              <label class="tc-label" for="tcTomador">Tomador</label>
+              <input type="text" id="tcTomador" class="tc-input" placeholder="Nome do tomador" autocomplete="off" oninput="updateTcActiveTabLabel()">
+            </div>
+            <div class="tc-form-group">
+              <label class="tc-label" for="tcCnpj">CNPJ</label>
+              <input type="text" id="tcCnpj" class="tc-input" placeholder="00.000.000/0000-00" autocomplete="off" inputmode="numeric" maxlength="18" oninput="fmtTcCnpj(this)">
+            </div>
+          </div>
+
+          <datalist id="tcSegList">
+            <option value="AKAD"><option value="ALLIANZ"><option value="AUSTRAL">
+            <option value="AVLA"><option value="AXA"><option value="BERKLEY">
+            <option value="BTG"><option value="CESCE"><option value="CHUBB">
+            <option value="DAYCOVAL"><option value="ESSOR"><option value="EZZE">
+            <option value="FAIRFAX"><option value="FATOR"><option value="HDI">
+            <option value="JNS"><option value="JUNTO"><option value="KOVR">
+            <option value="LIBERTY"><option value="NEWE"><option value="MITISUI">
+            <option value="POTTENCIAL"><option value="SOMBRERO"><option value="SOMPO">
+            <option value="SWISS RE"><option value="THINKSEG"><option value="TOKIO">
+            <option value="ZURICH">
+          </datalist>
+
+          <div id="tcInsurerList" class="tc-insurer-list"></div>
+
+          <button type="button" class="tc-btn-add-insurer" onclick="addTcInsurer()">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            </svg>
+            Adicionar Seguradora
+          </button>
+
+          <div class="error-msg" id="errorMsgManual" role="alert" aria-live="polite">
+            <p id="errorTextManual"></p>
+          </div>
+
+          <div class="tc-btn-row">
+            <button type="button" class="btn-secondary tc-export-btn" onclick="renderTcEmailTable()">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11M5.5 2v12" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"/></svg>
+              Gerar tabela
+            </button>
+            <button type="button" class="btn-secondary tc-export-btn" onclick="exportTcEmailTableXlsx()">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="1.5" y="1.5" width="13" height="13" rx="1" stroke="currentColor" stroke-width="1.5"/><path d="M1.5 6h13M1.5 10h13M5.5 6v8" stroke="currentColor" stroke-width="1.5"/></svg>
+              Exportar XLSX
+            </button>
+            <button type="button" class="btn-primary btn-generate" id="btnGenerateManual" onclick="generateDashboardFromForm()">
+              <span class="btn-label">Gerar Dashboard</span>
+            </button>
+          </div>
+
+          <div id="tcEmailTableMount" class="tc-email-capture-host" aria-hidden="true"></div>
+
+          <div class="upload-instructions">
+            <h2 class="instr-title">Como usar</h2>
+            <ol class="instr-list">
+              <li class="instr-item"><span class="instr-num">01</span><span class="instr-text">Preencha o tomador e CNPJ no topo.</span></li>
+              <li class="instr-item"><span class="instr-num">02</span><span class="instr-text">Adicione cada seguradora com seu status e capacidade total.</span></li>
+              <li class="instr-item"><span class="instr-num">03</span><span class="instr-text">Para aprovadas, adicione as modalidades com limite e taxa individualmente.</span></li>
+              <li class="instr-item"><span class="instr-num">04</span><span class="instr-text">Clique em <strong>Gerar tabela</strong> para montar a imagem de envio por e-mail.</span></li>
+            </ol>
+          </div>
+
+        </div>
+      </div>
+
       <div class="upload-other-tools">
         <p class="upload-other-label">Outras ferramentas de IA</p>
         <div class="upload-other-grid">
@@ -121,6 +207,16 @@
             </div>
             <svg class="upload-tool-arrow" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
           </button>
+          <button class="upload-tool-card" onclick="switchTab('analise-apolice')">
+            <div class="upload-tool-icon upload-tool-icon--ap">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 3h7l4 4v14H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" stroke-linejoin="round"/><path d="M14 3v5h5M9 12h6M9 16h6" stroke-linecap="round"/></svg>
+            </div>
+            <div>
+              <p class="upload-tool-name">Análise de Apólice</p>
+              <p class="upload-tool-desc">Dados essenciais da apólice</p>
+            </div>
+            <svg class="upload-tool-arrow" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          </button>
         </div>
       </div>
     </section>
@@ -134,10 +230,10 @@
       <div class="hero-left hero-content">
         <p class="hero-label hero-eyebrow">Análise de Limites</p>
         <h1 class="hero-title" id="dTomador">-</h1>
+        <p class="hero-cnpj" id="dCnpj">CNPJ -</p>
       </div>
       <div class="hero-right hero-meta">
         <img src="assets/img/Lavoro-logo_branca.png" alt="Lavoro Seguros" class="print-hero-logo" aria-hidden="true">
-        <p class="hero-cnpj" id="dCnpj">CNPJ -</p>
         <p class="hero-date" id="dDate"></p>
       </div>
     </div>
@@ -358,17 +454,20 @@
 
   <!-- Upload section -->
   <div class="tab-upload-section" id="sgUploadSection">
+
     <div class="tab-upload-inner">
       <div class="upload-header">
         <p class="upload-header-eyebrow upload-header-eyebrow--garantia">Seguro Garantia</p>
         <h1 class="upload-header-title">Análise de Contratos e Editais</h1>
         <p class="upload-header-sub">Envie edital, contrato, aditivos e apostilamentos. A IA analisa clausulas, riscos e indica a localização exata de cada informação. Até 10 arquivos.</p>
       </div>
+
       <div class="upload-card card upload-card--garantia">
         <div class="upload-card-header">
           <p class="upload-card-title">Documentos do Contrato</p>
           <span class="badge-ia-tag badge-ia-tag--garantia">Lavoro IA</span>
         </div>
+
         <div class="upload-card-body">
           <label class="drop-zone drop-zone--garantia" id="dropZoneGarantia" tabindex="0" aria-label="Clique ou arraste documentos de seguro garantia">
             <input type="file" id="fileInputGarantia" accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.csv" multiple>
@@ -572,6 +671,120 @@
                    placeholder="Pergunte ou arraste um arquivo aqui…"
                    onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendFlChatMessage();}">
             <button type="button" class="btn-primary sg-chat-send-btn" id="flChatSend" onclick="sendFlChatMessage()">
+              <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" width="15" height="15"><path d="M17 3L3 9.5l5.5 2 2 5.5L17 3z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="currentColor" fill-opacity="0.2"/></svg>
+            </button>
+          </div>
+        </div>
+        <p class="ai-disclaimer">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12" aria-hidden="true"><path d="M8 1l7 14H1L8 1z" stroke-linejoin="round"/><path d="M8 6v4M8 12h.01" stroke-linecap="round"/></svg>
+          A IA pode cometer erros. Verifique informações importantes.
+        </p>
+      </aside>
+    </div>
+  </div>
+</main>
+
+<!-- ── Página: Análise de Apólice ── -->
+<main class="page page-analise-apolice" id="page-analise-apolice" aria-label="Análise de Apólice">
+
+  <div class="tab-upload-section" id="apUploadSection">
+    <div class="tab-upload-inner">
+      <div class="upload-header">
+        <p class="upload-header-eyebrow upload-header-eyebrow--apolice">Análise de Apólice</p>
+        <h1 class="upload-header-title">Extração de dados essenciais</h1>
+        <p class="upload-header-sub">Envie a apólice em PDF, imagem ou planilha. A IA retorna somente tomador, segurado, importância segurada, vigência, objeto, coberturas e riscos excluídos.</p>
+      </div>
+      <div class="upload-card card upload-card--apolice">
+        <div class="upload-card-header">
+          <p class="upload-card-title">Documento da Apólice</p>
+          <span class="badge-ia-tag badge-ia-tag--apolice">Lavoro IA</span>
+        </div>
+        <div class="upload-card-body">
+          <label class="drop-zone drop-zone--apolice" id="dropZoneApolice" tabindex="0" aria-label="Clique ou arraste documentos de apólice">
+            <input type="file" id="fileInputApolice" accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.csv" multiple>
+            <svg class="drop-icon" viewBox="0 0 48 48" fill="none" aria-hidden="true"><rect x="7" y="4" width="28" height="38" rx="2" stroke="currentColor" stroke-width="2.5"/><path d="M29 4v10h10" stroke="currentColor" stroke-width="2.5" stroke-linecap="square"/><path d="M15 23h17M15 30h17M15 36h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <p class="drop-title">Arraste a apólice aqui</p>
+            <p class="drop-sub">ou <span>clique para selecionar</span></p>
+            <p class="drop-hint">Apólice · Endosso · Condições &nbsp;|&nbsp; .pdf .jpg .png .xlsx &nbsp;|&nbsp; Máx. 10 arquivos</p>
+          </label>
+
+          <div class="financial-file-list" id="apoliceFileList" aria-live="polite"></div>
+
+          <div class="error-msg" id="errorMsgApolice" role="alert" aria-live="polite">
+            <p id="errorTextApolice">Erro.</p>
+          </div>
+
+          <button type="button" class="btn-primary btn-generate btn-apolice" id="btnAnalyzeApolice" disabled onclick="processarAnaliseApolice()">
+            <span class="btn-label">Analisar com IA</span>
+          </button>
+
+          <div class="upload-instructions">
+            <h2 class="instr-title">Como usar</h2>
+            <ol class="instr-list">
+              <li class="instr-item"><span class="instr-num">01</span><span class="instr-text">Anexe a apólice e, se houver, endossos ou condições particulares.</span></li>
+              <li class="instr-item"><span class="instr-num">02</span><span class="instr-text">A IA extrai apenas os dados essenciais solicitados.</span></li>
+              <li class="instr-item"><span class="instr-num">03</span><span class="instr-text">Campos não encontrados aparecem como não localizados.</span></li>
+              <li class="instr-item"><span class="instr-num">04</span><span class="instr-text">Use o relatório para conferência operacional da apólice.</span></li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="af-loading" id="apLoading" hidden>
+    <div class="af-spinner" aria-hidden="true"></div>
+    <p class="af-loading-text">Analisando apólice com IA…</p>
+    <p class="af-loading-sub">Extraindo dados essenciais do documento.</p>
+  </div>
+
+  <div class="sg-chat-wrapper" id="apResultArea" hidden>
+    <div class="sg-chat-topbar ap-chat-topbar">
+      <div class="sg-chat-topbar-inner">
+        <div>
+          <p class="sg-chat-eyebrow">Análise de Apólice IA</p>
+          <p class="sg-chat-title-bar" id="apChatTitle">Dados da Apólice</p>
+        </div>
+        <div class="sg-chat-topbar-actions">
+          <p class="sg-chat-files-bar" id="apChatFiles"></p>
+          <button type="button" class="sg-chat-export-btn" onclick="resetAnaliseApolice()" title="Nova análise">
+            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 8a6 6 0 1 0 1.5-3.9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M2 4v4h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Nova análise
+          </button>
+          <button type="button" class="sg-chat-export-btn" id="apExportBtn" onclick="downloadApoliceReport()" hidden>
+            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 1v9M5 7l3 3 3-3M2 12v1a1 1 0 001 1h10a1 1 0 001-1v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"/></svg>
+            Exportar PDF
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="ai-split-body">
+      <div class="ai-split-main">
+        <div class="ap-report-shell">
+          <div id="apReportContainer"></div>
+        </div>
+      </div>
+      <aside class="ai-chat-sidebar">
+        <div class="ai-chat-sidebar-header">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="20" height="20" aria-hidden="true"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <div>
+            <p class="ai-chat-sidebar-title">Chat com IA</p>
+            <p class="ai-chat-sidebar-sub">Pergunte sobre a apólice</p>
+          </div>
+        </div>
+        <div class="ai-sidebar-messages" id="apSidebarMessages" aria-live="polite"></div>
+        <div class="ai-sidebar-input-area" id="apInputArea"
+             ondragover="handleChatDragOver(event,'ap')" ondragleave="handleChatDragLeave(event,'ap')" ondrop="handleChatDrop(event,'ap')">
+          <div class="ai-chat-file-chips" id="apFileChips" hidden></div>
+          <div class="sg-chat-input-row">
+            <button type="button" class="ai-chat-attach-btn" id="apAttachBtn" onclick="document.getElementById('apAttachInput').click()" title="Anexar arquivo ou imagem">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" width="16" height="16" aria-hidden="true"><path d="M10 2L10 13M10 2C10 2 7 5 5 5C3 5 2 3.5 2 3.5C2 3.5 3 2 5 2H15C17 2 18 3.5 18 3.5C18 3.5 17 5 15 5C13 5 10 2 10 2Z" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 9.5C2.5 10.5 2 12 2 13.5C2 16 4 18 7 18H13C16 18 18 16 18 13.5C18 12 17.5 10.5 16 9.5" stroke-linecap="round"/></svg>
+            </button>
+            <input type="file" id="apAttachInput" accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.csv,.txt" multiple style="display:none" onchange="handleChatFileSelect(event,'ap')">
+            <input type="text" id="apChatInput" class="sg-chat-input"
+                   placeholder="Pergunte ou arraste um arquivo aqui…"
+                   onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendApoliceChatMessage();}">
+            <button type="button" class="btn-primary sg-chat-send-btn" id="apChatSend" onclick="sendApoliceChatMessage()">
               <svg viewBox="0 0 20 20" fill="none" aria-hidden="true" width="15" height="15"><path d="M17 3L3 9.5l5.5 2 2 5.5L17 3z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="currentColor" fill-opacity="0.2"/></svg>
             </button>
           </div>

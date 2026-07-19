@@ -1,11 +1,11 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versão: 2.2  
+> Versao: 2.19  
 > Atualizado em: 2026-07-18
 
 ## 1. Visão Geral
 
-Aplicação web estática da **Lavoro Seguros** com cinco fluxos independentes:
+Aplicação web estática da **Lavoro Seguros** com seis fluxos independentes:
 
 | Fluxo | Entrada | Saída |
 |---|---|---|
@@ -13,6 +13,7 @@ Aplicação web estática da **Lavoro Seguros** com cinco fluxos independentes:
 | Análise Financeira IA | DRE, Balanço, Balancete, CSV, PDF e imagem | JSON consolidado multiempresa/multiperíodo renderizado em cards |
 | Seguro Garantia IA | Edital, contrato, aditivos, apostilamentos, PDF/imagem/planilhas | Relatório técnico estruturado (primeira resposta) + chat conversacional + exportação PDF |
 | Fiança Locatícia IA | Contrato de locação, aditivos, laudos, PDF/imagem/planilhas | JSON contratual renderizado em tela |
+| Análise de Apólice IA | Apólice, endossos, condições particulares, PDF/imagem/planilhas | JSON objetivo com dados essenciais da apólice renderizado em relatório |
 | Consulta de Limites | CNPJ do tomador | Consulta em tempo real dos limites disponíveis em cada seguradora integrada (JNS, Junto, Onpoint/Essor/Sombrero/NEWE/Mitsui, AXA, Fator) |
 
 O fluxo **T&C** continua estável e não deve ser alterado sem necessidade explícita.
@@ -43,8 +44,8 @@ TC Lavoro/
 
 - Nunca expor `DEEPSEEK_API_KEY`, `UPSTASH_REDIS_REST_URL` ou `UPSTASH_REDIS_REST_TOKEN` no front-end.
 - Secrets ficam somente no Cloudflare Worker.
-- Toda navegação da SPA deve continuar usando apenas `switchTab('upload' | 'dashboard' | 'analise-financeira' | 'seguro-garantia' | 'fianca-locaticia' | 'consulta-limites')`.
 - Credenciais das APIs de seguradoras (`JNS_*`, `JUNTO_*`, `ONPOINT_*`, `FATOR_*`) seguem a mesma regra: só existem como secrets do Worker, nunca no front-end.
+- Toda navegação da SPA deve continuar usando apenas `switchTab('upload' | 'dashboard' | 'analise-financeira' | 'seguro-garantia' | 'fianca-locaticia' | 'analise-apolice' | 'consulta-limites')`.
 - Toda string inserida em `innerHTML` deve passar por `esc()`.
 
 ### 3.2 Front-end
@@ -72,7 +73,22 @@ Mantido sem alteração estrutural.
   - `rows[]`
 - Modalidades adicionais entram em `modalidades[]` do registro principal
 
-### 4.2 Estrutura Parsed
+### 4.2 Tabela Manual para E-mail
+
+Funcoes envolvidas em `app.js`:
+
+- `buildManualParsedData()` consolida o formulario manual em `rows[]` e inclui `statusCcg` apenas para seguradoras aprovadas
+- `fmtTcCnpj(el)` aplica mascara no CNPJ do tomador no formato `00.000.000/0000-00`
+- `fmtTcDate(el)` aplica mascara no vencimento no formato `DD/MM/AAAA`
+- `fmtTcTaxa(el)` normaliza a taxa digitada como percentual literal no campo manual
+- `renderTcEmailTable()` substitui a antiga exportacao XLSX, monta a tabela visual compacta fora da tela e baixa automaticamente a imagem PNG
+- `downloadTcEmailTableImage()` usa `html2canvas` para baixar a tabela renderizada como PNG
+
+A tabela de e-mail contem todas as colunas operacionais do formulario manual nesta ordem: seguradora, capacidade total, modalidades, limites por modalidade, taxa por modalidade, status CCG, vencimentos e status. Tomador e CNPJ aparecem no cabecalho. O campo Status CCG so aparece no formulario quando a seguradora esta com status Aprovado. A tabela nao fica visivel na tela; ela e renderizada temporariamente apenas para captura e download da imagem.
+
+As classes CSS `tc-email-status-ccg-head` e `tc-email-status-ccg-cell` mantem uma borda esquerda dedicada na coluna Status CCG para preservar a linha vertical entre Taxa por Modalidade e Status CCG durante a captura por html2canvas, inclusive quando ha multiplas modalidades com `rowspan`.
+
+### 4.3 Estrutura Parsed
 
 ```js
 {
@@ -80,6 +96,7 @@ Mantido sem alteração estrutural.
     {
       seguradora: string,
       status: 'aprovado' | 'declinado' | 'concorrente' | 'bloqueado',
+      statusCcg: string | null,
       limite: number,
       modalidade: string,
       valorModal: number,
@@ -112,9 +129,10 @@ O front-end agora possui dois modos:
 
 | Fluxo | Chunk (`analyzeChunk`) | Síntese final (`synthesizeFinalResult`) |
 |---|---|---|
-| Análise Financeira | deepseek-chat / 4.000 tokens | deepseek-chat / 8.000 tokens |
+| Análise Financeira | deepseek-chat / 4.000 tokens | deepseek-chat / **12.000 tokens** |
 | Seguro Garantia | deepseek-chat / 4.000 tokens | deepseek-chat / **10.000 tokens** |
 | Fiança Locatícia | deepseek-chat / 4.000 tokens | deepseek-chat / 8.000 tokens |
+| Análise de Apólice | deepseek-chat / 4.000 tokens | deepseek-chat / 8.000 tokens |
 
 ### 5.2 Worker com Memória Redis
 
@@ -130,7 +148,7 @@ Responsabilidades:
 - persistir estado do job no Redis
 - persistir o texto completo de cada chunk separadamente no Redis
 - processar partes sequencialmente
-- armazenar notas parciais por chunk
+- armazenar notas parciais por chunk (referenciadas em `manifest.chunkNotes[]`, cada item apontando para a chave real via `noteKey`)
 - sintetizar resultado final só após o documento completo
 - expor `version` em respostas do Worker para auditoria de deploy
 
@@ -139,6 +157,10 @@ Secrets esperados no Worker:
 - `DEEPSEEK_API_KEY`
 - `UPSTASH_REDIS_REST_URL`
 - `UPSTASH_REDIS_REST_TOKEN`
+- `JNS_USERNAME`, `JNS_PASSWORD`, `JNS_TOKEN`
+- `JUNTO_CLIENT_ID`, `JUNTO_CLIENT_SECRET`
+- `ONPOINT_APPLICATION_KEY_V2`, `ONPOINT_BROKER_CNPJ`
+- `FATOR_CLIENT_ID`, `FATOR_CLIENT_SECRET`, `FATOR_CORRETOR_ID`, `FATOR_NM_LOGIN`
 
 Modelo no Worker:
 
@@ -160,7 +182,7 @@ Body:
 
 ```json
 {
-  "flow": "analise-financeira | seguro-garantia | fianca-locaticia",
+  "flow": "analise-financeira | seguro-garantia | fianca-locaticia | analise-apolice",
   "files": [
     {
       "nome": "arquivo.pdf",
@@ -195,6 +217,10 @@ Executa um passo do job:
 
 Consulta status do job.
 
+#### `POST /v1/limits/query`
+
+Consulta de limites por seguradora (ver seção 10).
+
 #### `GET /health`
 
 Healthcheck simples do Worker. Deve retornar `ok`, `worker` e `version`.
@@ -213,6 +239,8 @@ Implementada em `deepseek.js`.
 | `extrairPDF(file)` | extrai até 250 páginas via PDF.js e agrupa várias páginas por chunk para reduzir latência |
 | `extrairImagem(file)` | gera DataURL |
 | `executarAnaliseEmLotes(flow, arquivos)` | cria job e itera até concluir |
+| `analisarApolice(arquivos)` | executa o fluxo de análise de apólice com job Redis e fallback legado |
+| `consultarLimitesSeguradoras(cnpj, seguradoras)` | chama `/v1/limits/query` no Worker (ver seção 10) |
 
 ### 5.5 Estratégia para PDFs grandes
 
@@ -237,13 +265,13 @@ Isso reduz estouro de contexto e cria memória transacional da análise no Redis
 
 | Chave | Conteúdo |
 |---|---|
-| `deepseek:job:{jobId}` | Manifest do job (metadados, status, índices) |
+| `deepseek:job:{jobId}` | Manifest do job (metadados, status, índices, `chunkNotes[]` de referências) |
 | `deepseek:job:{jobId}:chunk:{index}` | Conteúdo textual bruto de cada chunk |
 | `deepseek:job:{jobId}:note:{index}` | Nota gerada pela IA para cada chunk |
 
 TTL de todas as chaves: 6 horas (`JOB_TTL_SECONDS`).
 
-**Regra crítica:** as notas de chunk **nunca devem ficar dentro do manifest**. Com 10 arquivos e 50–100 chunks, cada nota pode ter ~16KB (4.000 tokens). Armazenar tudo no manifest resultaria em 800KB–1,6MB por `SETEX`, ultrapassando os limites do Upstash. Cada nota é salva como `noteKey(jobId, index)` e recuperada individualmente na síntese final.
+**Regra crítica:** as notas de chunk **nunca devem ficar dentro do manifest**. Com 10 arquivos e 50–100 chunks, cada nota pode ter ~16KB (4.000 tokens). Armazenar tudo no manifest resultaria em 800KB–1,6MB por `SETEX`, ultrapassando os limites do Upstash. Cada nota é salva como `noteKey(jobId, index)`; o manifest guarda apenas a referência (`index`, `fileName`, `chunkLabel`, `noteKey`) em `manifest.chunkNotes[]`, e `loadChunkNotes` recupera o conteúdo completo de cada uma individualmente na síntese final.
 
 **Chamadas Redis — formato POST body obrigatório:**
 
@@ -272,10 +300,11 @@ O prompt de chunk (`analise-financeira`) detecta se o documento indica escala em
 
 ### 6.1b Renderização — Indicadores Financeiros
 
-`buildDocumentoCard` renderiza os 20 indicadores como tabela 2 colunas (label | valor):
-- Linhas com `.af-kpi-row--priority` destacadas (campos principais)
-- Linhas com `.af-kpi-row--empty` esmaecidas (valor null → "—")
-- Linhas com `.af-kpi-row--neg` em vermelho (valor negativo)
+`buildDocumentoCard` renderiza somente indicadores com valor disponível como tabela simples de 2 colunas (label | valor):
+- Valores ausentes (`null`, `undefined`, string vazia, `"null"`, `"N/A"`, `"não informado"`) não aparecem na tabela
+- Indicadores que não costumam existir no documento, como EBITDA em balanços, ficam ocultos quando não extraídos
+- Valores negativos recebem `.af-kpi-row--neg` em vermelho
+- A tabela financeira usa visual simplificado, sem linhas apagadas e sem destaque visual por prioridade
 
 ### 6.2 Função pública
 
@@ -358,55 +387,113 @@ Comportamento:
 
 ### 7.1a Prompt de síntese — Seguro Garantia
 
-O prompt final produz uma análise técnica completa em markdown com 12 seções numeradas:
+O prompt final produz JSON estruturado focado em emissão de apólice. O front-end renderiza um **card compacto de emissão** (`renderSeguroGarantiaCard`) em vez de relatório markdown.
 
-1. Classificação do documento
-2. Modalidade sugerida
-3. Partes identificadas (tabela: Papel | Nome/Razão Social | CPF/CNPJ | Fonte)
-4. Dados principais para emissão (tabela: Campo | Informação | Fonte/Trecho | Confiança)
-5. Cálculo da importância segurada
-6. Vigência recomendada
-7. Objeto sugerido para a apólice
-8. Cláusulas e coberturas recomendadas (tabela)
-9. Pontos de atenção
-10. Documentos ou informações pendentes
-11. Conclusão operacional
-12. Resumo final para cadastro *(seção especial — fundo verde escuro + campos monoespaçados)*
-
-A seção 12 é renderizada por `renderResumoFinalSection` como grade de campos `label: valor`, não como markdown genérico.
+A função `renderSeguroGarantiaReport` (markdown) é mantida como legado para fallback em caso de JSON inválido.
 
 ### 7.2 Funções de renderização (app.js)
 
 | Função | Responsabilidade |
 |---|---|
-| `renderSeguroGarantiaReport(text)` | entry-point: constrói todo o HTML do relatório (masthead, badge de veredicto, seções) |
-| `parseReportSections(text)` | divide o markdown por `##` em `[{ title, content }]` |
-| `getSectionMeta(title)` | mapeia título para tipo: `dados \| modalidades \| clausulas \| riscos \| parecer \| resumo \| default` |
-| `getSectionSvgIcon(type)` | retorna SVG inline por tipo de seção |
-| `detectVerdictFromText(text)` | detecta veredicto no texto e retorna `{ cls, label, icon }` para Emitir / Ressalvas / Declinar |
-| `renderReportSection(section)` | renderiza um card de seção com cabeçalho com ícone e corpo em markdown |
-| `renderReportMarkdown(text)` | markdown aprimorado: tabelas pipe `\| … \|`, `---` HR, headings, bullets, negrito |
+| `renderSeguroGarantiaCard(data)` | entry-point principal: renderiza relatório completo de emissão a partir do JSON |
+| `buildSgModalidadeCard(modalidade)` | card de cada modalidade com IS, base de cálculo, vigência, objeto e cláusulas |
+| `buildVigenciaSgHtml(modalidade)` | consolida vigencia_inicio, vigencia_fim e vigencia_obs num único campo |
+| `buildEmissaoPartBox(label, item)` | box de Tomador ou Segurado com CNPJ, endereço e fonte |
+| `buildEmissaoFieldRow(label, item, format)` | linha de campo IS/Objeto/Vigência com fonte |
+| `buildSgDadosLicitacao(d, tipo)` | card com nº edital, processo, contrato, ata e objeto |
+| `buildSgCoberturasHtml(cob)` | badges de coberturas/cláusulas exigidas (multas, trabalhista, etc.) |
+| `buildSgApresentacaoHtml(ap)` | card de prazo e forma de apresentação da garantia |
+| `buildSgListaHtml(itens, ...)` | lista genérica para alertas de risco e perguntas ao cliente |
+| `buildSgConclusaoHtml(c)` | card de conclusão operacional com pode_cotar, pode_emitir e nível de confiança |
+| `buildSgTrechosHtml(trechos)` | trechos relevantes do documento com citação e localização |
+| `renderSeguroGarantiaReport(text)` | legado: renderiza markdown (usado como fallback se JSON inválido) |
 | `downloadSgReport()` | exportação A4 multi-página via html2canvas + jsPDF |
+| `syncAiChatStickyOffset()` | atualiza `--ai-sidebar-sticky-top` para manter o chat lateral visível |
+
+### 7.2a JSON Final Esperado
+
+```json
+{
+  "tipo": "Seguro Garantia",
+  "documentos_analisados": ["arquivo.pdf"],
+  "resumo_executivo": "string — resumo operacional em 3-5 frases",
+  "tipo_documento_analisado": "edital|contrato|ata|proposta|aditivo|minuta|misto",
+  "tomador": { "valor": "Nome do Tomador", "cnpj": "XX.XXX.XXX/XXXX-XX | null", "fonte": "..." },
+  "segurado": { "valor": "Nome do Segurado/Beneficiário", "cnpj": "XX.XXX.XXX/XXXX-XX | null", "endereco": "string | null", "fonte": "..." },
+  "dados_licitacao_contrato": {
+    "numero_edital": "null | string",
+    "numero_processo": "null | string",
+    "modalidade_licitacao": "null | string",
+    "numero_contrato": "null | string",
+    "numero_ata": "null | string",
+    "objeto": "null | string"
+  },
+  "modalidades": [
+    {
+      "nome": "Garantia de Proposta",
+      "importancia_segurada": { "valor": 8543.83, "fonte": "Item 9.1, pág. 35" },
+      "base_calculo": { "valor": "1% do valor estimado de R$ 854.383,00", "fonte": "..." },
+      "vigencia_inicio": { "valor": null, "fonte": "..." },
+      "vigencia_fim": { "valor": null, "fonte": "..." },
+      "vigencia_obs": { "valor": "Prazo de validade da proposta: mínimo 120 dias", "fonte": "..." },
+      "exige_acrescimo_90_dias": false,
+      "objeto_apolice": { "valor": "Garantia de Proposta para participação no Pregão nº 012/2026...", "fonte": "..." },
+      "clausulas_necessarias": [
+        { "descricao": "Cláusula de manutenção de proposta", "fonte": "Item 9.1, pág. 35" }
+      ]
+    }
+  ],
+  "coberturas_clausulas_exigidas": {
+    "multas": false,
+    "trabalhista_previdenciaria": false,
+    "fiscal": false,
+    "clausula_retomada": false,
+    "adiantamento_pagamento": false,
+    "retencao_pagamento": false,
+    "manutencao_corretiva": false,
+    "outras": []
+  },
+  "prazo_e_forma_de_apresentacao": {
+    "prazo": "null | string",
+    "momento": "null | string",
+    "forma_envio": "null | string",
+    "arquivo_unico_pdf": false
+  },
+  "trechos_relevantes": [
+    { "tema": "string", "trecho": "transcricao do trecho", "pagina_ou_localizacao": "pag. X" }
+  ],
+  "pendencias_para_emissao": ["string"],
+  "perguntas_para_cliente_ou_comercial": ["string"],
+  "alertas_de_risco": ["string"],
+  "conclusao_operacional": {
+    "pode_cotar": false,
+    "pode_emitir": false,
+    "motivo": "string",
+    "nivel_confianca": "ALTA | MEDIA | BAIXA"
+  },
+  "parecer": {
+    "recomendacao": "Emitir | Emitir com ressalvas | Declinar",
+    "justificativa": "...",
+    "pendencias": ["pendência 1"]
+  }
+}
+```
 
 ### 7.3 Arquitetura de renderização
 
-A primeira mensagem da IA no chat é renderizada como **relatório completo** (`div.sg-report-wrapper`). Mensagens subsequentes (perguntas e respostas do chat) usam o layout de balão padrão (`sg-chat-msg--user` / `sg-chat-msg--ai`).
+A primeira mensagem da IA no chat é renderizada como **card de emissão** (`div.sg-report-wrapper`). Mensagens subsequentes usam o layout de balão padrão (`sg-chat-msg--user` / `sg-chat-msg--ai`).
 
 Controlado pela flag `sgFirstAnalysis` em `app.js`:
 
 ```js
-// primeiro assistente → relatório estruturado
+// primeiro assistente → card de emissão (JSON object)
 if (role === 'assistant' && sgFirstAnalysis) {
   div.className = 'sg-report-wrapper';
-  div.innerHTML = renderSeguroGarantiaReport(text);
+  const isJsonData = text && typeof text === 'object' && text.tipo === 'Seguro Garantia';
+  div.innerHTML = isJsonData ? renderSeguroGarantiaCard(text) : renderSeguroGarantiaReport(String(text));
   sgFirstAnalysis = false;
-  // exibe botão "Exportar PDF"
-} else {
-  div.className = 'sg-chat-msg ' + (role === 'user' ? 'sg-chat-msg--user' : 'sg-chat-msg--ai');
 }
 ```
-
-Um divisor visual (`.sg-chat-divider` com texto "Perguntas sobre a análise") é inserido antes da primeira mensagem do usuário após o relatório.
 
 ### 7.4 Estrutura visual do relatório
 
@@ -433,6 +520,8 @@ Os três sidebars de Q&A (Seguro Garantia, Fiança Locatícia, Análise Financei
   - Imagens → `{type:'image_url', image_url:{url: base64}}` no array de content
   - Textuais → conteúdo extraído prefixado ao texto da mensagem
 - Estado: `_chatFiles = { sg:[], fl:[], af:[] }` — limpo ao enviar e ao "Nova análise"
+- O sidebar usa `--ai-sidebar-sticky-top`, calculado por `syncAiChatStickyOffset()`, para permanecer abaixo da topbar ativa do relatório durante o scroll.
+- O cabeçalho do sidebar (`.ai-chat-sidebar-header`) permanece visível com `position: sticky`, acompanhando o scroll no topo do card de chat.
 
 ### 7.5 Exportação PDF
 
@@ -479,6 +568,10 @@ analisarFiancaLocaticia(arquivos)
     "sub_rogacao": { "valor": "string|null", "fonte": "string" },
     "foro": { "valor": "string|null", "fonte": "string" }
   },
+  "objeto_apolice": { "valor": "string|null", "fonte": "string" },
+  "clausulas_necessarias": [
+    { "descricao": "string", "fonte": "string" }
+  ],
   "clausulas_criticas": [
     {
       "titulo": "string",
@@ -503,13 +596,113 @@ analisarFiancaLocaticia(arquivos)
 }
 ```
 
-## 9. Fluxo 5 — Consulta de Limites por Seguradora
+## 9. Fluxo 5 — Análise de Apólice IA
 
-### 9.0 Visão geral
+### 9.0 Entrada
+
+- máximo de 10 arquivos (`MAX_CONTRATO_FILES`)
+- formatos: `.pdf`, `.png`, `.jpg`, `.jpeg`, `.xlsx`, `.xls`, `.csv`
+- documentos esperados: apólice, endossos, condições particulares, condições especiais ou planilhas de dados da apólice
+
+### 9.1 Função pública
+
+```js
+analisarApolice(arquivos)
+```
+
+Comportamento:
+
+- tenta análise em lotes com `flow = "analise-apolice"`
+- se o Worker publicado ainda não reconhecer o novo flow, usa fallback legado pelo endpoint `/`
+- retorna somente JSON objetivo para renderização do relatório de apólice
+
+### 9.2 Contrato JSON Final
+
+```json
+{
+  "tipo": "Analise de Apolice",
+  "documentos_analisados": ["arquivo.pdf"],
+  "dados_gerais": {
+    "seguradora": { "valor": "string|null", "fonte": "string" },
+    "numero_apolice": { "valor": "string|null", "fonte": "string" },
+    "ramo": { "valor": "string|null", "fonte": "string" },
+    "tomador": { "valor": "string|null", "fonte": "string" },
+    "tomador_documento": { "valor": "string|null", "fonte": "string" },
+    "segurado": { "valor": "string|null", "fonte": "string" },
+    "segurado_documento": { "valor": "string|null", "fonte": "string" },
+    "importancia_segurada": { "valor": 0, "fonte": "string" },
+    "premio": { "valor": 0, "fonte": "string" },
+    "vigencia": { "valor": "string|null", "fonte": "string" },
+    "objeto_apolice": { "valor": "string|null", "fonte": "string" }
+  },
+  "coberturas": [
+    {
+      "descricao": "string",
+      "limite": "string|number|null",
+      "fonte": "string"
+    }
+  ],
+  "clausulas": [
+    {
+      "titulo": "string|null",
+      "descricao": "string",
+      "fonte": "string"
+    }
+  ],
+  "riscos_excluidos": [
+    {
+      "descricao": "string",
+      "fonte": "string"
+    }
+  ]
+}
+```
+
+O `tomador` (Tomador/Locatário) pode ser `null` em apólices sem tomador; o `segurado` (Segurado/Locador) quase sempre existe. `tomador_documento` e `segurado_documento` armazenam CNPJ ou CPF. `premio` é o prêmio da apólice. Cada item de `coberturas` pode trazer o `limite`/IS específico da cobertura.
+
+### 9.3 Renderização
+
+`app.js` adiciona:
+
+| Função | Responsabilidade |
+|---|---|
+| `processarAnaliseApolice()` | valida arquivos, chama `analisarApolice()` e controla loading/erro |
+| `renderAnaliseApolice(data)` | define título, arquivos analisados, renderiza relatório e inicia chat |
+| `buildApoliceReportHtml(data, title)` | constrói relatório objetivo com dados gerais, coberturas, cláusulas e riscos excluídos |
+| `buildApoliceDadoRow(cfg, item)` | renderiza linhas da tabela Campo/Valor/Fonte (configurado por `APOLICE_DADOS_CONFIG`) |
+| `buildApoliceList(items, emptyText)` | renderiza coberturas (com título/limite opcional), cláusulas e riscos excluídos |
+| `downloadApoliceReport()` | exporta o relatório da apólice em PDF |
+| `resetAnaliseApolice()` | limpa arquivos, histórico e retorna ao upload |
+| `sendApoliceChatMessage()` | envia mensagem no chat da apólice |
+| `appendApSidebarMessage(role, text)` | adiciona balão de mensagem no sidebar da apólice |
+
+O estado do chat usa `apChatHistory` (inicializado via `criarHistoricoApolice()` em `renderAnaliseApolice`) e `_chatFiles.ap` para anexos durante o chat.
+
+Classes CSS adicionadas:
+
+- `.upload-header-eyebrow--apolice`
+- `.upload-card--apolice`
+- `.badge-ia-tag--apolice`
+- `.drop-zone--apolice`
+- `.btn-apolice`
+- `.ap-chat-topbar`
+- `.ap-report-shell`
+- `.ap-report`
+- `.ap-report-masthead`
+- `.ap-dados-table`
+- `.ap-list`
+- `.ap-list-item`
+- `.ap-list-desc`
+- `.ap-list-title`
+- `.ap-list-limite`
+
+## 10. Fluxo 6 — Consulta de Limites por Seguradora
+
+### 10.0 Visão geral
 
 Consulta em tempo real (sem upload de arquivo) do limite disponível para um CNPJ em cada seguradora integrada. O front-end envia apenas `{ cnpj, seguradoras[] }` para o Worker; toda credencial fica nos secrets do Worker.
 
-### 9.1 Front-end
+### 10.1 Front-end
 
 - Aba `consulta-limites` (`index.html`), sem dependência de IA/chat.
 - Campo de CNPJ + checkboxes de seguradoras + botão "Consultar".
@@ -517,7 +710,7 @@ Consulta em tempo real (sem upload de arquivo) do limite disponível para um CNP
 - `app.js`: `consultarLimitesUI()` valida CNPJ (14 dígitos) e ao menos 1 seguradora selecionada, chama `consultarLimitesSeguradoras` e renderiza via `renderLimitesResults(data)`.
 - **Importante:** o schema de resposta de cada seguradora (`dados`) ainda não foi normalizado por seguradora — o front-end exibe o JSON bruto retornado por cada uma (`<pre class="lim-raw-json">`) porque os endpoints de consulta de cada seguradora não têm o formato de resposta documentado, apenas o request. Ao validar uma consulta real, extrair os campos de limite/modalidade de cada seguradora e atualizar `renderLimitesResults` para uma tabela normalizada.
 
-### 9.2 Worker — endpoint
+### 10.2 Worker — endpoint
 
 #### `POST /v1/limits/query`
 
@@ -540,7 +733,7 @@ Resposta:
 }
 ```
 
-### 9.3 Seguradoras integradas e autenticação
+### 10.3 Seguradoras integradas e autenticação
 
 | Seguradora(s) | Chave interna | Autenticação | Secrets |
 |---|---|---|---|
@@ -552,7 +745,7 @@ Resposta:
 
 **Regra crítica — Onpoint/AXA não aceitam chamadas paralelas para o mesmo CNPJ.** O Worker consulta `jns`/`junto`/`fator` em paralelo (`Promise.all`) mas processa `essor`/`sombrero`/`newe`/`mitsui`/`axa` sequencialmente num loop `for...of`.
 
-### 9.4 Cache de token no Redis
+### 10.4 Cache de token no Redis
 
 Tokens de login (JNS, Junto, Fator) são cacheados no Redis para evitar novo login a cada consulta:
 
@@ -564,7 +757,7 @@ Tokens de login (JNS, Junto, Fator) são cacheados no Redis para evitar novo log
 
 Em caso de `401`, o token é invalidado e a consulta refeita uma vez com login novo.
 
-### 9.5 Onpoint — IDs estáticos de seguradora
+### 10.5 Onpoint — IDs estáticos de seguradora
 
 | Seguradora | `InsuranceUniqueId` |
 |---|---|
@@ -574,7 +767,7 @@ Em caso de `401`, o token é invalidado e a consulta refeita uma vez com login n
 | Mitsui Sumitomo Seguros S.A. | `ff4a046b-d047-4bec-9253-1e3bc83c2df1` |
 | AXA Seguros S.A. | `555b5249-1f74-4681-9f49-5958ad720cfb` (rota própria) |
 
-## 10. Dependências Externas
+## 11. Dependências Externas
 
 | Biblioteca | Versão | Uso |
 |---|---|---|
@@ -584,10 +777,10 @@ Em caso de `401`, o token é invalidado e a consulta refeita uma vez com login n
 | jsPDF | 2.5.1 | geração de PDF |
 | PDF.js | 3.11.174 | extração de texto de PDFs |
 
-## 11. Observações de Deploy
+## 12. Observações de Deploy
 
 - O front-end já está preparado para o Worker novo.
 - Para ativar memória Redis de fato em produção, é necessário publicar `workers/deepseek-memory-worker.js` no mesmo domínio do Worker atual ou atualizar `DEEPSEEK_WORKER_URL`.
 - Se o Worker novo ainda não estiver publicado, o front-end usa fallback automático para o endpoint legado `/`.
-- Para a Consulta de Limites, publicar o Worker atualizado (`/v1/limits/query`) e configurar todos os secrets listados na seção 9.3, incluindo `ONPOINT_BROKER_CNPJ` e `FATOR_CORRETOR_ID`.
+- Para a Consulta de Limites, publicar o Worker atualizado (`/v1/limits/query`) e configurar todos os secrets listados na seção 10.3, incluindo `ONPOINT_BROKER_CNPJ` e `FATOR_CORRETOR_ID`.
 - CORS do Worker hoje libera `Access-Control-Allow-Origin: '*'` para todos os endpoints. Como a Consulta de Limites expõe dados de crédito mais sensíveis que o proxy de IA, considerar restringir a origem ao domínio de produção do front-end.
