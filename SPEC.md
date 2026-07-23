@@ -1,7 +1,7 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.20  
-> Atualizado em: 2026-07-18
+> Versao: 2.22  
+> Atualizado em: 2026-07-23
 
 ## 1. Visão Geral
 
@@ -705,26 +705,27 @@ Consulta em tempo real (sem upload de arquivo) do limite disponível para um CNP
 ### 10.1 Front-end
 
 - Aba `consulta-limites` (`index.html`), sem dependência de IA/chat.
-- Campo de CNPJ + checkboxes de seguradoras + botão "Consultar".
+- Campo de CNPJ + botão "Consultar". Não há seleção manual de seguradoras — `consultarLimitesUI()` sempre consulta as 8 integradas (`LIM_ALL_SEGURADORAS`).
+- Antes da primeira consulta, `renderLimitesPlaceholders()` (chamada por `switchTab('consulta-limites')`) já exibe um card por seguradora em estado **Aguardando** (`buildLimWaitingCardHtml`), com logo e texto instrutivo — nunca sobrescreve resultados já carregados (`#limResults[data-has-results]`).
 - `deepseek.js`: `consultarLimitesSeguradoras(cnpj, seguradoras)` — `POST` para `${DEEPSEEK_WORKER_URL}/v1/limits/query`.
-- `app.js`: `consultarLimitesUI()` valida CNPJ (14 dígitos) e ao menos 1 seguradora selecionada, chama `consultarLimitesSeguradoras` e renderiza via `renderLimitesResults(data)`.
-- Renderização em **cards por seguradora** (grid `.lim-cards-grid`): logo da seguradora (`LIM_LOGO_MAP` → `assets/*.png`, via `limLogoHtml()`), nome, badge de status colorido e botão "Ver limites do tomador" que abre um modal (`openLimiteModal` / `closeLimiteModal`) listando cada modalidade com valor (`fmtBRL`) e taxa.
+- `app.js`: `consultarLimitesUI()` valida CNPJ (14 dígitos), chama `consultarLimitesSeguradoras` e renderiza via `renderLimitesResults(data)`.
+- Renderização em **cards por seguradora** (grid `.lim-cards-grid`, `buildLimResultCardHtml`): logo da seguradora (`LIM_LOGO_MAP` → `assets/*.png`, via `limLogoHtml()`), nome, badge de status colorido. Quando há modalidades, botão "Ver limites do tomador" abre um modal (`openLimiteModal` / `closeLimiteModal`); quando não há, o card mostra a mensagem de negócio/erro diretamente (`.lim-card-desc--muted`) em vez de um botão desabilitado.
+- No modal, os campos `valor` (`fmtBRL`), `taxa` e `segurado` de cada modalidade só são renderizados quando não são `null`/`undefined` — nunca aparece um traço `—` como placeholder de dado ausente. Quando `n.mensagem` existe **e** há modalidades (ex.: Junto sem taxa disponível), a mensagem aparece como nota (`.lim-modal-note`) no topo do corpo do modal.
 - Cabeçalho `.lim-tomador-header` exibe nome e CNPJ do tomador, extraídos do primeiro resultado que os retornar (nem toda seguradora devolve o nome).
+- **Limites zerados nunca aparecem**: `isZeroLimite(valor)` filtra qualquer modalidade cujo valor numérico seja exatamente `0` (valor `null`/`undefined` — ainda sem taxa cotada — continua aparecendo, pois é informativo, não "sem limite"). Se todas as modalidades de uma seguradora forem filtradas, o card cai para `sem_limite`.
 
 ### 10.1a Normalização por seguradora (app.js)
 
-Cada seguradora tem um formato de resposta próprio; `normalizeLimiteResultado(r)` despacha para o normalizador correto e retorna sempre `{ statusKey, modalidades[], mensagem?, nomeTomador?, cnpjTomador? }`:
+Cada seguradora tem um formato de resposta próprio; `normalizeLimiteResultado(r)` despacha para o normalizador correto e retorna sempre `{ statusKey, modalidades[], mensagem?, nomeTomador?, cnpjTomador? }`. Quando `r.status !== 'ok'` (falha técnica do Worker, incluindo timeout), `classifyErrorMessage(r.erro)` decide o `statusKey` por palavra-chave em vez de sempre cair em `erro`.
 
 | Função | Seguradora(s) | Lógica |
 |---|---|---|
-| `normalizeLimiteJns` | `jns` | `dados.product_limits[]` vazio → `sem_limite`; senão `aprovado` com um item por produto (`product_name`, `limit_available`, `tax`, `product_branch`) |
-| `normalizeLimiteJunto` | `junto` | `dados` é array de modalidades com `submodalities[]` — **não traz valor nem taxa**, só confirma habilitação. Lista vazia → `sem_limite`; senão `aprovado` com `valor`/`taxa` nulos e mensagem explicando a limitação |
-| `normalizeLimiteOnpoint` | `essor`, `sombrero`, `newe`, `mitsui`, `axa` | `dados.Response[0]`; se `CanSetupAProposal` e `LimitsAndRates[]` presentes → `aprovado` (usa `AvailableLimit` como valor, não `LimitRevised`); senão lê `Reasons[]` — se contém "bloquead" → `bloqueado`, senão `sem_limite` |
-| `normalizeLimiteFator` | `fator` | Resposta é `{ cd_retorno, nm_retorno }` (não é a mesma forma de limite) — presença de `cd_retorno` indica corretor não associado ao tomador → status `nomeado` |
+| `normalizeLimiteJns` | `jns` | `dados.product_limits[]` (após filtrar zerados) vazio → `sem_limite`/`instavel` (conforme `d.message`); senão `aprovado` com um item por produto (`product_name`, `limit_available`/`approvedLimit`, `tax`/`feePercent`, `product_branch`) |
+| `normalizeLimiteJunto` | `junto` | `dados` é array de modalidades com `submodalities[]`, cada uma já enriquecida pelo Worker com `limitAvailable`/`rate` reais (ver 10.2). Lista vazia (ou só zerados) → `sem_limite`; senão `aprovado` com `valor`/`taxa` reais quando disponíveis |
+| `normalizeLimiteOnpoint` | `essor`, `sombrero`, `newe`, `mitsui`, `axa` | Aceita `dados.Response[0]` (envelope padrão) **ou** `dados` já desembrulhado pelo Worker; se `CanSetupAProposal` e `LimitsAndRates[]` presentes (após `.filter(Boolean)` e filtro de zerados) → `aprovado`; senão lê `Reasons[]`/`Errors[]` e classifica via `classifyErrorMessage` (`bloqueado`, `nomeado`, `instavel`, `sem_resposta` ou `sem_limite`) |
+| `normalizeLimiteFator` | `fator` | `cd_retorno !== 0` é sempre resposta de negócio (nunca erro técnico): `nm_retorno` é classificado (`nomeado` se menciona corretor, senão `sem_limite`). Quando `cd_retorno === 0`, parseia `DadosTomador[]` em modalidades (`NomeGrupoSubLimite`, `ValorLimiteDisponivel`, `ValorTaxa`), filtrando zerados |
 
-`LIM_STATUS_CONFIG` mapeia `statusKey` para label e classe de badge: `aprovado` (verde), `bloqueado`/`nomeado` (âmbar), `sem_limite` (cinza neutro), `erro` (vermelho).
-
-**Nota:** a Junto não retorna valor de limite nesta chamada (`/policyholders/{cnpj}/modalities`) — só a lista de modalidades habilitadas. Para valores reais seria necessário chamar `/modalities/{id}/rates` por submodalidade (não implementado; ver seção 10.2 da doc original da API).
+`LIM_STATUS_CONFIG` mapeia `statusKey` para label e classe de badge: `aprovado` (verde), `bloqueado`/`nomeado`/`sem_resposta`/`instavel` (âmbar), `sem_limite` (cinza neutro), `erro` (vermelho), `aguardando` (neutro, só no placeholder pré-consulta).
 
 ### 10.2 Worker — endpoint
 
@@ -760,6 +761,14 @@ Resposta:
 | Fator Seguradora | `fator` | OAuth2 `client_credentials` (Basic + `grant_type=client_credentials`) → Bearer | `FATOR_CLIENT_ID`, `FATOR_CLIENT_SECRET`, `FATOR_CORRETOR_ID`, `FATOR_NM_LOGIN` |
 
 **Regra crítica — Onpoint/AXA não aceitam chamadas paralelas para o mesmo CNPJ.** O Worker consulta `jns`/`junto`/`fator` em paralelo (`Promise.all`) mas processa `essor`/`sombrero`/`newe`/`mitsui`/`axa` sequencialmente num loop `for...of`.
+
+### 10.3a Tratamento de erro no Worker
+
+- `fetchWithTimeout(url, options, timeoutMs)` (padrão 20s, 25s no Onpoint) envolve toda chamada externa com `AbortController`; ao abortar, lança `Error` com mensagem contendo "tempo limite" — o front-end reconhece essa string e classifica como aviso "Sem resposta", nunca como erro técnico vermelho (`classifyErrorMessage` em `app.js`).
+- `parseJsonSafe(response)` faz parse defensivo do corpo de erro (nunca estoura se a seguradora devolver texto puro em 5xx) e `extractErrorMessage(payload, fallback)` extrai a mensagem mais específica possível (`message`, `nm_retorno`, `Errors[]`, `errors{}` no formato ASP.NET, `title`, texto bruto).
+- **Junto — fluxo completo de limites** (`queryJunto`): autentica → `GET /policyholders/{cnpj}` + `GET /policyholders/{cnpj}/modalities` em paralelo → se qualquer uma falhar, tenta `POST /policyholders {federalId}` e aguarda 9000ms (propagação assíncrona documentada da Junto) antes de repetir as duas chamadas; se ainda falharem ambas, erro técnico. Para cada modalidade retornada, busca `GET /policyholders/{cnpj}/modalities/{submodalityId ?? modalityId}/rates` (uma submodalidade sem taxa não derruba a consulta — fica sem `limitAvailable`/`rate`, e o front-end mantém a modalidade sem valor). Retorna o array de modalidades já enriquecido com `limitAvailable`/`rate` por `submodality`.
+- **Onpoint — retry de "consulta em andamento"** (`queryOnpoint`): a Onpoint rejeita duas consultas simultâneas para o mesmo CNPJ mesmo entre seguradoras diferentes (por isso a família roda sequencial); quando a resposta HTTP 200 traz `{ Errors: ["...em andamento..."] }`, o Worker tenta de novo automaticamente (até 3 tentativas, 1500ms × tentativa) — qualquer outro conteúdo de `Errors[]` (bloqueado, sem alçada etc.) não é retry, é repassado como está para o front-end classificar como aviso de negócio.
+- Em todos os casos, HTTP não-2xx é sempre erro técnico (`queryInsurer` captura e devolve `{ status: 'erro', erro }`); mensagens de negócio (sem limite, bloqueado, nomeado) chegam com HTTP 200 e são responsabilidade do normalizador de cada seguradora no front-end.
 
 ### 10.4 Cache de token no Redis
 

@@ -24,6 +24,7 @@ function switchTab(tab) {
     if (isActive) t.setAttribute('aria-current', 'page');
     else t.removeAttribute('aria-current');
   });
+  if (tab === 'consulta-limites') renderLimitesPlaceholders();
   requestAnimationFrame(syncAiChatStickyOffset);
 }
 
@@ -3817,10 +3818,23 @@ const LIM_LOGO_MAP = {
   fator: 'assets/fator.png',
 };
 
+// Todas as seguradoras integradas são consultadas por padrão — sem seleção manual.
+const LIM_ALL_SEGURADORAS = ['jns', 'junto', 'essor', 'sombrero', 'newe', 'mitsui', 'axa', 'fator'];
+const LIM_LABELS = {
+  jns: 'JNS Seguros',
+  junto: 'Junto Seguros',
+  essor: 'Essor Seguros',
+  sombrero: 'Sombrero Seguros',
+  newe: 'NEWE Seguros',
+  mitsui: 'Mitsui Sumitomo',
+  axa: 'AXA Seguros',
+  fator: 'Fator Seguradora',
+};
+
 function limLogoHtml(seguradora) {
   const src = LIM_LOGO_MAP[seguradora];
   if (!src) return '';
-  return `<img src="${esc(src)}" alt="" class="lim-card-logo" onerror="this.style.display='none'">`;
+  return `<img src="${esc(src)}" alt="${esc(LIM_LABELS[seguradora] || seguradora)}" class="lim-card-logo" onerror="this.style.display='none'">`;
 }
 
 function showLimError(msg) {
@@ -3831,9 +3845,26 @@ function hideLimError() {
   document.getElementById('limErrorMsg').classList.remove('show');
 }
 
-function getSelectedSeguradoras() {
-  return Array.from(document.querySelectorAll('#limSeguradorasGrid input[type="checkbox"]:checked'))
-    .map(el => el.value);
+// Renderiza os cards de todas as seguradoras em estado "Aguardando" antes da primeira
+// consulta — não sobrescreve resultados já carregados ao trocar de aba.
+function renderLimitesPlaceholders() {
+  const results = document.getElementById('limResults');
+  if (!results || results.dataset.hasResults === '1') return;
+  results.innerHTML = `<div class="lim-cards-grid">${LIM_ALL_SEGURADORAS.map(buildLimWaitingCardHtml).join('')}</div>`;
+}
+
+function buildLimWaitingCardHtml(key) {
+  return `
+    <div class="lim-card lim-card--waiting">
+      <div class="lim-card-top">
+        <p class="lim-card-eyebrow">Seguradora</p>
+        <span class="lim-badge2 lim-badge--aguardando">Aguardando</span>
+      </div>
+      <div class="lim-card-brand">
+        ${limLogoHtml(key)}
+      </div>
+      <p class="lim-card-desc">Informe o CNPJ e clique em <strong>Consultar limites</strong> para ver os limites deste tomador.</p>
+    </div>`;
 }
 
 async function consultarLimitesUI() {
@@ -3845,21 +3876,14 @@ async function consultarLimitesUI() {
     return;
   }
 
-  const seguradoras = getSelectedSeguradoras();
-  if (seguradoras.length === 0) {
-    showLimError('Selecione ao menos uma seguradora.');
-    return;
-  }
-
   const btn = document.getElementById('limBtnConsultar');
   const loading = document.getElementById('limLoading');
   const results = document.getElementById('limResults');
   btn.disabled = true;
   loading.hidden = false;
-  results.innerHTML = '';
 
   try {
-    const data = await consultarLimitesSeguradoras(cnpj, seguradoras);
+    const data = await consultarLimitesSeguradoras(cnpj, LIM_ALL_SEGURADORAS);
     renderLimitesResults(data);
   } catch (err) {
     showLimError('Erro ao consultar limites: ' + err.message);
@@ -3870,19 +3894,45 @@ async function consultarLimitesUI() {
 }
 
 const LIM_STATUS_CONFIG = {
-  aprovado:   { label: 'Aprovado',   cls: 'lim-badge--aprovado' },
-  bloqueado:  { label: 'Bloqueado',  cls: 'lim-badge--bloqueado' },
-  nomeado:    { label: 'Nomeado',    cls: 'lim-badge--nomeado' },
-  sem_limite: { label: 'Sem limite', cls: 'lim-badge--semlimite' },
-  erro:       { label: 'Erro',       cls: 'lim-badge--erro' },
+  aprovado:     { label: 'Aprovado',     cls: 'lim-badge--aprovado' },
+  bloqueado:    { label: 'Bloqueado',    cls: 'lim-badge--bloqueado' },
+  nomeado:      { label: 'Nomeado',      cls: 'lim-badge--nomeado' },
+  sem_limite:   { label: 'Sem limite',   cls: 'lim-badge--semlimite' },
+  sem_resposta: { label: 'Sem resposta', cls: 'lim-badge--nomeado' },
+  instavel:     { label: 'Instável',     cls: 'lim-badge--nomeado' },
+  erro:         { label: 'Erro',         cls: 'lim-badge--erro' },
+  aguardando:   { label: 'Aguardando',   cls: 'lim-badge--aguardando' },
 };
 
 let _ultimoLimitesData = null;
 
+// Um limite explicitamente zerado não deve aparecer na UI — mas valor ausente
+// (null/undefined, ex.: Junto sem cotação de taxa) ainda é informativo e permanece.
+function isZeroLimite(valor) {
+  return valor !== null && valor !== undefined && Number(valor) === 0;
+}
+
+// Mensagens de erro/negócio das seguradoras chegam em texto livre — classifica por
+// palavra-chave antes de decidir o badge. Ordem de prioridade importa (seção 6.5 do guia
+// de integração): "nomeado com outro corretor" > timeout > instabilidade > bloqueado > erro.
+function classifyErrorMessage(message) {
+  const t = String(message || '').toLowerCase();
+  // Precisa das duas partes juntas ("nomeado" + "corretor"/"broker") — uma mensagem de
+  // bloqueio que apenas cita "corretora" (ex.: "bloqueado para esta corretora") não é
+  // o mesmo aviso de negócio de tomador nomeado com outro corretor.
+  if (t.includes('nomead') && (t.includes('corretor') || t.includes('broker'))) return 'nomeado';
+  if (t.includes('tempo limite') || t.includes('timeout') || t.includes('respond')) return 'sem_resposta';
+  if (['motor de crédito', 'motor de credito', 'problema ao rodar', 'instável', 'instavel', 'indisponív', 'indisponiv']
+    .some(kw => t.includes(kw))) return 'instavel';
+  if (t.includes('bloquead')) return 'bloqueado';
+  return 'erro';
+}
+
 // Cada seguradora tem um formato de resposta proprio — normaliza para { statusKey, modalidades[], mensagem, nomeTomador, cnpjTomador }
 function normalizeLimiteResultado(r) {
   if (r.status !== 'ok') {
-    return { statusKey: 'erro', modalidades: [], mensagem: r.erro || 'Falha na consulta.' };
+    const mensagem = r.erro || 'Falha na consulta.';
+    return { statusKey: classifyErrorMessage(mensagem), modalidades: [], mensagem };
   }
   const key = r.seguradora;
   if (key === 'jns') return normalizeLimiteJns(r.dados);
@@ -3893,17 +3943,28 @@ function normalizeLimiteResultado(r) {
 }
 
 function normalizeLimiteJns(d) {
-  const produtos = (d && d.product_limits) || [];
+  const nomeTomador = d && (d.name || d.issuerName);
+  const cnpjTomador = d && d.document;
+  const produtos = ((d && d.product_limits) || [])
+    .map(p => ({
+      label: String(p.product_name || '').trim(),
+      segurado: String(p.product_branch || '').replace(/^SEGURADO:\s*/i, ''),
+      valor: p.limit_available ?? p.approvedLimit,
+      taxa: p.tax ?? p.feePercent,
+    }))
+    .filter(m => !isZeroLimite(m.valor));
+
   if (!produtos.length) {
-    return { statusKey: 'sem_limite', modalidades: [], mensagem: 'Nenhum limite disponível.', nomeTomador: d && d.name, cnpjTomador: d && d.document };
+    const msg = d && d.message;
+    const cls = msg ? classifyErrorMessage(msg) : 'sem_limite';
+    return {
+      statusKey: cls === 'instavel' ? 'instavel' : 'sem_limite',
+      modalidades: [],
+      mensagem: msg || 'Nenhum limite disponível.',
+      nomeTomador, cnpjTomador,
+    };
   }
-  const modalidades = produtos.map(p => ({
-    label: String(p.product_name || '').trim(),
-    segurado: String(p.product_branch || '').replace(/^SEGURADO:\s*/i, ''),
-    valor: p.limit_available,
-    taxa: p.tax,
-  }));
-  return { statusKey: 'aprovado', modalidades, nomeTomador: d && d.name, cnpjTomador: d && d.document };
+  return { statusKey: 'aprovado', modalidades: produtos, nomeTomador, cnpjTomador };
 }
 
 function normalizeLimiteJunto(d) {
@@ -3911,53 +3972,94 @@ function normalizeLimiteJunto(d) {
   const modalidades = [];
   lista.forEach(mod => {
     (mod.submodalities || []).forEach(sub => {
+      const valor = sub.limitAvailable ?? null;
+      if (isZeroLimite(valor)) return;
       modalidades.push({
-        label: `${mod.description || ''} — ${String(sub.description || '').replace(/^_/, '')}`,
+        label: [mod.description, String(sub.description || '').replace(/^_/, '')].filter(Boolean).join(' — '),
         segurado: mod.isJudicial ? 'Judicial' : null,
-        valor: null,
-        taxa: null,
+        valor,
+        taxa: sub.rate ?? null,
       });
     });
   });
   if (!modalidades.length) {
     return { statusKey: 'sem_limite', modalidades: [], mensagem: 'Nenhuma modalidade habilitada para este tomador.' };
   }
-  return { statusKey: 'aprovado', modalidades, mensagem: 'Tomador habilitado. Esta consulta não retorna valores de limite por modalidade — apenas as modalidades disponíveis.' };
-}
-
-function normalizeLimiteOnpoint(d) {
-  const item = d && Array.isArray(d.Response) ? d.Response[0] : null;
-  if (!item) return { statusKey: 'erro', modalidades: [], mensagem: 'Resposta inesperada da seguradora.' };
-
-  const nomeTomador = item.PolicyHolderName || null;
-  const cnpjTomador = item.PolicyHolderCnpj || null;
-
-  if (item.CanSetupAProposal && Array.isArray(item.LimitsAndRates) && item.LimitsAndRates.length) {
-    const modalidades = item.LimitsAndRates.map(m => ({
-      label: [m.ModalityGroupName, m.ModalityName].filter(Boolean).join(' — '),
-      segurado: m.BranchName || null,
-      valor: m.AvailableLimit,
-      taxa: m.Tax,
-    }));
-    return { statusKey: 'aprovado', modalidades, nomeTomador, cnpjTomador };
-  }
-
-  const motivo = (item.Reasons || []).join(' ');
-  const bloqueado = /bloquead/i.test(motivo);
+  const semValor = modalidades.every(m => m.valor === null || m.valor === undefined);
   return {
-    statusKey: bloqueado ? 'bloqueado' : 'sem_limite',
-    modalidades: [],
-    mensagem: motivo || 'Tomador não aprovado nas regras de crédito da seguradora.',
-    nomeTomador,
-    cnpjTomador,
+    statusKey: 'aprovado',
+    modalidades,
+    mensagem: semValor ? 'Tomador habilitado. Não foi possível obter o valor de limite por modalidade nesta consulta.' : undefined,
   };
 }
 
-function normalizeLimiteFator(d) {
-  if (d && d.cd_retorno) {
-    return { statusKey: 'nomeado', modalidades: [], mensagem: d.nm_retorno || 'Corretor não associado ao tomador nesta seguradora.' };
+function normalizeLimiteOnpoint(d) {
+  const payload = Array.isArray(d) && d.length === 1 ? d[0] : d;
+  const item = payload && Array.isArray(payload.Response) ? payload.Response[0] : null;
+
+  if (item) {
+    const nomeTomador = item.PolicyHolderName || null;
+    const cnpjTomador = item.PolicyHolderCnpj || null;
+
+    if (item.CanSetupAProposal && Array.isArray(item.LimitsAndRates)) {
+      const modalidades = item.LimitsAndRates.filter(Boolean)
+        .map(m => ({
+          label: [m.ModalityGroupName, m.ModalityName].filter(Boolean).join(' — '),
+          segurado: m.BranchName || null,
+          valor: m.AvailableLimit,
+          taxa: m.Tax,
+        }))
+        .filter(m => !isZeroLimite(m.valor));
+      if (modalidades.length) return { statusKey: 'aprovado', modalidades, nomeTomador, cnpjTomador };
+    }
+
+    const motivo = (item.Reasons || []).join(' ');
+    const cls = classifyErrorMessage(motivo);
+    return {
+      statusKey: cls === 'erro' ? 'sem_limite' : cls,
+      modalidades: [],
+      mensagem: motivo || 'Tomador não aprovado nas regras de crédito da seguradora.',
+      nomeTomador,
+      cnpjTomador,
+    };
   }
+
+  // Algumas respostas de negócio chegam sem "Response", apenas { Errors: [...] }
+  const errors = payload && Array.isArray(payload.Errors) ? payload.Errors : [];
+  if (errors.length) {
+    const motivo = errors.join(' ');
+    const cls = classifyErrorMessage(motivo);
+    return { statusKey: cls === 'erro' ? 'sem_limite' : cls, modalidades: [], mensagem: motivo };
+  }
+
   return { statusKey: 'erro', modalidades: [], mensagem: 'Resposta inesperada da seguradora.' };
+}
+
+function normalizeLimiteFator(d) {
+  if (!d) return { statusKey: 'erro', modalidades: [], mensagem: 'Resposta inesperada da seguradora.' };
+
+  // cd_retorno !== 0 é sempre resposta de negócio (sem limite, nomeado etc.), nunca erro técnico.
+  const codigo = Number(d.cd_retorno);
+  if (codigo !== 0) {
+    const msg = d.nm_retorno || 'Corretor não associado ao tomador nesta seguradora.';
+    const cls = classifyErrorMessage(msg);
+    return { statusKey: cls === 'nomeado' ? 'nomeado' : 'sem_limite', modalidades: [], mensagem: msg };
+  }
+
+  const linhas = Array.isArray(d.DadosTomador) ? d.DadosTomador : [];
+  const modalidades = linhas
+    .map(l => ({
+      label: String(l.NomeGrupoSubLimite || '').trim(),
+      valor: l.ValorLimiteDisponivel ?? l.ValorLimiteTotalSemCCG ?? l.ValorLimiteTotal,
+      taxa: l.ValorTaxa,
+    }))
+    .filter(m => !isZeroLimite(m.valor));
+
+  const nomeTomador = linhas[0] && linhas[0].NomePessoa;
+  if (!modalidades.length) {
+    return { statusKey: 'sem_limite', modalidades: [], mensagem: d.nm_retorno || 'Nenhum limite disponível.', nomeTomador };
+  }
+  return { statusKey: 'aprovado', modalidades, nomeTomador };
 }
 
 function fmtLimiteTimestamp(iso) {
@@ -3973,10 +4075,36 @@ function fmtCnpjDisplay(cnpj) {
   return `${c.slice(0, 2)}.${c.slice(2, 5)}.${c.slice(5, 8)}/${c.slice(8, 12)}-${c.slice(12, 14)}`;
 }
 
+function buildLimResultCardHtml(r, index, consultadoEm) {
+  const cfg = LIM_STATUS_CONFIG[r._norm.statusKey] || LIM_STATUS_CONFIG.erro;
+  const temModalidades = r._norm.modalidades && r._norm.modalidades.length > 0;
+  const footer = temModalidades
+    ? `<button type="button" class="lim-card-btn" onclick="openLimiteModal(${index})">
+        Ver limites do tomador
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      </button>`
+    : `<p class="lim-card-desc lim-card-desc--muted">${esc(r._norm.mensagem || 'Nenhum limite disponível nesta consulta.')}</p>`;
+
+  return `
+    <div class="lim-card">
+      <div class="lim-card-top">
+        <p class="lim-card-eyebrow">Seguradora</p>
+        <span class="lim-badge2 ${cfg.cls}">${esc(cfg.label)}</span>
+      </div>
+      <div class="lim-card-brand">
+        ${limLogoHtml(r.seguradora)}
+        <p class="lim-card-nome">${esc(r.label || LIM_LABELS[r.seguradora] || r.seguradora)}</p>
+      </div>
+      ${footer}
+      <p class="lim-card-updated">Atualizado: ${esc(fmtLimiteTimestamp(consultadoEm))}</p>
+    </div>`;
+}
+
 function renderLimitesResults(data) {
   const results = document.getElementById('limResults');
   const resultados = (data && data.resultados) || [];
   _ultimoLimitesData = data;
+  results.dataset.hasResults = '1';
 
   if (resultados.length === 0) {
     results.innerHTML = '<p class="lim-empty">Nenhum resultado retornado.</p>';
@@ -3996,26 +4124,7 @@ function renderLimitesResults(data) {
       </div>
     </div>`;
 
-  const cardsHtml = normalizados.map((r, i) => {
-    const cfg = LIM_STATUS_CONFIG[r._norm.statusKey] || LIM_STATUS_CONFIG.erro;
-    const temModalidades = r._norm.modalidades && r._norm.modalidades.length > 0;
-    return `
-      <div class="lim-card">
-        <div class="lim-card-top">
-          <p class="lim-card-eyebrow">Seguradora</p>
-          <span class="lim-badge2 ${cfg.cls}">${esc(cfg.label)}</span>
-        </div>
-        <div class="lim-card-brand">
-          ${limLogoHtml(r.seguradora)}
-          <p class="lim-card-nome">${esc(r.label || r.seguradora)}</p>
-        </div>
-        <button type="button" class="lim-card-btn" ${temModalidades ? `onclick="openLimiteModal(${i})"` : 'disabled'}>
-          Ver limites do tomador
-          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-        </button>
-        <p class="lim-card-updated">Atualizado: ${esc(fmtLimiteTimestamp(data.consultadoEm))}</p>
-      </div>`;
-  }).join('');
+  const cardsHtml = normalizados.map((r, i) => buildLimResultCardHtml(r, i, data.consultadoEm)).join('');
 
   results.innerHTML = `${headerHtml}<div class="lim-cards-grid">${cardsHtml}</div><div class="lim-modal-overlay" id="limModalOverlay" hidden onclick="if(event.target===this) closeLimiteModal()"></div>`;
 }
@@ -4027,11 +4136,15 @@ function openLimiteModal(index) {
   const n = normalizeLimiteResultado(r);
   const cfg = LIM_STATUS_CONFIG[n.statusKey] || LIM_STATUS_CONFIG.erro;
 
+  const noteHtml = (n.modalidades.length && n.mensagem)
+    ? `<p class="lim-modal-note">${esc(n.mensagem)}</p>`
+    : '';
+
   const itemsHtml = n.modalidades.length
     ? n.modalidades.map(m => `
         <div class="lim-modal-item">
           <p class="lim-modal-item-label">${esc(m.label)}</p>
-          <p class="lim-modal-item-valor">${m.valor !== null && m.valor !== undefined ? fmtBRL(m.valor) : '—'}</p>
+          ${m.valor !== null && m.valor !== undefined ? `<p class="lim-modal-item-valor">${fmtBRL(m.valor)}</p>` : ''}
           ${m.taxa !== null && m.taxa !== undefined ? `<p class="lim-modal-item-taxa">Taxa: ${esc(String(m.taxa).replace('.', ','))}%</p>` : ''}
           ${m.segurado ? `<p class="lim-modal-item-segurado">Segurado: ${esc(m.segurado)}</p>` : ''}
         </div>`).join('')
@@ -4051,7 +4164,7 @@ function openLimiteModal(index) {
           <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
         </button>
       </div>
-      <div class="lim-modal-body">${itemsHtml}</div>
+      <div class="lim-modal-body">${noteHtml}${itemsHtml}</div>
       <p class="lim-modal-updated">Atualizado: ${esc(fmtLimiteTimestamp(_ultimoLimitesData && _ultimoLimitesData.consultadoEm))}</p>
     </div>`;
   overlay.hidden = false;

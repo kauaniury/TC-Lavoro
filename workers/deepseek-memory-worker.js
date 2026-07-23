@@ -628,6 +628,50 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// -- Timeout / erro robusto (compartilhado por todas as integracoes de limites) --
+// Toda chamada externa usa timeout — ao abortar, a mensagem contem "tempo limite" para
+// o front-end classificar como aviso "Sem resposta", nunca como erro tecnico vermelho.
+const LIMITS_FETCH_TIMEOUT_MS = 20000;
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = LIMITS_FETCH_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new Error(`Requisicao excedeu o tempo limite de ${Math.round(timeoutMs / 1000)}s.`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Payload de erro pode vir em formatos heterogeneos (ASP.NET Core, texto puro, arrays) —
+// tenta extrair a mensagem mais especifica possivel antes de recorrer ao fallback generico.
+async function parseJsonSafe(response) {
+  const text = await response.text();
+  if (!text) return null;
+  try { return JSON.parse(text); } catch { return { rawText: text }; }
+}
+
+function extractErrorMessage(payload, fallback) {
+  if (!payload) return fallback;
+  if (Array.isArray(payload) && payload[0] && payload[0].message) return payload[0].message;
+  if (payload.message) return payload.message;
+  if (payload.nm_retorno) return payload.nm_retorno;
+  if (Array.isArray(payload.Errors) && payload.Errors.length) return payload.Errors.join(' ');
+  if (payload.errors && typeof payload.errors === 'object') {
+    const msgs = Object.entries(payload.errors)
+      .flatMap(([field, m]) => Array.isArray(m) ? m.map(x => `${field}: ${x}`) : []);
+    if (msgs.length) return msgs.join(' | ');
+  }
+  if (payload.title) return payload.title;
+  if (payload.rawText) return payload.rawText.slice(0, 300);
+  return fallback;
+}
+
 // -- JNS Seguros --
 
 async function getJnsToken(env, forceRefresh = false) {
@@ -636,7 +680,7 @@ async function getJnsToken(env, forceRefresh = false) {
     if (cached && cached.token) return cached.token;
   }
 
-  const res = await fetch(`${JNS_BASE}/auth/login`, {
+  const res = await fetchWithTimeout(`${JNS_BASE}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'cache-control': 'no-cache' },
     body: JSON.stringify({
@@ -645,7 +689,7 @@ async function getJnsToken(env, forceRefresh = false) {
       token: env.JNS_TOKEN,
     }),
   });
-  if (!res.ok) throw new Error(`JNS login error ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new Error(extractErrorMessage(await parseJsonSafe(res), `JNS login error ${res.status}`));
 
   const data = await res.json();
   const token = data.token || data.access_token || (data.data && data.data.token);
@@ -657,18 +701,18 @@ async function getJnsToken(env, forceRefresh = false) {
 
 async function queryJns(env, cnpj) {
   let token = await getJnsToken(env);
-  let res = await fetch(`${JNS_BASE}/issuer?document=${cnpj}`, {
+  let res = await fetchWithTimeout(`${JNS_BASE}/issuer?document=${cnpj}`, {
     headers: { Authorization: `Bearer ${token}`, 'cache-control': 'no-cache' },
   });
 
   if (res.status === 401) {
     token = await getJnsToken(env, true);
-    res = await fetch(`${JNS_BASE}/issuer?document=${cnpj}`, {
+    res = await fetchWithTimeout(`${JNS_BASE}/issuer?document=${cnpj}`, {
       headers: { Authorization: `Bearer ${token}`, 'cache-control': 'no-cache' },
     });
   }
 
-  if (!res.ok) throw new Error(`JNS issuer error ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new Error(extractErrorMessage(await parseJsonSafe(res), `JNS issuer error ${res.status}`));
   return res.json();
 }
 
@@ -680,7 +724,7 @@ async function getJuntoToken(env, forceRefresh = false) {
     if (cached && cached.token) return cached.token;
   }
 
-  const res = await fetch(`${JUNTO_BASE}/authentication`, {
+  const res = await fetchWithTimeout(`${JUNTO_BASE}/authentication`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json-patch+json', Accept: '*/*' },
     body: JSON.stringify({
@@ -688,7 +732,7 @@ async function getJuntoToken(env, forceRefresh = false) {
       clientSecret: env.JUNTO_CLIENT_SECRET,
     }),
   });
-  if (!res.ok) throw new Error(`Junto auth error ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new Error(extractErrorMessage(await parseJsonSafe(res), `Junto auth error ${res.status}`));
 
   const data = await res.json();
   const token = data.accessToken;
@@ -699,42 +743,112 @@ async function getJuntoToken(env, forceRefresh = false) {
   return token;
 }
 
+// Falha em POST /policyholders pode ser benigna: tomador ja nomeado com outro corretor
+// (precisa das duas partes juntas — so "corretor" sozinho tambem aparece em mensagens de
+// bloqueio nao relacionadas) ou tomador ja cadastrado (duplicate). Qualquer outra falha
+// de cadastro e erro tecnico real e deve interromper a consulta.
+function isBenignPolicyholderCreateError(message) {
+  const t = String(message || '').toLowerCase();
+  const nomeadoComOutroCorretor = t.includes('nomead') && (t.includes('corretor') || t.includes('broker'));
+  const jaCadastrado = t.includes('duplicate') || t.includes('ja cadastrado') || t.includes('já cadastrado');
+  return nomeadoComOutroCorretor || jaCadastrado;
+}
+
+// Fluxo completo: autentica, confirma cadastro + modalidades habilitadas e, para cada uma,
+// busca a taxa/limite real via /modalities/{id}/rates (a consulta de modalidades sozinha
+// so confirma habilitacao, sem valor — ver SPEC.md secao 10.1a).
 async function queryJunto(env, cnpj) {
   let token = await getJuntoToken(env);
   const authHeaders = () => ({ Authorization: `Bearer ${token}`, Accept: '*/*' });
 
-  let res = await fetch(`${JUNTO_BASE}/policyholders/${cnpj}/modalities`, { headers: authHeaders() });
+  const fetchAuthorized = async (path, options = {}) => {
+    let res = await fetchWithTimeout(`${JUNTO_BASE}${path}`, {
+      ...options,
+      headers: { ...authHeaders(), ...(options.headers || {}) },
+    });
+    if (res.status === 401) {
+      token = await getJuntoToken(env, true);
+      res = await fetchWithTimeout(`${JUNTO_BASE}${path}`, {
+        ...options,
+        headers: { ...authHeaders(), ...(options.headers || {}) },
+      });
+    }
+    return res;
+  };
 
-  if (res.status === 401) {
-    token = await getJuntoToken(env, true);
-    res = await fetch(`${JUNTO_BASE}/policyholders/${cnpj}/modalities`, { headers: authHeaders() });
-  }
+  let policyholderRes = await fetchAuthorized(`/policyholders/${cnpj}`);
+  let modalitiesRes = await fetchAuthorized(`/policyholders/${cnpj}/modalities`);
 
-  if (res.status === 400 || res.status === 404) {
-    // Tomador ainda nao cadastrado na Junto — cadastra e tenta novamente apos propagacao
-    const createRes = await fetch(`${JUNTO_BASE}/policyholders`, {
+  if (!policyholderRes.ok || !modalitiesRes.ok) {
+    // Tomador ainda nao cadastrado na Junto — cadastra e aguarda propagacao assincrona
+    // (9000ms e o valor empirico documentado para esse fluxo) antes de repetir a consulta.
+    const createRes = await fetchAuthorized(`/policyholders`, {
       method: 'POST',
-      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ federalId: cnpj }),
     });
-    if (createRes.ok) {
-      await sleep(2000);
-      res = await fetch(`${JUNTO_BASE}/policyholders/${cnpj}/modalities`, { headers: authHeaders() });
+    if (!createRes.ok) {
+      const msg = extractErrorMessage(await parseJsonSafe(createRes), `Junto policyholders error ${createRes.status}`);
+      if (!isBenignPolicyholderCreateError(msg)) throw new Error(msg);
+    }
+    await sleep(9000);
+    policyholderRes = await fetchAuthorized(`/policyholders/${cnpj}`);
+    modalitiesRes = await fetchAuthorized(`/policyholders/${cnpj}/modalities`);
+    if (!policyholderRes.ok && !modalitiesRes.ok) {
+      throw new Error('Junto: tomador nao pode ser consultado apos o cadastro (falha tecnica).');
     }
   }
 
-  if (!res.ok) throw new Error(`Junto modalities error ${res.status}: ${await res.text()}`);
-  return res.json();
+  if (!modalitiesRes.ok) {
+    throw new Error(extractErrorMessage(await parseJsonSafe(modalitiesRes), `Junto modalities error ${modalitiesRes.status}`));
+  }
+
+  const modalidades = await modalitiesRes.json();
+  const lista = Array.isArray(modalidades) ? modalidades : [];
+
+  // Para cada submodalidade habilitada, busca a taxa/limite real. Uma falha pontual nao
+  // deve derrubar a consulta inteira — a submodalidade fica sem valor (front-end oculta).
+  const comTaxas = await Promise.all(lista.map(async mod => {
+    const subs = Array.isArray(mod.submodalities) && mod.submodalities.length ? mod.submodalities : [{}];
+    const subsComTaxa = await Promise.all(subs.map(async sub => {
+      const rateId = sub.id ?? mod.id;
+      if (rateId === undefined || rateId === null) return { ...sub };
+      try {
+        const ratesRes = await fetchAuthorized(`/policyholders/${cnpj}/modalities/${rateId}/rates`);
+        if (!ratesRes.ok) return { ...sub };
+        const rates = await ratesRes.json();
+        const first = Array.isArray(rates) ? rates[0] : rates;
+        if (!first) return { ...sub };
+        return { ...sub, limitAvailable: first.limitAvailable, rate: first.rate };
+      } catch {
+        return { ...sub };
+      }
+    }));
+    return { ...mod, submodalities: subsComTaxa };
+  }));
+
+  return comTaxas;
 }
 
 // -- Onpoint (Essor / Sombrero / NEWE / Mitsui) e AXA --
 
-async function queryOnpoint(env, cnpj, key) {
+const ONPOINT_IN_PROGRESS_RETRY_MS = 1500;
+const ONPOINT_IN_PROGRESS_MAX_ATTEMPTS = 3;
+
+function isOnpointInProgressMessage(message) {
+  return /andamento|already.*progress/i.test(String(message || ''));
+}
+
+// A Onpoint pode devolver { Errors: [...] } (sem Response) tanto para erros de negocio
+// ("bloqueado", "sem alcada") quanto para o erro tecnico "consulta em andamento" — apenas
+// o segundo caso recebe retry automatico; qualquer outro Errors[] segue para o front-end
+// normalizar como aviso de negocio (nunca como erro tecnico).
+async function queryOnpoint(env, cnpj, key, attempt = 1) {
   const insurer = ONPOINT_INSURERS[key];
   if (!insurer) throw new Error(`Seguradora Onpoint desconhecida: ${key}`);
 
   const base = insurer.axaRoute ? ONPOINT_AXA_BASE : ONPOINT_BASE;
-  const res = await fetch(`${base}/GetPolicyHolderLimitsAndRates`, {
+  const res = await fetchWithTimeout(`${base}/GetPolicyHolderLimitsAndRates`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -746,10 +860,20 @@ async function queryOnpoint(env, cnpj, key) {
       PolicyHolderCnpj: cnpj,
       Options: {},
     }),
-  });
+  }, 25000);
 
-  if (!res.ok) throw new Error(`Onpoint (${insurer.name}) error ${res.status}: ${await res.text()}`);
-  return res.json();
+  const payload = await parseJsonSafe(res);
+  if (!res.ok) throw new Error(extractErrorMessage(payload, `Onpoint (${insurer.name}) error ${res.status}`));
+
+  const unwrapped = Array.isArray(payload) && payload.length === 1 ? payload[0] : payload;
+  const errors = unwrapped && Array.isArray(unwrapped.Errors) ? unwrapped.Errors : [];
+  const inProgressMsg = errors.find(isOnpointInProgressMessage);
+  if (inProgressMsg && attempt < ONPOINT_IN_PROGRESS_MAX_ATTEMPTS) {
+    await sleep(ONPOINT_IN_PROGRESS_RETRY_MS * attempt);
+    return queryOnpoint(env, cnpj, key, attempt + 1);
+  }
+
+  return unwrapped;
 }
 
 // -- Fator Seguradora --
@@ -761,7 +885,7 @@ async function getFatorToken(env, forceRefresh = false) {
   }
 
   const basic = btoa(`${env.FATOR_CLIENT_ID}:${env.FATOR_CLIENT_SECRET}`);
-  const res = await fetch(FATOR_AUTH_URL, {
+  const res = await fetchWithTimeout(FATOR_AUTH_URL, {
     method: 'POST',
     headers: {
       Authorization: `Basic ${basic}`,
@@ -769,7 +893,7 @@ async function getFatorToken(env, forceRefresh = false) {
     },
     body: 'grant_type=client_credentials',
   });
-  if (!res.ok) throw new Error(`Fator auth error ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new Error(extractErrorMessage(await parseJsonSafe(res), `Fator auth error ${res.status}`));
 
   const data = await res.json();
   const token = data.access_token;
@@ -784,14 +908,16 @@ async function queryFator(env, cnpj) {
   let token = await getFatorToken(env);
   const buildUrl = () => `${FATOR_QUERY_URL}?id_corretor=${encodeURIComponent(env.FATOR_CORRETOR_ID)}&nm_login=${encodeURIComponent(env.FATOR_NM_LOGIN)}&nr_cnpj_cpf=${cnpj}`;
 
-  let res = await fetch(buildUrl(), { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
+  let res = await fetchWithTimeout(buildUrl(), { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
 
   if (res.status === 401) {
     token = await getFatorToken(env, true);
-    res = await fetch(buildUrl(), { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
+    res = await fetchWithTimeout(buildUrl(), { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
   }
 
-  if (!res.ok) throw new Error(`Fator consulta error ${res.status}: ${await res.text()}`);
+  // cd_retorno !== 0 e sempre resposta de negocio (sem limite, nomeado etc.), mesmo com
+  // HTTP 200 — nunca deve ser tratado como erro tecnico. So HTTP nao-2xx e falha real.
+  if (!res.ok) throw new Error(extractErrorMessage(await parseJsonSafe(res), `Fator consulta error ${res.status}`));
   return res.json();
 }
 

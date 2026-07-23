@@ -5276,17 +5276,10 @@ details[open] .fl-clausula-chevron { transform: rotate(180deg); }
   border-color: var(--color-border-brand);
   box-shadow: var(--shadow-focus);
 }
-.lim-checkbox-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: var(--space-2) var(--space-4);
-}
-.lim-checkbox {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--text-sm);
-  color: var(--color-text-secondary);
+.lim-field-hint {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
 }
 .lim-loading {
   display: flex;
@@ -5360,10 +5353,11 @@ details[open] .fl-clausula-chevron { transform: rotate(180deg); }
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  min-height: 34px;
 }
 .lim-card-logo {
-  height: 28px;
-  max-width: 90px;
+  height: 34px;
+  max-width: 120px;
   width: auto;
   object-fit: contain;
   flex-shrink: 0;
@@ -5373,6 +5367,26 @@ details[open] .fl-clausula-chevron { transform: rotate(180deg); }
   font-size: var(--text-md);
   font-weight: var(--weight-bold);
   color: var(--color-text);
+}
+.lim-card--waiting {
+  background: var(--color-surface-muted);
+  border-style: dashed;
+}
+.lim-card-desc {
+  margin: 0;
+  margin-top: auto;
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  color: var(--color-text-secondary);
+}
+.lim-card-desc strong { color: var(--color-text); font-weight: var(--weight-semibold); }
+.lim-card-desc--muted {
+  color: var(--color-text-muted);
+  padding: 10px 14px;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  margin-top: auto;
 }
 .lim-card-btn {
   display: flex;
@@ -5392,7 +5406,7 @@ details[open] .fl-clausula-chevron { transform: rotate(180deg); }
 }
 .lim-card-btn:hover:not(:disabled) { background: var(--color-surface-soft); }
 .lim-card-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.lim-card-btn svg { flex-shrink: 0; }
+.lim-card-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
 .lim-card-updated {
   margin: 0;
   font-size: var(--text-xs);
@@ -5412,6 +5426,7 @@ details[open] .fl-clausula-chevron { transform: rotate(180deg); }
 .lim-badge--nomeado   { background: var(--color-warning-bg); color: var(--color-warning); border: 1px solid var(--color-warning-border); }
 .lim-badge--semlimite { background: var(--color-neutral-bg); color: var(--color-neutral); border: 1px solid var(--color-neutral-border); }
 .lim-badge--erro      { background: var(--color-danger-bg); color: var(--color-danger); border: 1px solid var(--color-danger-border); }
+.lim-badge--aguardando { background: var(--color-surface); color: var(--color-text-faint); border: 1px solid var(--color-border-strong); }
 
 /* Modal de limites por modalidade */
 .lim-modal-overlay {
@@ -5452,6 +5467,7 @@ details[open] .fl-clausula-chevron { transform: rotate(180deg); }
   color: var(--color-text-muted);
   border-radius: var(--radius-sm);
 }
+.lim-modal-close svg { width: 16px; height: 16px; }
 .lim-modal-close:hover { background: var(--color-surface-muted); }
 .lim-modal-body {
   padding: var(--space-4);
@@ -5459,6 +5475,15 @@ details[open] .fl-clausula-chevron { transform: rotate(180deg); }
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+}
+.lim-modal-note {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
 }
 .lim-modal-item {
   background: var(--color-surface-muted);
