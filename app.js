@@ -17,7 +17,7 @@ let _tcTabCounter = 0;
 function switchTab(tab) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-' + tab).classList.add('active');
-  document.querySelectorAll('.topbar-tab').forEach(t => {
+  document.querySelectorAll('.sidebar-item').forEach(t => {
     const pages = (t.dataset.pages || t.dataset.page || '').split(' ');
     const isActive = pages.includes(tab);
     t.classList.toggle('active', isActive);
@@ -35,8 +35,8 @@ function syncAiChatStickyOffset() {
   const chatTopbar = activePage.querySelector('.sg-chat-wrapper:not([hidden]) .sg-chat-topbar');
   if (!chatTopbar) return;
 
-  const appTopbar = document.querySelector('.topbar');
-  const appTopbarHeight = appTopbar ? appTopbar.getBoundingClientRect().height : 60;
+  // A navegação agora é uma sidebar lateral (não ocupa altura no topo).
+  const appTopbarHeight = 0;
   const chatTopbarStyle = window.getComputedStyle(chatTopbar);
   const chatTopbarMarginBottom = parseFloat(chatTopbarStyle.marginBottom) || 0;
   const stickyTop = Math.ceil(appTopbarHeight + chatTopbar.getBoundingClientRect().height + chatTopbarMarginBottom);

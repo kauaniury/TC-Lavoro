@@ -76,7 +76,12 @@
   --z-overlay: 300;
   --z-modal: 400;
   --z-toast: 500;
-  --topbar-height: 60px;
+  /* Navegação migrou de topbar horizontal para sidebar fixa à esquerda — mantido em 0
+     porque várias fórmulas de posicionamento sticky (--ai-sidebar-sticky-top etc.) ainda
+     somam este token; zerar aqui propaga a mudança sem precisar tocar cada fórmula. */
+  --topbar-height: 0px;
+  --sidebar-width-collapsed: 68px;
+  --sidebar-width-expanded: 256px;
   --content-max-width: 1300px;
 
   /* Legacy aliases kept for the existing JavaScript surface. */

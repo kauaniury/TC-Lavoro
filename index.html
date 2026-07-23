@@ -16,28 +16,44 @@
 </head>
 <body class="app-body">
 
-<header class="topbar" role="banner">
-  <div class="topbar-inner">
-    <a class="topbar-brand" href="#page-upload" aria-label="Lavoro Seguros">
-      <img src="assets/img/lavoro_logo_sem_fundo.png" alt="Lavoro Seguros" class="topbar-logo">
-    </a>
-    <nav class="topbar-tabs topbar-nav" aria-label="Navegação principal">
-      <button type="button" class="topbar-tab tab-btn active" id="tab-relatorio-tc" data-page="upload" data-pages="upload dashboard" aria-current="page" onclick="switchTab('upload')">Relatório T&amp;C</button>
-      <button type="button" class="topbar-tab tab-btn" id="tab-analise-financeira" data-page="analise-financeira" onclick="switchTab('analise-financeira')">Análise Financeira</button>
-      <button type="button" class="topbar-tab tab-btn" id="tab-seguro-garantia" data-page="seguro-garantia" onclick="switchTab('seguro-garantia')">Seg. Garantia</button>
-      <button type="button" class="topbar-tab tab-btn" id="tab-fianca-locaticia" data-page="fianca-locaticia" onclick="switchTab('fianca-locaticia')">Fiança Loc.</button>
-      <button type="button" class="topbar-tab tab-btn" id="tab-analise-apolice" data-page="analise-apolice" onclick="switchTab('analise-apolice')">Análise de Apólice</button>
-      <button type="button" class="topbar-tab tab-btn" id="tab-consulta-limites" data-page="consulta-limites" onclick="switchTab('consulta-limites')">Consulta de Limites</button>
-    </nav>
-    <div class="topbar-actions">
-      <button type="button" class="btn-secondary btn-download topbar-download" id="btnDownloadTop" onclick="downloadComparativo()" aria-label="Exportar relatório em PDF" hidden>
-        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 1v9M5 7l3 3 3-3M2 12v1a1 1 0 001 1h10a1 1 0 001-1v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"/></svg>
-        Exportar relatório
-      </button>
-    </div>
-  </div>
-</header>
+<aside class="sidebar" id="appSidebar">
+  <a class="sidebar-brand" href="#page-upload" aria-label="Lavoro Seguros" onclick="switchTab('upload'); return false;">
+    <img src="assets/img/lavoro_logo_sem_fundo.png" alt="Lavoro Seguros" class="sidebar-brand-img">
+  </a>
+  <nav class="sidebar-nav" aria-label="Navegação principal">
+    <button type="button" class="sidebar-item active" id="tab-relatorio-tc" data-page="upload" data-pages="upload dashboard" aria-current="page" onclick="switchTab('upload')" title="Relatório T&amp;C">
+      <span class="sidebar-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 9v11" stroke-linecap="round"/></svg></span>
+      <span class="sidebar-item-label">Relatório T&amp;C</span>
+    </button>
+    <button type="button" class="sidebar-item" id="tab-analise-financeira" data-page="analise-financeira" onclick="switchTab('analise-financeira')" title="Análise Financeira">
+      <span class="sidebar-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 17H5a2 2 0 01-2-2V5a2 2 0 012-2h14a2 2 0 012 2v5"/><path d="M13 13l2 2 4-4" stroke-linecap="round" stroke-linejoin="round"/><rect x="9" y="14" width="11" height="7" rx="1.5"/></svg></span>
+      <span class="sidebar-item-label">Análise Financeira</span>
+    </button>
+    <button type="button" class="sidebar-item" id="tab-seguro-garantia" data-page="seguro-garantia" onclick="switchTab('seguro-garantia')" title="Seg. Garantia">
+      <span class="sidebar-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2L4 6v6c0 5.25 3.6 9 8 10 4.4-1 8-4.75 8-10V6L12 2z" stroke-linejoin="round"/></svg></span>
+      <span class="sidebar-item-label">Seg. Garantia</span>
+    </button>
+    <button type="button" class="sidebar-item" id="tab-fianca-locaticia" data-page="fianca-locaticia" onclick="switchTab('fianca-locaticia')" title="Fiança Loc.">
+      <span class="sidebar-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 12h8M8 8h5M8 16h4" stroke-linecap="round"/></svg></span>
+      <span class="sidebar-item-label">Fiança Loc.</span>
+    </button>
+    <button type="button" class="sidebar-item" id="tab-analise-apolice" data-page="analise-apolice" onclick="switchTab('analise-apolice')" title="Análise de Apólice">
+      <span class="sidebar-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 3h7l4 4v14H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" stroke-linejoin="round"/><path d="M14 3v5h5M9 12h6M9 16h6" stroke-linecap="round"/></svg></span>
+      <span class="sidebar-item-label">Análise de Apólice</span>
+    </button>
+    <button type="button" class="sidebar-item" id="tab-consulta-limites" data-page="consulta-limites" onclick="switchTab('consulta-limites')" title="Consulta de Limites">
+      <span class="sidebar-item-icon" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none"><circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" stroke-width="1.6"/><path d="M13 13l4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="square"/></svg></span>
+      <span class="sidebar-item-label">Consulta de Limites</span>
+    </button>
+  </nav>
+</aside>
 
+<button type="button" class="btn-secondary btn-download topbar-download" id="btnDownloadTop" onclick="downloadComparativo()" aria-label="Exportar relatório em PDF" hidden>
+  <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 1v9M5 7l3 3 3-3M2 12v1a1 1 0 001 1h10a1 1 0 001-1v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"/></svg>
+  Exportar relatório
+</button>
+
+<div class="app-content">
 <!-- ── Página: Importar (XLSX dashboard) ── -->
 <main class="page page-upload active" id="page-upload" aria-label="Importar planilha">
   <div class="upload-page upload-page--single">
@@ -808,22 +824,25 @@
         <p class="upload-header-sub">Consulta em tempo real dos limites disponíveis para o tomador em cada seguradora integrada.</p>
       </div>
 
-      <div class="upload-card card">
-        <div class="upload-card-header">
-          <p class="upload-card-title">Dados da consulta</p>
-        </div>
-        <div class="upload-card-body">
-          <label class="lim-field-label" for="limCnpjInput">CNPJ do tomador</label>
-          <input type="text" id="limCnpjInput" class="lim-input" placeholder="00.000.000/0000-00" inputmode="numeric" maxlength="18">
-          <p class="lim-field-hint">Todas as seguradoras integradas são consultadas automaticamente.</p>
+      <div class="lim-console">
+        <p class="lim-console-eyebrow">
+          <span class="lim-console-dot" aria-hidden="true"></span>
+          Consulta automática · 8 seguradoras integradas
+        </p>
 
-          <div class="error-msg" id="limErrorMsg" role="alert" aria-live="polite">
-            <p id="limErrorText">Erro.</p>
+        <div class="lim-console-row">
+          <div class="lim-console-field">
+            <span class="lim-console-tag" aria-hidden="true">CNPJ</span>
+            <input type="text" id="limCnpjInput" class="lim-console-input" placeholder="00.000.000/0000-00" inputmode="numeric" maxlength="18" autocomplete="off" aria-label="CNPJ do tomador" oninput="fmtTcCnpj(this)" onkeydown="if(event.key==='Enter'){event.preventDefault();consultarLimitesUI();}">
           </div>
-
-          <button type="button" class="btn-primary btn-generate" id="limBtnConsultar" onclick="consultarLimitesUI()">
-            <span class="btn-label">Consultar</span>
+          <button type="button" class="lim-console-submit" id="limBtnConsultar" onclick="consultarLimitesUI()">
+            <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" stroke-width="1.7"/><path d="M13 13l4 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+            Consultar limites
           </button>
+        </div>
+
+        <div class="error-msg" id="limErrorMsg" role="alert" aria-live="polite">
+          <p id="limErrorText">Erro.</p>
         </div>
       </div>
 
@@ -836,6 +855,7 @@
     </div>
   </div>
 </main>
+</div>
 
 <script src="deepseek.js"></script>
 <script src="app.js"></script>

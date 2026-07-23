@@ -1,6 +1,6 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.22  
+> Versao: 2.24  
 > Atualizado em: 2026-07-23
 
 ## 1. Visão Geral
@@ -17,6 +17,17 @@ Aplicação web estática da **Lavoro Seguros** com seis fluxos independentes:
 | Consulta de Limites | CNPJ do tomador | Consulta em tempo real dos limites disponíveis em cada seguradora integrada (JNS, Junto, Onpoint/Essor/Sombrero/NEWE/Mitsui, AXA, Fator) |
 
 O fluxo **T&C** continua estável e não deve ser alterado sem necessidade explícita.
+
+### 1.1 Navegação — sidebar recolhível
+
+A navegação principal é uma sidebar fixa à esquerda (`.sidebar`, `index.html`), não uma topbar horizontal — pensada para comportar mais fluxos conforme novos serviços forem adicionados.
+
+- Recolhida por padrão (`--sidebar-width-collapsed`, 68px): mostra só os ícones de cada fluxo.
+- Expande em overlay (`--sidebar-width-expanded`, 256px) em `:hover` ou `:focus-within` (o foco-dentro mantém aberta para navegação via teclado mesmo sem mouse sobre o elemento), revelando o logo completo e o rótulo de cada item — não empurra o conteúdo, que sempre reserva `margin-left: var(--sidebar-width-collapsed)` via `.app-content`.
+- Cada botão (`.sidebar-item`) mantém os mesmos atributos `data-page`/`data-pages`/`onclick="switchTab(...)"` de antes; `switchTab()` alterna `.active`/`aria-current` em `.sidebar-item` (não mais `.topbar-tab`).
+- O botão "Exportar relatório" (`#btnDownloadTop`, usado pelo T&C Dashboard e pela Análise Financeira) deixou de viver dentro da barra de navegação — agora é um botão flutuante (`position: fixed`, canto superior direito), já que sua visibilidade é alternada por dois fluxos diferentes via JS e não pertence a nenhuma página específica.
+- `--topbar-height` foi zerado em `variables.css` (mantido só porque várias fórmulas de sticky-offset ainda somam esse token) — não representa mais uma barra horizontal.
+- Durante captura de PDF (`body.pdf-generating`) e impressão, `.sidebar` fica oculta e `.app-content` perde a margem reservada, evitando espaço em branco à esquerda no conteúdo exportado.
 
 ## 2. Arquitetura de Arquivos
 
@@ -705,7 +716,7 @@ Consulta em tempo real (sem upload de arquivo) do limite disponível para um CNP
 ### 10.1 Front-end
 
 - Aba `consulta-limites` (`index.html`), sem dependência de IA/chat.
-- Campo de CNPJ + botão "Consultar". Não há seleção manual de seguradoras — `consultarLimitesUI()` sempre consulta as 8 integradas (`LIM_ALL_SEGURADORAS`).
+- Entrada em um **console de consulta** (`.lim-console`): eyebrow "Consulta automática · 8 seguradoras integradas" com indicador dourado pulsante (`.lim-console-dot`, respeita `prefers-reduced-motion`), campo instrumento (`.lim-console-field` com tag dourada `.lim-console-tag` "CNPJ" + input `.lim-console-input` em `--font-mono`) e o botão de ação `.lim-console-submit` (único elemento verde-escuro). O input aplica máscara ao vivo via `oninput="fmtTcCnpj(this)"` e dispara a consulta no Enter. Não há seleção manual de seguradoras — `consultarLimitesUI()` sempre consulta as 8 integradas (`LIM_ALL_SEGURADORAS`). Em telas ≤560px o console empilha (campo e botão full-width).
 - Antes da primeira consulta, `renderLimitesPlaceholders()` (chamada por `switchTab('consulta-limites')`) já exibe um card por seguradora em estado **Aguardando** (`buildLimWaitingCardHtml`), com logo e texto instrutivo — nunca sobrescreve resultados já carregados (`#limResults[data-has-results]`).
 - `deepseek.js`: `consultarLimitesSeguradoras(cnpj, seguradoras)` — `POST` para `${DEEPSEEK_WORKER_URL}/v1/limits/query`.
 - `app.js`: `consultarLimitesUI()` valida CNPJ (14 dígitos), chama `consultarLimitesSeguradoras` e renderiza via `renderLimitesResults(data)`.
