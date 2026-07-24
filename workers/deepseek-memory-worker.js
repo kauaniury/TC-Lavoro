@@ -5,7 +5,7 @@ const CORS_HEADERS = {
 };
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
-const WORKER_VERSION = '2026-07-18.2';
+const WORKER_VERSION = '2026-07-24.1';
 const PRIMARY_DEEPSEEK_MODEL = 'deepseek-chat';
 const FALLBACK_DEEPSEEK_MODEL = 'deepseek-chat';
 const JOB_TTL_SECONDS = 60 * 60 * 6;
@@ -32,7 +32,7 @@ const INSURER_LABELS = {
   fator: 'Fator Seguradora',
 };
 const ALL_INSURER_KEYS = Object.keys(INSURER_LABELS);
-// Onpoint rejeita chamadas paralelas para o mesmo CNPJ — essas seguradoras rodam em sequência
+// Seguradoras que passam pelo endpoint compartilhado da Onpoint (dispatch em queryInsurer)
 const ONPOINT_FAMILY = ['essor', 'sombrero', 'newe', 'mitsui', 'axa'];
 const ONPOINT_INSURERS = {
   essor: { name: 'Essor Seguros S.A.', id: '406fecd8-bfd7-4cba-a9bd-87efcfd38288', axaRoute: false },
@@ -584,18 +584,13 @@ async function handleLimitsQuery(request, env) {
 
   const resultados = [];
 
-  const parallelKeys = requested.filter(key => !ONPOINT_FAMILY.includes(key));
-  const sequentialKeys = requested.filter(key => ONPOINT_FAMILY.includes(key));
-
-  const parallelResults = await Promise.all(parallelKeys.map(key => queryInsurer(env, cnpj, key)));
-  resultados.push(...parallelResults);
-
-  // Onpoint/AXA nao aceitam chamadas paralelas para o mesmo CNPJ
-  for (const key of sequentialKeys) {
+  // Fila sequencial: uma seguradora por vez (nunca em paralelo).
+  // Evita sobrecarregar integracoes como a Onpoint, que agrupa varias
+  // seguradoras (essor/sombrero/newe/mitsui/axa) no mesmo endpoint e
+  // rejeita chamadas concorrentes para o mesmo CNPJ.
+  for (const key of requested) {
     resultados.push(await queryInsurer(env, cnpj, key));
   }
-
-  resultados.sort((a, b) => requested.indexOf(a.seguradora) - requested.indexOf(b.seguradora));
 
   return jsonResponse({
     version: WORKER_VERSION,

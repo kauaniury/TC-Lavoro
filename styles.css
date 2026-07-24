@@ -141,6 +141,63 @@
   margin-left: var(--sidebar-width-collapsed);
 }
 
+/* Botão hambúrguer flutuante e backdrop — só existem visualmente em telas
+   ≤768px (ver media query abaixo). Em desktop a sidebar usa hover/focus-within;
+   em touch isso não existe, então mobile usa abertura/fechamento explícitos via
+   toggleMobileSidebar()/closeMobileSidebar() (app.js), controlados pela classe
+   body.mobile-sidebar-open. */
+.sidebar-toggle-fab {
+  display: none;
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: var(--z-toast);
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-primary);
+  color: #fff;
+  border: 0;
+  border-radius: var(--radius-full);
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+}
+
+.sidebar-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-overlay);
+  background: rgba(15, 23, 20, 0.45);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+/* Botão "X" dentro do drawer — alternativa ao backdrop para fechar; escondido
+   em desktop porque lá o fechamento é natural (mouse sai da sidebar). */
+.sidebar-close-btn {
+  display: none;
+  position: absolute;
+  top: 14px;
+  right: 8px;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  color: var(--color-text-secondary);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.sidebar-close-btn:hover {
+  background: var(--color-surface-muted);
+  color: var(--color-text);
+}
+
 .topbar-download {
   position: fixed;
   top: var(--space-4);
@@ -1170,18 +1227,67 @@ tbody tr:hover td {
 }
 
 @media (max-width: 768px) {
-  .sidebar,
+  /* Sidebar vira drawer off-canvas: sem hover/focus-within (não existe em touch),
+     controlada explicitamente por body.mobile-sidebar-open (ver app.js). */
+  .sidebar-toggle-fab {
+    display: inline-flex;
+  }
+
+  .sidebar-backdrop {
+    display: block;
+  }
+
+  .sidebar-close-btn {
+    display: inline-flex;
+  }
+
   .app-content {
-    --sidebar-width-collapsed: 52px;
+    margin-left: 0;
+    /* Espaço para o FAB do menu (fixed, 40px + 12px de margem) não sobrepor o
+       título da página — sem isso ele fica em cima do heading do topo. */
+    padding-top: 56px;
+  }
+
+  .sidebar {
+    width: min(var(--sidebar-width-expanded), 82vw);
+    z-index: var(--z-modal);
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+    box-shadow: none;
   }
 
   .sidebar:hover,
   .sidebar:focus-within {
-    width: 220px;
+    width: min(var(--sidebar-width-expanded), 82vw);
   }
 
-  .sidebar-brand-img {
+  .sidebar-item-label {
+    opacity: 1;
+  }
+
+  .sidebar-brand-img,
+  .sidebar:hover .sidebar-brand-img,
+  .sidebar:focus-within .sidebar-brand-img {
+    width: 92px;
     height: 22px;
+  }
+
+  body.mobile-sidebar-open .sidebar {
+    transform: translateX(0);
+    box-shadow: var(--shadow-lg);
+  }
+
+  body.mobile-sidebar-open .sidebar-backdrop {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  body.mobile-sidebar-open .sidebar-toggle-fab {
+    display: none;
+  }
+
+  body.mobile-sidebar-open {
+    overflow: hidden;
   }
 
   .topbar-download {
@@ -1270,6 +1376,35 @@ tbody tr:hover td {
   .kpi-value--mono,
   .kpi-value.mono {
     font-size: var(--text-md);
+  }
+
+  /* Toggle "Importar Planilha Excel" / "Preencher Manualmente" não cabe lado a
+     lado em telas estreitas (nowrap cortava o texto) — empilha e alinha à esquerda. */
+  .tc-mode-toggle {
+    flex-direction: column;
+  }
+
+  .tc-mode-btn {
+    justify-content: flex-start;
+    white-space: normal;
+  }
+
+  .tc-mode-btn + .tc-mode-btn {
+    border-left: 0;
+    border-top: 1px solid var(--color-border);
+  }
+
+  /* Fileira "Gerar tabela" / "Exportar XLSX" / "Gerar Dashboard" também cortava
+     texto em telas estreitas (3 botões flex numa linha) — empilha em coluna. */
+  .tc-btn-row {
+    flex-direction: column;
+  }
+
+  .tc-btn-row > .btn-primary,
+  .tc-btn-row > .btn-generate,
+  .tc-btn-row > .tc-export-btn {
+    flex: none;
+    width: 100%;
   }
 }
 

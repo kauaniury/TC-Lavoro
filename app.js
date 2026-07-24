@@ -13,8 +13,31 @@ let _tcTabs = [];
 let _tcActiveTabId = null;
 let _tcTabCounter = 0;
 
+// â"€â"€ Sidebar mobile (drawer off-canvas — hover/focus-within não existe em touch)
+function openMobileSidebar() {
+  document.body.classList.add('mobile-sidebar-open');
+  const fab = document.getElementById('sidebarToggleFab');
+  if (fab) fab.setAttribute('aria-expanded', 'true');
+}
+
+function closeMobileSidebar() {
+  document.body.classList.remove('mobile-sidebar-open');
+  const fab = document.getElementById('sidebarToggleFab');
+  if (fab) fab.setAttribute('aria-expanded', 'false');
+}
+
+function toggleMobileSidebar() {
+  if (document.body.classList.contains('mobile-sidebar-open')) closeMobileSidebar();
+  else openMobileSidebar();
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeMobileSidebar();
+});
+
 // â"€â"€ Tab switching
 function switchTab(tab) {
+  closeMobileSidebar();
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-' + tab).classList.add('active');
   document.querySelectorAll('.sidebar-item').forEach(t => {
@@ -3912,6 +3935,11 @@ function isZeroLimite(valor) {
   return valor !== null && valor !== undefined && Number(valor) === 0;
 }
 
+// Mensagem padrão exibida no card quando a seguradora não libera nenhum limite ao
+// tomador — substitui jargão bruto de seguradora (ex.: "tomador deve estar Aprovado e
+// dentro da Data de Validade") por um texto único e direto para o usuário final.
+const LIM_SEM_LIMITE_MSG = 'Sem limite liberado ao tomador.';
+
 // Mensagens de erro/negócio das seguradoras chegam em texto livre — classifica por
 // palavra-chave antes de decidir o badge. Ordem de prioridade importa (seção 6.5 do guia
 // de integração): "nomeado com outro corretor" > timeout > instabilidade > bloqueado > erro.
@@ -4039,11 +4067,16 @@ function normalizeLimiteFator(d) {
   if (!d) return { statusKey: 'erro', modalidades: [], mensagem: 'Resposta inesperada da seguradora.' };
 
   // cd_retorno !== 0 é sempre resposta de negócio (sem limite, nomeado etc.), nunca erro técnico.
+  // O texto bruto da Fator (ex.: "tomador deve estar Aprovado e dentro da Data de Validade")
+  // é jargão interno da seguradora — só é exibido ao usuário quando acionável (nomeado com
+  // outro corretor); nos demais casos de negócio, mostramos a mensagem padrão "sem limite".
   const codigo = Number(d.cd_retorno);
   if (codigo !== 0) {
     const msg = d.nm_retorno || 'Corretor não associado ao tomador nesta seguradora.';
     const cls = classifyErrorMessage(msg);
-    return { statusKey: cls === 'nomeado' ? 'nomeado' : 'sem_limite', modalidades: [], mensagem: msg };
+    return cls === 'nomeado'
+      ? { statusKey: 'nomeado', modalidades: [], mensagem: msg }
+      : { statusKey: 'sem_limite', modalidades: [], mensagem: LIM_SEM_LIMITE_MSG };
   }
 
   const linhas = Array.isArray(d.DadosTomador) ? d.DadosTomador : [];
@@ -4057,7 +4090,7 @@ function normalizeLimiteFator(d) {
 
   const nomeTomador = linhas[0] && linhas[0].NomePessoa;
   if (!modalidades.length) {
-    return { statusKey: 'sem_limite', modalidades: [], mensagem: d.nm_retorno || 'Nenhum limite disponível.', nomeTomador };
+    return { statusKey: 'sem_limite', modalidades: [], mensagem: LIM_SEM_LIMITE_MSG, nomeTomador };
   }
   return { statusKey: 'aprovado', modalidades, nomeTomador };
 }

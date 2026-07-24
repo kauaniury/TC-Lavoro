@@ -1,7 +1,7 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.24  
-> Atualizado em: 2026-07-23
+> Versao: 2.27  
+> Atualizado em: 2026-07-24
 
 ## 1. Visão Geral
 
@@ -28,6 +28,19 @@ A navegação principal é uma sidebar fixa à esquerda (`.sidebar`, `index.html
 - O botão "Exportar relatório" (`#btnDownloadTop`, usado pelo T&C Dashboard e pela Análise Financeira) deixou de viver dentro da barra de navegação — agora é um botão flutuante (`position: fixed`, canto superior direito), já que sua visibilidade é alternada por dois fluxos diferentes via JS e não pertence a nenhuma página específica.
 - `--topbar-height` foi zerado em `variables.css` (mantido só porque várias fórmulas de sticky-offset ainda somam esse token) — não representa mais uma barra horizontal.
 - Durante captura de PDF (`body.pdf-generating`) e impressão, `.sidebar` fica oculta e `.app-content` perde a margem reservada, evitando espaço em branco à esquerda no conteúdo exportado.
+
+#### 1.1a Sidebar em mobile (≤768px) — drawer off-canvas
+
+O padrão hover/`:focus-within` do desktop não existe em touch — nesses aparelhos o toque em um item foca o botão e mantém `:focus-within` "ligado" indefinidamente, deixando a sidebar expandida sobreposta ao conteúdo até o usuário tocar fora dela (bug real, reproduzido via toque programático no Playwright). Por isso ≤768px usa um drawer explícito, controlado por JS, e não apenas CSS:
+
+- `.sidebar-toggle-fab` (`index.html`, antes do `<aside>`): botão hambúrguer flutuante (`position: fixed`, canto superior esquerdo, `z-index: var(--z-toast)`), visível só em mobile. Chama `toggleMobileSidebar()`.
+- `.sidebar-backdrop` (`#sidebarBackdrop`): camada escura fixa atrás da sidebar; clique fecha o drawer (`closeMobileSidebar()`).
+- `.sidebar-close-btn` (`#appSidebar`, ao lado do logo): "X" visível só em mobile, mesma função de fechar.
+- Estado é a classe `body.mobile-sidebar-open` (app.js): quando presente, `.sidebar` recebe `transform: translateX(0)` (do contrário fica fora da tela via `translateX(-100%)`), o backdrop fica visível/clicável e o FAB some (evita sobrepor o "X"); `body` ganha `overflow: hidden` para travar o scroll do conteúdo atrás do drawer.
+- `switchTab()` chama `closeMobileSidebar()` no início — navegar sempre fecha o drawer, então o bug de sobreposição travada não pode acontecer mesmo sem tocar no backdrop ou no "X".
+- `Escape` fecha o drawer (listener global em `app.js`).
+- Nesse breakpoint a sidebar já nasce na largura "expandida" (rótulos visíveis, logo completo) — não existe mais o estado "recolhido só ícone" em mobile, já que ela fica fora da tela por padrão.
+- `.app-content` ganha `padding-top: 56px` em mobile para o FAB (40px + margem) não sobrepor o título da página.
 
 ## 2. Arquitetura de Arquivos
 
@@ -734,9 +747,11 @@ Cada seguradora tem um formato de resposta próprio; `normalizeLimiteResultado(r
 | `normalizeLimiteJns` | `jns` | `dados.product_limits[]` (após filtrar zerados) vazio → `sem_limite`/`instavel` (conforme `d.message`); senão `aprovado` com um item por produto (`product_name`, `limit_available`/`approvedLimit`, `tax`/`feePercent`, `product_branch`) |
 | `normalizeLimiteJunto` | `junto` | `dados` é array de modalidades com `submodalities[]`, cada uma já enriquecida pelo Worker com `limitAvailable`/`rate` reais (ver 10.2). Lista vazia (ou só zerados) → `sem_limite`; senão `aprovado` com `valor`/`taxa` reais quando disponíveis |
 | `normalizeLimiteOnpoint` | `essor`, `sombrero`, `newe`, `mitsui`, `axa` | Aceita `dados.Response[0]` (envelope padrão) **ou** `dados` já desembrulhado pelo Worker; se `CanSetupAProposal` e `LimitsAndRates[]` presentes (após `.filter(Boolean)` e filtro de zerados) → `aprovado`; senão lê `Reasons[]`/`Errors[]` e classifica via `classifyErrorMessage` (`bloqueado`, `nomeado`, `instavel`, `sem_resposta` ou `sem_limite`) |
-| `normalizeLimiteFator` | `fator` | `cd_retorno !== 0` é sempre resposta de negócio (nunca erro técnico): `nm_retorno` é classificado (`nomeado` se menciona corretor, senão `sem_limite`). Quando `cd_retorno === 0`, parseia `DadosTomador[]` em modalidades (`NomeGrupoSubLimite`, `ValorLimiteDisponivel`, `ValorTaxa`), filtrando zerados |
+| `normalizeLimiteFator` | `fator` | `cd_retorno !== 0` é sempre resposta de negócio (nunca erro técnico): `nm_retorno` é classificado via `classifyErrorMessage` — `nomeado` (mensagem original exibida, é acionável) se menciona corretor, senão `sem_limite` com a mensagem substituída pelo texto padrão `LIM_SEM_LIMITE_MSG` (o jargão bruto da Fator, ex. "tomador deve estar Aprovado e dentro da Data de Validade", não é repassado ao usuário). Quando `cd_retorno === 0`, parseia `DadosTomador[]` em modalidades (`NomeGrupoSubLimite`, `ValorLimiteDisponivel`, `ValorTaxa`), filtrando zerados; se a lista ficar vazia após o filtro, também usa `LIM_SEM_LIMITE_MSG` |
 
 `LIM_STATUS_CONFIG` mapeia `statusKey` para label e classe de badge: `aprovado` (verde), `bloqueado`/`nomeado`/`sem_resposta`/`instavel` (âmbar), `sem_limite` (cinza neutro), `erro` (vermelho), `aguardando` (neutro, só no placeholder pré-consulta).
+
+`LIM_SEM_LIMITE_MSG` (constante em `app.js`, valor `"Sem limite liberado ao tomador."`) é a mensagem padrão exibida no card sempre que uma seguradora nega limite por regra de negócio sem uma causa mais específica e acionável (ex.: Fator com `cd_retorno` de status/validade do tomador) — evita expor jargão interno de seguradora na UI.
 
 ### 10.2 Worker — endpoint
 
@@ -771,7 +786,7 @@ Resposta:
 | AXA (via Onpoint, rota dedicada `/axa/...`) | `axa` | mesma auth do Onpoint acima | idem |
 | Fator Seguradora | `fator` | OAuth2 `client_credentials` (Basic + `grant_type=client_credentials`) → Bearer | `FATOR_CLIENT_ID`, `FATOR_CLIENT_SECRET`, `FATOR_CORRETOR_ID`, `FATOR_NM_LOGIN` |
 
-**Regra crítica — Onpoint/AXA não aceitam chamadas paralelas para o mesmo CNPJ.** O Worker consulta `jns`/`junto`/`fator` em paralelo (`Promise.all`) mas processa `essor`/`sombrero`/`newe`/`mitsui`/`axa` sequencialmente num loop `for...of`.
+**Regra crítica — a consulta roda inteiramente em fila (`for...of`), nunca em paralelo.** `handleLimitsQuery` consulta as seguradoras solicitadas uma de cada vez, na ordem recebida, aguardando cada `queryInsurer` terminar antes de iniciar a próxima. Isso evita sobrecarregar qualquer integração — em especial a Onpoint, que agrupa `essor`/`sombrero`/`newe`/`mitsui`/`axa` no mesmo endpoint e rejeita chamadas concorrentes para o mesmo CNPJ — mas agora vale para todas as 8 seguradoras, não só a família Onpoint. Como consequência, o tempo total de resposta escala linearmente com o número de seguradoras consultadas.
 
 ### 10.3a Tratamento de erro no Worker
 
