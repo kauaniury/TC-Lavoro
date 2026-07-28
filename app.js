@@ -36,10 +36,30 @@ document.addEventListener('keydown', e => {
 });
 
 // â"€â"€ Tab switching
+// Botão flutuante "Exportar relatório": é compartilhado por dois fluxos (T&C
+// Dashboard e Análise Financeira) e vive fora das páginas, em position:fixed.
+// Sem dono declarado ele continuava visível ao navegar para outra aba e cobria a
+// topbar dos fluxos de IA. Agora só aparece na página que o gerou.
+let _downloadTopOwner = null;
+
+function setDownloadTopOwner(pagina) {
+  _downloadTopOwner = pagina;
+  syncDownloadTopVisibility();
+}
+
+function syncDownloadTopVisibility() {
+  const btn = document.getElementById('btnDownloadTop');
+  if (!btn) return;
+  const paginaAtiva = document.querySelector('.page.active');
+  const idAtivo = paginaAtiva ? paginaAtiva.id.replace(/^page-/, '') : null;
+  btn.hidden = !_downloadTopOwner || _downloadTopOwner !== idAtivo;
+}
+
 function switchTab(tab) {
   closeMobileSidebar();
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-' + tab).classList.add('active');
+  syncDownloadTopVisibility();
   document.querySelectorAll('.sidebar-item').forEach(t => {
     const pages = (t.dataset.pages || t.dataset.page || '').split(' ');
     const isActive = pages.includes(tab);
@@ -412,7 +432,7 @@ function generateDashboard() {
   if (chartBarInst) chartBarInst.destroy();
   const barLabels = aprovadas.sort((a,b)=>b.limite-a.limite).map(r=>r.seguradora);
   const barData   = aprovadas.map(r=>r.limite);
-  const brandBars = ['#192b24','#243d33','#2e5045','#5d756a','#8fa195','#cdad7d','#b8944f','#16a34a'];
+  const brandBars = ['#0b3b54','#114e6e','#1b6d95','#3f89ad','#7db6d2','#00b8f0','#0093c4','#16a34a'];
   
   // Dynamic height: minimum 120px, 32px per bar
   const barChartEl = document.getElementById('chartBar');
@@ -428,8 +448,8 @@ function generateDashboard() {
       indexAxis: 'y', responsive: true, maintainAspectRatio: false,
       plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ' ' + fmtBRL(ctx.raw) } } },
       scales: {
-        x: { border:{display:false}, grid:{color:'#e5e7eb'}, ticks: { callback: v => v >= 1e6 ? 'R$ '+(v/1e6).toFixed(0)+'MM' : fmtBRL(v), color:'#4b5563', font:{size:10} } },
-        y: { border:{display:false}, grid:{display:false}, ticks:{font:{weight:'700',size:11},color:'#1a2533'} }
+        x: { border:{display:false}, grid:{color:'#dfe7ee'}, ticks: { callback: v => v >= 1e6 ? 'R$ '+(v/1e6).toFixed(0)+'MM' : fmtBRL(v), color:'#46586b', font:{size:10} } },
+        y: { border:{display:false}, grid:{display:false}, ticks:{font:{weight:'700',size:11},color:'#12212e'} }
       }
     }
   });
@@ -438,7 +458,7 @@ function generateDashboard() {
   if (chartDoughnutInst) chartDoughnutInst.destroy();
   const dGroups = [aprovadas, concorr, bloqueadas, declinadas];
   const dAllLabels = ['Aprovado','Nomeada por outro corretor','Bloqueado','Declinado'];
-  const dAllColors = ['#16a34a','#b45309','#6b7280','#dc2626'];
+  const dAllColors = ['#16a34a','#b45309','#6a7d90','#dc2626'];
   const dData = dGroups.map(g=>g.length).filter((_,i)=>dGroups[i].length>0);
   const dLabels = dAllLabels.filter((_,i)=>dGroups[i].length>0);
   const dColors = dAllColors.filter((_,i)=>dGroups[i].length>0);
@@ -448,7 +468,7 @@ function generateDashboard() {
     options: {
       responsive: true, maintainAspectRatio: false, cutout: '65%',
       plugins: {
-        legend: { position:'bottom', labels:{ padding:14, boxWidth:10, boxHeight:10, font:{size:11}, color:'#4b5563' } },
+        legend: { position:'bottom', labels:{ padding:14, boxWidth:10, boxHeight:10, font:{size:11}, color:'#46586b' } },
         tooltip: { callbacks: { label: ctx => ' '+ctx.label+': '+ctx.raw+' seguradoras' } }
       }
     }
@@ -458,8 +478,7 @@ function generateDashboard() {
   buildModalIndex(aprovadas);
 
   // Switch to dashboard tab
-  const topDownload = document.getElementById('btnDownloadTop');
-  if (topDownload) topDownload.hidden = false;
+  setDownloadTopOwner('dashboard');
   generateButton.classList.remove('is-loading');
   generateButton.disabled = false;
   switchTab('dashboard');
@@ -687,7 +706,7 @@ function renderModalComparison(label) {
     </div>
   `;
 
-  const brandBars = ['#192b24','#243d33','#2e5045','#5d756a','#8fa195','#cdad7d','#b8944f','#16a34a'];
+  const brandBars = ['#0b3b54','#114e6e','#1b6d95','#3f89ad','#7db6d2','#00b8f0','#0093c4','#16a34a'];
 
   // Chart: Limite
   if (chartModalLimiteInst) chartModalLimiteInst.destroy();
@@ -698,7 +717,7 @@ function renderModalComparison(label) {
       datasets: [{
         label: 'Limite (R$)',
         data: byLimite.map(m => m.value),
-        backgroundColor: byLimite.map((m,i) => i === 0 ? '#192b24' : brandBars[(i) % brandBars.length]),
+        backgroundColor: byLimite.map((m,i) => i === 0 ? '#0b3b54' : brandBars[(i) % brandBars.length]),
         borderWidth: 0, borderRadius: 4
       }]
     },
@@ -706,8 +725,8 @@ function renderModalComparison(label) {
       indexAxis: 'y', responsive: true, maintainAspectRatio: false,
       plugins: { legend:{display:false}, tooltip:{ callbacks:{ label: ctx => ' ' + fmtBRL(ctx.raw) } } },
       scales: {
-        x: { border:{display:false}, grid:{color:'#e5e7eb'}, ticks:{ callback: v => v>=1e6 ? 'R$ '+(v/1e6).toFixed(0)+'MM' : fmtBRL(v), color:'#4b5563', font:{size:10} } },
-        y: { border:{display:false}, grid:{display:false}, ticks:{font:{weight:'700',size:11},color:'#1a2533'} }
+        x: { border:{display:false}, grid:{color:'#dfe7ee'}, ticks:{ callback: v => v>=1e6 ? 'R$ '+(v/1e6).toFixed(0)+'MM' : fmtBRL(v), color:'#46586b', font:{size:10} } },
+        y: { border:{display:false}, grid:{display:false}, ticks:{font:{weight:'700',size:11},color:'#12212e'} }
       }
     }
   });
@@ -730,8 +749,8 @@ function renderModalComparison(label) {
         indexAxis: 'y', responsive: true, maintainAspectRatio: false,
         plugins: { legend:{display:false}, tooltip:{ callbacks:{ label: ctx => ' ' + ctx.raw.toFixed(2).replace('.',',') + '%' } } },
         scales: {
-          x: { border:{display:false}, grid:{color:'#e5e7eb'}, ticks:{ callback: v => v.toFixed(2).replace('.',',')+'%', color:'#4b5563', font:{size:10} } },
-          y: { border:{display:false}, grid:{display:false}, ticks:{font:{weight:'700',size:11},color:'#1a2533'} }
+          x: { border:{display:false}, grid:{color:'#dfe7ee'}, ticks:{ callback: v => v.toFixed(2).replace('.',',')+'%', color:'#46586b', font:{size:10} } },
+          y: { border:{display:false}, grid:{display:false}, ticks:{font:{weight:'700',size:11},color:'#12212e'} }
         }
       }
     });
@@ -740,7 +759,7 @@ function renderModalComparison(label) {
     const ctx = document.getElementById('chartModalTaxa').getContext('2d');
     ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
     ctx.font = '12px Inter, sans-serif';
-    ctx.fillStyle = '#6b7280';
+    ctx.fillStyle = '#6a7d90';
     ctx.textAlign = 'center';
     ctx.fillText('Taxas não informadas para esta modalidade', ctx.canvas.width/2, ctx.canvas.height/2);
   }
@@ -1088,6 +1107,101 @@ function resetDemandaFields(flow) {
   refreshDemandaState(flow);
 }
 
+// ── Escopo da análise: só a modalidade solicitada aparece como card ───────────
+//
+// A instrução de escopo fechado vive no prompt (Worker e fallback), mas o modelo
+// pode escorregar e devolver modalidades extras — o filtro abaixo é a rede de
+// segurança do front-end para o usuário nunca ver um card fora da demanda.
+
+const SG_MODALIDADE_PALAVRAS = {
+  'licitante-proposta': ['proposta', 'licitante', 'licitacao', 'bid bond', 'manutencao da proposta'],
+  'execucao-fiel-cumprimento': ['execucao', 'fiel cumprimento', 'performance', 'garantia contratual', 'contratual'],
+  'adiantamento-pagamento': ['adiantamento', 'antecipacao', 'advance payment'],
+  'retencao-pagamento': ['retencao', 'caucao de medicao', 'retention'],
+  'manutencao-corretiva': ['manutencao', 'perfeito funcionamento', 'garantia tecnica', 'vicios ocultos'],
+  'trabalhista-previdenciaria': ['trabalhista', 'previdenciaria', 'verbas trabalhistas', 'fgts'],
+  'aduaneira': ['aduaneira', 'aduaneiro', 'drawback', 'admissao temporaria', 'entreposto'],
+  'judicial': ['judicial', 'juizo', 'penhora', 'deposito judicial'],
+  'judicial-execucao-fiscal': ['execucao fiscal', 'divida ativa', 'cda', 'judicial'],
+  'recursal': ['recursal', 'deposito recursal', 'preparo', 'recurso'],
+  'administrativa-creditos-tributarios': ['credito tributario', 'auto de infracao', 'administrativa fiscal', 'processo administrativo'],
+  'parcelamento-administrativo-fiscal': ['parcelamento', 'saldo devedor', 'refis'],
+  'imobiliaria': ['imobiliaria', 'incorporacao', 'habite-se', 'adquirentes'],
+  'concessoes': ['concessao', 'concessoes', 'ppp', 'poder concedente', 'permissao'],
+  'energia': ['energia', 'ccee', 'aneel', 'ccear', 'leilao de energia'],
+  'completion': ['completion', 'conclusao de projeto', 'epc', 'project finance'],
+};
+
+const ACENTOS_MAP = {
+  'á': 'a', 'à': 'a', 'â': 'a', 'ã': 'a', 'ä': 'a',
+  'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e',
+  'í': 'i', 'ì': 'i', 'î': 'i', 'ï': 'i',
+  'ó': 'o', 'ò': 'o', 'ô': 'o', 'õ': 'o', 'ö': 'o',
+  'ú': 'u', 'ù': 'u', 'û': 'u', 'ü': 'u',
+  'ç': 'c', 'ñ': 'n',
+};
+
+function normalizarTextoBusca(valor) {
+  return String(valor || '')
+    .toLowerCase()
+    .replace(/[áàâãäéèêëíìîïóòôõöúùûüçñ]/g, ch => ACENTOS_MAP[ch] || ch);
+}
+
+function modalidadeCombina(nome, id) {
+  const palavras = SG_MODALIDADE_PALAVRAS[id];
+  if (!palavras) return false;
+  const alvo = normalizarTextoBusca(nome);
+  return palavras.some(p => alvo.includes(p));
+}
+
+// Item ambíguo (não bate com nenhuma modalidade conhecida) fica no escopo —
+// preferimos mostrar a mais do que esconder informação do subscritor.
+function separarModalidadesPorEscopo(modalidades, contexto) {
+  const lista = Array.isArray(modalidades) ? modalidades : [];
+  const id = contexto && contexto.modalidade && contexto.modalidade.id;
+  if (!id || id === 'outra' || !SG_MODALIDADE_PALAVRAS[id]) {
+    return { noEscopo: lista, foraEscopo: [] };
+  }
+
+  const noEscopo = [];
+  const foraEscopo = [];
+  lista.forEach(mod => {
+    const nome = mod && mod.nome;
+    if (modalidadeCombina(nome, id)) { noEscopo.push(mod); return; }
+    const outraConhecida = Object.keys(SG_MODALIDADE_PALAVRAS)
+      .some(outroId => outroId !== id && modalidadeCombina(nome, outroId));
+    (outraConhecida ? foraEscopo : noEscopo).push(mod);
+  });
+
+  return { noEscopo, foraEscopo };
+}
+
+function buildSgForaEscopoHtml(foraEscopo, contexto) {
+  if (!foraEscopo.length) return '';
+  const label = (contexto && contexto.modalidade && contexto.modalidade.label) || 'a modalidade solicitada';
+  const itens = foraEscopo.map(mod => {
+    const base = mod.base_calculo && mod.base_calculo.valor;
+    const detalhe = base && String(base) !== 'null' ? ` <span class="sg-fora-escopo-detalhe">${esc(String(base))}</span>` : '';
+    return `<li>${esc(mod.nome || 'Modalidade sem nome')}${detalhe}</li>`;
+  }).join('');
+
+  return `
+    <div class="sg-fora-escopo-card">
+      <p class="sg-fora-escopo-titulo">Outras modalidades citadas no documento</p>
+      <p class="sg-fora-escopo-nota">Esta análise trata apenas de <strong>${esc(label)}</strong>. Os itens abaixo aparecem no documento, mas não foram analisados — rode uma nova análise selecionando a modalidade desejada.</p>
+      <ul class="sg-fora-escopo-lista">${itens}</ul>
+    </div>`;
+}
+
+function buildSgModalidadeAusenteHtml(contexto) {
+  const label = (contexto && contexto.modalidade && contexto.modalidade.label) || 'A modalidade solicitada';
+  return `
+    <div class="sg-fora-escopo-card sg-fora-escopo-card--alerta">
+      <p class="sg-fora-escopo-titulo">Modalidade solicitada não localizada</p>
+      <p class="sg-fora-escopo-nota">Os documentos analisados não trazem exigência de <strong>${esc(label)}</strong>. Confirme a modalidade da demanda ou envie o documento que a exige.</p>
+    </div>`;
+}
+
 // Cabeçalho do relatório: renderizado do estado validado do front-end, não da IA.
 function buildDemandaContextoHtml(contexto) {
   if (!contexto || !contexto.modalidade || !contexto.modalidade.label) return '';
@@ -1239,7 +1353,7 @@ async function processarSeguroGarantia() {
       'Quais cláusulas devem constar na apólice?',
       'Qual a vigência e o prazo da garantia?',
       'Há algum risco ou pendência de subscrição?',
-    ]);
+    ], 'sg');
   } catch (err) {
     document.getElementById('sgLoading').hidden = true;
     document.getElementById('sgUploadSection').hidden = false;
@@ -1518,7 +1632,12 @@ function renderSeguroGarantiaCard(data) {
   const verdictIcon = rec.includes('declinar') ? '✕' : rec.includes('ressalvas') ? '!' : '✓';
 
   const docs = data.documentos_analisados || [];
-  const modalidades = data.modalidades || [];
+  // Só a modalidade da demanda vira card; o resto vira nota de "fora do escopo".
+  const { noEscopo: modalidades, foraEscopo } = separarModalidadesPorEscopo(data.modalidades, sgContextoDemanda);
+  const temContexto = !!(sgContextoDemanda && sgContextoDemanda.modalidade);
+  const modalidadeAusenteHtml = temContexto && modalidades.length === 0 && (data.modalidades || []).length > 0
+    ? buildSgModalidadeAusenteHtml(sgContextoDemanda)
+    : '';
 
   const tomadorHtml = buildEmissaoPartBox('Tomador', data.tomador);
   const seguradoHtml = buildEmissaoPartBox('Segurado / Beneficiário', data.segurado);
@@ -1597,7 +1716,11 @@ function renderSeguroGarantiaCard(data) {
 
         ${temPartes ? `<div class="sg-emission-partes-grid">${tomadorHtml}${seguradoHtml}</div>` : ''}
 
+        ${modalidadeAusenteHtml}
+
         ${modalidades.map(buildSgModalidadeCard).join('')}
+
+        ${buildSgForaEscopoHtml(foraEscopo, sgContextoDemanda)}
 
         ${coberturasHtml}
 
@@ -1702,9 +1825,10 @@ function buildEmissaoPartBox(label, item) {
 function buildEmissaoFieldRow(label, item, format) {
   if (!item || item.valor === null || item.valor === undefined || String(item.valor) === 'null' || String(item.valor).trim() === '') return '';
   let display = item.valor;
-  if (format === 'brl' && typeof item.valor === 'number') display = fmtBRL(item.valor);
+  const isMonetario = format === 'brl' && typeof item.valor === 'number';
+  if (isMonetario) display = fmtBRL(item.valor);
   return `
-    <div class="sg-dado-item">
+    <div class="sg-dado-item${isMonetario ? ' sg-dado-item--destaque' : ''}">
       <span class="sg-dado-label">${esc(label)}</span>
       <div class="sg-dado-right">
         <span class="sg-dado-valor">${esc(String(display))}</span>
@@ -2194,7 +2318,7 @@ function renderFiancaLocaticia(data) {
     'O valor da garantia cobre 3 meses de aluguel?',
     'Qual é o índice de reajuste e quando se aplica?',
     'Quais riscos foram identificados para a seguradora?',
-  ]);
+  ], 'fl');
   requestAnimationFrame(syncAiChatStickyOffset);
 }
 
@@ -2258,9 +2382,10 @@ function buildAnaliseContratualHTML(data, dadosConfig) {
 function buildDadoItem(label, item, format) {
   if (!item || item.valor === null || item.valor === undefined || item.valor === 'null' || String(item.valor).trim() === '') return '';
   let display = item.valor;
-  if (format === 'brl' && typeof item.valor === 'number') display = fmtBRL(item.valor);
+  const isMonetario = format === 'brl' && typeof item.valor === 'number';
+  if (isMonetario) display = fmtBRL(item.valor);
   return `
-    <div class="sg-dado-item">
+    <div class="sg-dado-item${isMonetario ? ' sg-dado-item--destaque' : ''}">
       <span class="sg-dado-label">${esc(label)}</span>
       <div class="sg-dado-right">
         <span class="sg-dado-valor">${esc(String(display))}</span>
@@ -2655,7 +2780,7 @@ function renderAnaliseApolice(data) {
     'O que está excluído da cobertura?',
     'Qual é a importância segurada?',
     'Qual é a vigência da apólice?',
-  ]);
+  ], 'ap');
   requestAnimationFrame(syncAiChatStickyOffset);
 }
 
@@ -2854,23 +2979,64 @@ async function sendApoliceChatMessage() {
 }
 
 // ── Chat hint helper ──────────────────────────────────────────────────────────
-function _addChatHint(messagesId, questions) {
+// Cada fluxo de chat: onde escrever a pergunta e quem envia.
+const CHAT_FLOW_CONFIG = {
+  sg: { inputId: 'sgChatInput', enviar: () => sendSgChatMessage() },
+  fl: { inputId: 'flChatInput', enviar: () => sendFlChatMessage() },
+  af: { inputId: 'afChatInput', enviar: () => sendAfChatMessage() },
+  ap: { inputId: 'apChatInput', enviar: () => sendApoliceChatMessage() },
+};
+
+// Sugestões são botões de verdade: clicar (ou Enter/Espaço) já manda a pergunta
+// para a IA. O texto vai por textContent — nada de string dinâmica em innerHTML.
+function _addChatHint(messagesId, questions, flow) {
   const el = document.getElementById(messagesId);
   if (!el) return;
+
   const div = document.createElement('div');
   div.className = 'ai-chat-hint';
-  div.innerHTML =
-    '<p class="ai-chat-hint-title">Sugestões de perguntas:</p>' +
-    '<ul class="ai-chat-hint-list">' +
-    questions.map(q => '<li>' + esc(q) + '</li>').join('') +
-    '</ul>';
+
+  const titulo = document.createElement('p');
+  titulo.className = 'ai-chat-hint-title';
+  titulo.textContent = 'Sugestões de perguntas:';
+  div.appendChild(titulo);
+
+  const lista = document.createElement('ul');
+  lista.className = 'ai-chat-hint-list';
+  const cfg = CHAT_FLOW_CONFIG[flow];
+
+  questions.forEach(pergunta => {
+    const li = document.createElement('li');
+    if (cfg) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'ai-chat-hint-btn';
+      btn.textContent = pergunta;
+      btn.addEventListener('click', () => enviarSugestaoChat(flow, pergunta));
+      li.appendChild(btn);
+    } else {
+      li.textContent = pergunta;
+    }
+    lista.appendChild(li);
+  });
+
+  div.appendChild(lista);
   el.appendChild(div);
+}
+
+function enviarSugestaoChat(flow, pergunta) {
+  const cfg = CHAT_FLOW_CONFIG[flow];
+  if (!cfg) return;
+  const input = document.getElementById(cfg.inputId);
+  if (!input || input.disabled) return;
+  input.value = pergunta;
+  cfg.enviar();
 }
 
 // -- Chart defaults
 Chart.defaults.font.family = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
 Chart.defaults.font.size = 11;
-Chart.defaults.color = '#4b5563';
+Chart.defaults.color = '#46586b';
 
 // -- Financial Analysis State
 let financialFiles = [];
@@ -3813,8 +3979,7 @@ function resetAnaliseFinanceira() {
   document.getElementById('afQaMessages').innerHTML = '';
   _clearChatFiles('af');
   hideFinancialError();
-  const btnDownload = document.getElementById('btnDownloadTop');
-  if (btnDownload) btnDownload.hidden = true;
+  setDownloadTopOwner(null);
 }
 
 // -- Render financial analysis result (multi-company structure)
@@ -3840,8 +4005,7 @@ function renderAnaliseFinanceira(data) {
   const container = document.getElementById('afEmpresasContainer');
   container.innerHTML = empresas.map((emp, idx) => buildEmpresaCard(emp, idx)).join('');
 
-  const btnDownload = document.getElementById('btnDownloadTop');
-  if (btnDownload) btnDownload.hidden = false;
+  setDownloadTopOwner('analise-financeira');
 
   // Init Q&A chat history with JSON context
   afChatHistory = criarHistoricoAnaliseFinanceira(financialFiles, JSON.stringify(data));
@@ -3851,7 +4015,7 @@ function renderAnaliseFinanceira(data) {
     'Qual o limite máximo sugerido para seguro garantia?',
     'A empresa tem patrimônio líquido suficiente?',
     'Houve crescimento ou queda de receita no período?',
-  ]);
+  ], 'af');
 }
 
 // ── AF Q&A chat ──────────────────────────────────────────────────────────────

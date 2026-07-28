@@ -587,9 +587,19 @@ function buildContextoDemandaPrompt(flow, context) {
       : '';
   if (!guidance) return '';
 
+  // Escopo fechado: entrega apenas a modalidade pedida; as demais viram alerta.
   const regraModalidades = flow === 'seguro-garantia'
-    ? '\n- O array "modalidades" do JSON deve refletir SOMENTE as modalidades efetivamente identificadas nos documentos; a modalidade solicitada e contexto da demanda, nao prova documental.'
-    : '\n- Nao registre uma cobertura como contratada sem evidencia documental.';
+    ? `
+- ESCOPO FECHADO: esta analise trata EXCLUSIVAMENTE de "${context.modalidade.label}".
+- O array "modalidades" do JSON deve conter EXATAMENTE UM item, referente a modalidade solicitada. Nunca inclua um segundo item.
+- Todos os campos desse item (importancia segurada, base de calculo, vigencia, objeto, clausulas) devem descrever SOMENTE a modalidade solicitada. Nao misture percentuais, bases de calculo, prazos ou clausulas de outra modalidade.
+- Se o documento exigir outras modalidades de seguro garantia, NAO crie cards para elas: registre uma linha em "alertas_de_risco" no formato "Documento tambem exige [modalidade] ([fonte]) — fora do escopo desta analise".
+- "coberturas_clausulas_exigidas", "prazo_e_forma_de_apresentacao", "pendencias_para_emissao", "perguntas_para_cliente_ou_comercial", "resumo_executivo" e "parecer" devem tratar apenas da modalidade solicitada.
+- Se a modalidade solicitada NAO estiver prevista nos documentos, ainda assim devolva o item unico com os campos em null, registre em "alertas_de_risco" que ela nao foi localizada e reflita isso em "conclusao_operacional".`
+    : `
+- ESCOPO FECHADO: analise a locacao exclusivamente sob a otica de "${context.modalidade.label}".
+- Se o documento indicar outra destinacao/natureza, registre a divergencia em "riscos" em vez de trocar a analise.
+- Nao registre uma cobertura como contratada sem evidencia documental.`;
 
   const consideracoes = String(context.consideracoes || '').trim();
   const consideracoesBlock = consideracoes

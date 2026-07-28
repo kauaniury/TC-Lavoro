@@ -198,13 +198,16 @@
   color: var(--color-text);
 }
 
+/* Botão flutuante de exportação (T&C Dashboard e Análise Financeira).
+   O `right` acompanha a coluna de conteúdo: em telas largas ele encosta na borda
+   do conteúdo, não na borda da janela — assim fica alinhado com os cards. */
 .topbar-download {
   position: fixed;
-  top: var(--space-4);
-  right: var(--space-6);
+  top: var(--space-5);
+  right: max(var(--page-gutter), calc((100vw - var(--sidebar-width-collapsed) - var(--content-max-width)) / 2 + var(--page-gutter)));
   z-index: var(--z-sticky);
   background: var(--color-surface);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-md);
 }
 
 .page {
@@ -221,7 +224,7 @@
   max-width: var(--content-max-width);
   width: 100%;
   margin: 0 auto;
-  padding: var(--space-8);
+  padding: var(--space-8) var(--page-gutter);
 }
 
 .btn-primary,
@@ -313,6 +316,12 @@
   font-weight: var(--weight-semibold);
   letter-spacing: 0.1em;
   text-transform: uppercase;
+}
+
+/* .hero-label vive sobre o hero escuro (ciano puro tem contraste ali);
+   o eyebrow do upload fica sobre fundo claro e precisa do tom legivel. */
+.upload-header-eyebrow {
+  color: var(--color-accent-ink);
 }
 
 .upload-header-title {
@@ -522,6 +531,53 @@
 
 .demanda-error[hidden] {
   display: none;
+}
+
+/* Modalidades citadas no documento mas fora do escopo da demanda */
+.sg-fora-escopo-card {
+  padding: var(--space-4) var(--space-5);
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+}
+
+.sg-fora-escopo-card--alerta {
+  border-style: solid;
+  border-color: var(--color-warning-border);
+  background: var(--color-warning-bg);
+}
+
+.sg-fora-escopo-titulo {
+  margin: 0 0 var(--space-1);
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+
+.sg-fora-escopo-card--alerta .sg-fora-escopo-titulo {
+  color: var(--color-warning);
+}
+
+.sg-fora-escopo-nota {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  line-height: var(--leading-relaxed);
+}
+
+.sg-fora-escopo-lista {
+  margin: var(--space-3) 0 0;
+  padding-left: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.sg-fora-escopo-detalhe {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
 }
 
 /* Bloco do relatório — renderizado a partir do estado validado do front-end */
@@ -735,7 +791,7 @@
 
 .instr-num {
   flex: 0 0 auto;
-  color: var(--color-accent-hover);
+  color: var(--color-accent-ink);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   font-weight: var(--weight-bold);
@@ -760,7 +816,7 @@
 .hero-inner {
   max-width: var(--content-max-width);
   margin: 0 auto;
-  padding: 0 var(--space-8);
+  padding: 0 var(--page-gutter);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1268,7 +1324,7 @@ tbody tr:hover td {
 .row-last-in-group td,
 .data-table td.cell-seguradora,
 .data-table td.cell-status {
-  border-bottom: 2px solid #9ca3af;
+  border-bottom: 2px solid #9bacbd;
 }
 
 /* Alinhamento central do badge de status dentro do rowspan */
@@ -1505,15 +1561,13 @@ tbody tr:hover td {
     overflow: hidden;
   }
 
+  /* O botão continua acessível no mobile — antes sumia e não havia como exportar */
   .topbar-download {
-    display: none;
-  }
-
-  .page-container,
-  .content,
-  .hero-inner {
-    padding-left: var(--space-4);
-    padding-right: var(--space-4);
+    top: auto;
+    bottom: var(--space-5);
+    right: var(--space-5);
+    padding: var(--space-3) var(--space-4);
+    box-shadow: var(--shadow-lg);
   }
 
   .upload-card-body {
@@ -1740,7 +1794,7 @@ body.pdf-generating.has-comparison .comparison-section {
 
   .dashboard-hero,
   .hero {
-    background: #192b24 !important;
+    background: #0b3b54 !important;
     padding: 8px 0 !important;
     break-after: avoid !important;
   }
@@ -1820,7 +1874,7 @@ body.pdf-generating.has-comparison .comparison-section {
   .table-card {
     border-radius: 4px;
     box-shadow: none;
-    border: 1px solid #d1d5db;
+    border: 1px solid #c6d3de;
     /* break-inside: auto is set below — table must NOT be kept together */
     break-inside: auto !important;
     overflow: visible;
@@ -1848,8 +1902,8 @@ body.pdf-generating.has-comparison .comparison-section {
     padding: 4px 5px;
     font-size: 7px;
     letter-spacing: 0.04em;
-    background: #f3f2ec !important;
-    border-bottom: 1.5px solid #d1d5db !important;
+    background: #f1f5f9 !important;
+    border-bottom: 1.5px solid #c6d3de !important;
   }
 
   .data-table td,
@@ -1857,7 +1911,7 @@ body.pdf-generating.has-comparison .comparison-section {
     padding: 3.5px 5px;
     font-size: 8px;
     line-height: 1.3;
-    border-bottom: 1px solid #d1d5db !important;
+    border-bottom: 1px solid #c6d3de !important;
   }
 
   /* Last row of each insurer: strong bottom line */
@@ -1914,7 +1968,7 @@ body.pdf-generating.has-comparison .comparison-section {
 
   .group-divider td {
     padding: 2px 5px;
-    background: #eeead6 !important;
+    background: #e4eff7 !important;
   }
 
   .group-divider-label {
@@ -2023,7 +2077,7 @@ body.pdf-generating.has-comparison .comparison-section {
 }
 
 .upload-section--financial .upload-header-eyebrow {
-  color: var(--color-accent);
+  color: var(--color-accent-ink);
 }
 
 .upload-card--financial {
@@ -2057,7 +2111,7 @@ body.pdf-generating.has-comparison .comparison-section {
 .drop-zone--financial:hover,
 .drop-zone--financial.drop-zone--over {
   border-color: var(--color-accent);
-  background: #faf8f2;
+  background: #f7fafc;
 }
 
 .btn-analyze {
@@ -2289,11 +2343,11 @@ body.pdf-generating.has-comparison .comparison-section {
 
 .af-recomendacao-card {
   border-top: 3px solid var(--color-accent);
-  background: #faf8f2;
+  background: #f7fafc;
 }
 
 .af-recomendacao-card .af-card-label {
-  color: var(--color-accent-hover);
+  color: var(--color-accent-ink);
 }
 
 .af-pontos-list {
@@ -2400,7 +2454,7 @@ body.pdf-generating.has-comparison .comparison-section {
 .af-doc-tipo {
   font-size: var(--text-sm);
   font-weight: var(--weight-bold);
-  color: var(--color-accent);
+  color: var(--color-accent-ink);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -2494,11 +2548,11 @@ body.pdf-generating.has-comparison .comparison-section {
 }
 
 .af-recomendacao-block {
-  background: #faf8f2;
+  background: #f7fafc;
   border-left: 4px solid var(--color-accent);
 }
 
-.af-recomendacao-block .af-card-label { color: var(--color-accent-hover); }
+.af-recomendacao-block .af-card-label { color: var(--color-accent-ink); }
 
 .af-no-data {
   font-size: var(--text-sm);
@@ -2861,7 +2915,7 @@ body.pdf-generating.has-comparison .comparison-section {
 
 /* ── Upload cards: Seguro Garantia & Fiança Locatícia ── */
 .upload-header-eyebrow--garantia { color: var(--color-primary); }
-.upload-header-eyebrow--fianca   { color: var(--color-accent-hover); }
+.upload-header-eyebrow--fianca   { color: var(--color-accent-ink); }
 .upload-header-eyebrow--apolice  { color: var(--color-primary-light); }
 
 .upload-card--garantia { border-top: 3px solid var(--color-primary); }
@@ -2873,12 +2927,12 @@ body.pdf-generating.has-comparison .comparison-section {
 .badge-ia-tag--apolice  { background: var(--color-primary); color: var(--color-accent); }
 
 .drop-zone--garantia {
-  border-color: rgba(25,43,36,0.25);
+  border-color: rgba(11, 59, 84,0.25);
 }
 .drop-zone--garantia:hover,
 .drop-zone--garantia.drop-zone--over {
   border-color: var(--color-primary);
-  background: rgba(25,43,36,0.04);
+  background: rgba(11, 59, 84,0.04);
 }
 
 .drop-zone--fianca {
@@ -2887,7 +2941,7 @@ body.pdf-generating.has-comparison .comparison-section {
 .drop-zone--fianca:hover,
 .drop-zone--fianca.drop-zone--over {
   border-color: var(--color-accent-hover);
-  background: rgba(205,173,125,0.06);
+  background: rgba(0, 184, 240,0.06);
 }
 
 .drop-zone--apolice {
@@ -3067,56 +3121,86 @@ body.pdf-generating.has-comparison .comparison-section {
   overflow: hidden;
 }
 
+/* Linha de dado: grid rotulo/valor com divisor fino — sem zebra, que competia
+   com o destaque dos campos realmente importantes (IS, base de calculo). */
 .sg-dado-item {
-  display: flex;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: minmax(140px, 210px) 1fr;
+  align-items: start;
   gap: var(--space-4);
-  padding: var(--space-3) var(--space-5);
+  padding: var(--space-4) var(--space-5);
   border-bottom: 1px solid var(--color-border);
+  transition: background 0.15s ease;
 }
 
 .sg-dado-item:last-child {
   border-bottom: 0;
 }
 
-.sg-dado-item:nth-child(even) {
+.sg-dado-item:hover {
   background: var(--color-surface-muted);
 }
 
 .sg-dado-label {
-  flex-shrink: 0;
-  width: 200px;
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
-  color: var(--color-text-secondary);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  padding-top: 2px;
 }
 
 .sg-dado-right {
-  flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  align-items: flex-start;
+  gap: var(--space-2);
 }
 
 .sg-dado-valor {
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
   color: var(--color-text);
   font-weight: var(--weight-medium);
   line-height: var(--leading-normal);
+  overflow-wrap: anywhere;
 }
 
+/* Importancia segurada e demais monetarios: numero em destaque */
+.sg-dado-item--destaque {
+  background: linear-gradient(90deg, var(--color-accent-light) 0%, transparent 70%);
+}
+
+.sg-dado-item--destaque:hover {
+  background: linear-gradient(90deg, var(--color-accent-light) 0%, var(--color-surface-muted) 70%);
+}
+
+.sg-dado-item--destaque .sg-dado-valor {
+  font-family: var(--font-mono);
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+  color: var(--color-primary);
+  letter-spacing: -0.01em;
+}
+
+/* Fonte documental como chip discreto, para nunca ser lida como parte do valor */
 .sg-dado-fonte {
-  display: flex;
+  display: inline-flex;
   align-items: flex-start;
-  gap: 4px;
+  gap: var(--space-1);
+  max-width: 100%;
+  padding: 3px var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
   font-size: var(--text-xs);
   color: var(--color-text-muted);
   font-style: italic;
+  overflow-wrap: anywhere;
 }
 
 .sg-fonte-arrow {
-  color: var(--color-accent-hover);
+  color: var(--color-accent-ink);
   font-style: normal;
   font-weight: var(--weight-bold);
   flex-shrink: 0;
@@ -3192,7 +3276,7 @@ body.pdf-generating.has-comparison .comparison-section {
 .sg-resumo-card {
   padding: var(--space-5) var(--space-6);
   border-left: 4px solid var(--color-accent);
-  background: #faf8f2;
+  background: #f7fafc;
 }
 
 .sg-resumo-text {
@@ -3288,7 +3372,7 @@ body.pdf-generating.has-comparison .comparison-section {
   align-items: flex-start;
   gap: 4px;
   padding: var(--space-2) var(--space-5);
-  background: rgba(205,173,125,0.06);
+  background: rgba(0, 184, 240,0.06);
   border-bottom: 1px solid var(--color-border);
   font-size: var(--text-xs);
   color: var(--color-text-secondary);
@@ -3302,8 +3386,7 @@ body.pdf-generating.has-comparison .comparison-section {
   border: 1px solid var(--color-border);
 }
 
-.sg-mod-dados .sg-dado-item:nth-child(even) { background: var(--color-surface-muted); }
-.sg-mod-dados .sg-dado-item { padding: var(--space-2) var(--space-4); }
+.sg-mod-dados .sg-dado-item { padding: var(--space-3) var(--space-4); }
 
 .sg-mod-clausulas {
   padding: 0 var(--space-5) var(--space-3);
@@ -3351,14 +3434,14 @@ body.pdf-generating.has-comparison .comparison-section {
 }
 
 @media (max-width: 768px) {
-  .sg-dado-label { width: 130px; }
-  .sg-dado-item  { padding: var(--space-3) var(--space-4); }
+  .sg-dado-item  { grid-template-columns: minmax(120px, 150px) 1fr; padding: var(--space-3) var(--space-4); }
   .sg-modalidades-list--inaplicaveis { grid-template-columns: 1fr 1fr; }
 }
 
 @media (max-width: 480px) {
-  .sg-dado-item  { flex-direction: column; gap: var(--space-1); }
-  .sg-dado-label { width: auto; }
+  /* Empilha rotulo e valor: em telas estreitas a coluna fixa espremia o valor */
+  .sg-dado-item  { grid-template-columns: 1fr; gap: var(--space-1); }
+  .sg-dado-item--destaque .sg-dado-valor { font-size: var(--text-lg); }
   .sg-modalidades-list--inaplicaveis { grid-template-columns: 1fr; }
 }
 
@@ -3376,20 +3459,24 @@ body.pdf-generating.has-comparison .comparison-section {
 
 .sg-chat-topbar {
   background: var(--color-primary);
-  margin-bottom: 10px;
+  margin-bottom: var(--space-4);
   color: #fff;
-  padding: 14px 24px;
+  padding: var(--space-4) 0;
   flex-shrink: 0;
   border-bottom: 2px solid var(--color-accent);
 }
 
+/* Mesmo modelo de caixa do .ai-split-body (max-width + gutter interno) para a
+   topbar começar exatamente na mesma coluna do relatório. */
 .sg-chat-topbar-inner {
   max-width: var(--content-max-width);
+  width: 100%;
   margin: 0 auto;
+  padding: 0 var(--page-gutter);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .sg-chat-eyebrow {
@@ -3418,7 +3505,28 @@ body.pdf-generating.has-comparison .comparison-section {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 320px;
+  max-width: min(320px, 100%);
+}
+
+/* Topbar do relatório em telas estreitas: título em cima, ações embaixo,
+   sem estourar a largura da janela (antes gerava scroll horizontal). */
+@media (max-width: 768px) {
+  .sg-chat-topbar-inner {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-3);
+  }
+
+  .sg-chat-topbar-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .sg-chat-files-bar {
+    order: -1;
+    max-width: 100%;
+    text-align: left;
+  }
 }
 
 .sg-chat-messages {
@@ -3453,12 +3561,12 @@ body.pdf-generating.has-comparison .comparison-section {
 .sg-chat-msg--ai {
   align-self: flex-start;
   background: var(--color-surface);
-  border: 1px solid #e5e7eb;
+  border: 1px solid #dfe7ee;
   border-radius: 4px 18px 18px 18px;
   padding: 18px 22px;
   max-width: 92%;
   box-shadow: 0 1px 4px rgba(0,0,0,0.06);
-  color: #1a2533;
+  color: #12212e;
 }
 
 .sg-md-p {
@@ -3474,7 +3582,7 @@ body.pdf-generating.has-comparison .comparison-section {
   font-weight: 700;
   color: var(--color-primary);
   margin: 16px 0 6px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid #dfe7ee;
   padding-bottom: 4px;
 }
 
@@ -3499,7 +3607,7 @@ body.pdf-generating.has-comparison .comparison-section {
   content: '•';
   position: absolute;
   left: 0;
-  color: var(--color-accent);
+  color: var(--color-accent-ink);
   font-weight: 700;
 }
 
@@ -3517,7 +3625,7 @@ body.pdf-generating.has-comparison .comparison-section {
 .sg-chat-dots span {
   width: 7px;
   height: 7px;
-  background: #9ca3af;
+  background: #9bacbd;
   border-radius: 50%;
   animation: sg-dot-bounce 1.3s infinite ease-in-out;
 }
@@ -3532,7 +3640,7 @@ body.pdf-generating.has-comparison .comparison-section {
 
 /* Input area */
 .sg-chat-input-area {
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid #dfe7ee;
   background: var(--color-surface);
   padding: 12px 24px;
   flex-shrink: 0;
@@ -3551,11 +3659,11 @@ body.pdf-generating.has-comparison .comparison-section {
   border-radius: 24px;
   padding: 10px 18px;
   font-size: 14px;
-  border: 1.5px solid #d1d5db;
+  border: 1.5px solid #c6d3de;
   outline: none;
   font-family: var(--font-ui, Inter, sans-serif);
   background: var(--color-background);
-  color: #1a2533;
+  color: #12212e;
   transition: border-color 0.15s;
 }
 
@@ -3591,12 +3699,15 @@ body.pdf-generating.has-comparison .comparison-section {
 }
 
 /* ── SG Chat Topbar Actions ──────────────────────────────────────────────── */
+/* Ações da topbar em linha (antes empilhavam em coluna e a barra crescia à toa) */
 .sg-chat-topbar-actions {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 6px;
-  flex-shrink: 0;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2) var(--space-3);
+  min-width: 0;
 }
 
 .sg-chat-export-btn {
@@ -3617,7 +3728,7 @@ body.pdf-generating.has-comparison .comparison-section {
 }
 
 .sg-chat-export-btn:hover {
-  background: rgba(205, 173, 125, 0.14);
+  background: rgba(0, 184, 240, 0.14);
 }
 
 .sg-chat-export-btn:disabled {
@@ -3699,24 +3810,29 @@ body.pdf-generating.has-comparison .comparison-section {
 
 .sg-modalidade-emission-card {
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   overflow: hidden;
+  box-shadow: var(--shadow-xs);
 }
 
 .sg-modalidade-emission-head {
-  background: var(--color-surface-muted);
+  background: linear-gradient(135deg, var(--color-surface-soft) 0%, var(--color-surface-muted) 100%);
   border-bottom: 1px solid var(--color-border);
-  padding: var(--space-3) var(--space-4);
+  border-left: 3px solid var(--color-accent);
+  padding: var(--space-4) var(--space-5);
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-3);
   color: var(--color-primary);
 }
 
 .sg-modalidade-emission-nome {
-  font-size: var(--text-sm);
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-heading);
+  font-size: var(--text-md);
   font-weight: var(--weight-semibold);
-  color: var(--color-text);
+  color: var(--color-primary);
   margin: 0;
 }
 
@@ -4121,7 +4237,10 @@ body.pdf-generating.has-comparison .comparison-section {
   justify-content: space-between;
   gap: 24px;
   padding: 24px 32px;
-  background: var(--color-primary);
+  /* Gradiente navy do logo, com brilho ciano sutil no canto direito */
+  background:
+    radial-gradient(120% 160% at 100% 0%, rgba(0, 184, 240, 0.22) 0%, rgba(0, 184, 240, 0) 60%),
+    linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-hover) 100%);
   flex-wrap: wrap;
   position: relative;
 }
@@ -4168,8 +4287,17 @@ body.pdf-generating.has-comparison .comparison-section {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 0;
+  gap: var(--space-3);
   flex-shrink: 0;
+}
+
+/* A data ficava sem regra propria e colava no badge de veredicto */
+.sg-report-gen-date {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: var(--text-xs);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
 }
 
 /* Verdict badge in masthead */
@@ -4324,7 +4452,7 @@ body.pdf-generating.has-comparison .comparison-section {
   content: '•';
   position: absolute;
   left: 6px;
-  color: var(--color-accent-hover);
+  color: var(--color-accent-ink);
   font-weight: 700;
 }
 
@@ -4351,7 +4479,7 @@ body.pdf-generating.has-comparison .comparison-section {
 .sg-md-table th {
   padding: 9px 14px;
   background: var(--color-primary);
-  color: var(--color-accent);
+  color: var(--color-accent-ink);
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
@@ -4479,7 +4607,7 @@ body.pdf-generating.has-comparison .comparison-section {
 }
 
 .upload-tool-card:hover .upload-tool-arrow {
-  color: var(--color-accent-hover);
+  color: var(--color-accent-ink);
   transform: translateX(2px);
 }
 
@@ -4490,7 +4618,7 @@ body.pdf-generating.has-comparison .comparison-section {
   align-items: center;
   justify-content: center;
   min-height: calc(100vh - var(--topbar-height));
-  padding: var(--space-8);
+  padding: var(--space-8) var(--page-gutter);
 }
 
 .tab-upload-inner {
@@ -4552,7 +4680,7 @@ body.pdf-generating.has-comparison .comparison-section {
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-md);
-  background: rgba(205,173,125,0.18);
+  background: rgba(0, 184, 240,0.18);
   flex-shrink: 0;
   color: var(--color-accent);
 }
@@ -4847,12 +4975,26 @@ body.pdf-generating.has-comparison .comparison-section {
   overflow: visible;
 }
 
+/* Relatório + chat: grid de duas colunas centralizado na largura de conteúdo.
+   Antes usava `padding-right: 200px` fixo, que espremia o relatório em telas
+   médias e desalinhava o bloco em relação às demais páginas. */
 .ai-split-body {
-  --ai-chat-sidebar-width: 500px;
+  --ai-chat-sidebar-width: clamp(320px, 32vw, 460px);
   --ai-chat-sidebar-height: calc(100vh - var(--ai-sidebar-sticky-top, calc(var(--topbar-height, 60px) + 96px)) - var(--space-10, 40px));
-  display: flex;
-  align-items: flex-start;
-  padding: 0 200px 0 0; /* espaço entre sidebar e borda direita */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--ai-chat-sidebar-width);
+  gap: var(--page-gutter);
+  align-items: start;
+  width: 100%;
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  padding: 0 var(--page-gutter) var(--space-8);
+}
+
+@media (max-width: 1024px) {
+  .ai-split-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .ai-split-main {
@@ -4864,13 +5006,15 @@ body.pdf-generating.has-comparison .comparison-section {
   flex: none;
   overflow-y: visible;
   max-height: none;
+  /* O respiro lateral já vem do gutter de .ai-split-body */
+  padding: 0;
 }
 
 /* Sidebar shared styles */
 .ai-chat-sidebar {
-  width: var(--ai-chat-sidebar-width, 500px);
-  min-width: var(--ai-chat-sidebar-width, 500px);
-  max-width: var(--ai-chat-sidebar-width, 500px);
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -4960,14 +5104,41 @@ body.pdf-generating.has-comparison .comparison-section {
 }
 
 .ai-chat-hint-list li {
+  display: flex;
+}
+
+/* Sugestão é um botão: clicar envia a pergunta para a IA */
+.ai-chat-hint-btn {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  font-family: inherit;
   font-size: 12.5px;
   color: var(--color-text, #1e293b);
   line-height: 1.45;
-  padding: 6px 10px;
+  padding: var(--space-2) var(--space-3);
   background: var(--color-surface, #fff);
   border: 1px solid var(--color-border, #e2e8f0);
+  border-left: 2px solid var(--color-accent);
   border-radius: var(--radius-md, 6px);
-  cursor: default;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.ai-chat-hint-btn:hover {
+  border-color: var(--color-accent);
+  background: var(--color-accent-light);
+  color: var(--color-primary);
+}
+
+.ai-chat-hint-btn:focus-visible {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: var(--shadow-focus);
+}
+
+.ai-chat-hint-btn:active {
+  transform: translateY(1px);
 }
 
 /* Reuse existing sg-chat-msg bubbles inside sidebar */
@@ -5037,17 +5208,17 @@ body.pdf-generating.has-comparison .comparison-section {
   height: 30px;
   padding: 0;
   background: none;
-  border: 1.5px solid var(--color-border-strong, #d1d5db);
+  border: 1.5px solid var(--color-border-strong, #c6d3de);
   border-radius: var(--radius-full);
-  color: var(--color-text-muted, #6b7280);
+  color: var(--color-text-muted, #6a7d90);
   cursor: pointer;
   transition: var(--transition-fast);
 }
 
 .ai-chat-attach-btn:hover {
-  border-color: var(--color-accent, #cdad7d);
-  color: var(--color-accent-hover, #b8944f);
-  background: var(--color-accent-light, #e8d9bc);
+  border-color: var(--color-accent, #00b8f0);
+  color: var(--color-accent-hover, #0093c4);
+  background: var(--color-accent-light, #d8f2fd);
 }
 
 /* ── Chips de arquivos anexados ── */
@@ -5056,8 +5227,8 @@ body.pdf-generating.has-comparison .comparison-section {
   flex-wrap: wrap;
   gap: 4px;
   padding: 6px 10px 4px;
-  background: var(--color-surface-muted, #f3f2ec);
-  border-bottom: 1px solid var(--color-border, #e5e7eb);
+  background: var(--color-surface-muted, #f1f5f9);
+  border-bottom: 1px solid var(--color-border, #dfe7ee);
 }
 
 .ai-chat-file-chip {
@@ -5065,7 +5236,7 @@ body.pdf-generating.has-comparison .comparison-section {
   align-items: center;
   gap: 5px;
   padding: 3px 8px 3px 6px;
-  background: var(--color-primary, #192b24);
+  background: var(--color-primary, #0b3b54);
   color: rgba(255,255,255,0.92);
   border-radius: var(--radius-full);
   font-size: 11px;
@@ -5108,29 +5279,34 @@ body.pdf-generating.has-comparison .comparison-section {
 }
 
 .ai-sidebar-input-area.chat-drag-over {
-  background: var(--color-accent-light, #e8d9bc);
-  border-top-color: var(--color-accent, #cdad7d);
-  outline: 2px dashed var(--color-accent, #cdad7d);
+  background: var(--color-accent-light, #d8f2fd);
+  border-top-color: var(--color-accent, #00b8f0);
+  outline: 2px dashed var(--color-accent, #00b8f0);
   outline-offset: -3px;
 }
 
 /* AF: sticky sidebar in normal document flow */
 .af-split-layout {
-  display: flex;
-  align-items: flex-start;
-  gap: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(280px, 26vw, 340px);
+  gap: var(--page-gutter);
+  align-items: start;
+}
+
+@media (max-width: 1024px) {
+  .af-split-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .af-split-main {
-  flex: 1;
   min-width: 0;
-  padding-right: 24px;
 }
 
 .ai-chat-sidebar--af {
-  width: 300px;
-  min-width: 260px;
-  max-width: 320px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   position: sticky;
   top: calc(var(--topbar-height, 60px) + 8px);
   max-height: calc(100vh - var(--topbar-height, 60px) - 16px);
@@ -5144,9 +5320,9 @@ body.pdf-generating.has-comparison .comparison-section {
 
 /* Responsive: stack sidebar below on small screens */
 @media (max-width: 900px) {
+  /* Empilha, mas mantém o gutter — zerar o padding colava o relatório na borda */
   .ai-split-body {
-    flex-direction: column;
-    padding: 0;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .ai-chat-sidebar {
@@ -5162,11 +5338,7 @@ body.pdf-generating.has-comparison .comparison-section {
   }
 
   .af-split-layout {
-    flex-direction: column;
-  }
-
-  .af-split-main {
-    padding-right: 0;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .ai-chat-sidebar--af {
@@ -5186,7 +5358,7 @@ body.pdf-generating.has-comparison .comparison-section {
 /* Cores dos ícones por tipo de seção */
 .sg-report-icon--classificacao { background: #475569; }
 .sg-report-icon--documentos    { background: #2563eb; }
-.sg-report-icon--partes        { background: var(--color-primary-light, #2e5045); }
+.sg-report-icon--partes        { background: var(--color-primary-light, #1b6d95); }
 .sg-report-icon--dados-emissao { background: #0f766e; }
 .sg-report-icon--calculo       { background: #7c3aed; }
 .sg-report-icon--vigencia      { background: #0369a1; }
@@ -5195,7 +5367,7 @@ body.pdf-generating.has-comparison .comparison-section {
 .sg-report-icon--expectativa   { background: #0891b2; }
 .sg-report-icon--corretor      { background: #4338ca; }
 .sg-report-icon--conclusao     { background: var(--color-success, #16a34a); }
-.sg-report-icon--resumo-final  { background: var(--color-primary, #192b24); }
+.sg-report-icon--resumo-final  { background: var(--color-primary, #0b3b54); }
 
 /* Seção Conclusão operacional — fundo esverdeado suave */
 .sg-report-section--conclusao .sg-report-section-head {
@@ -5215,16 +5387,16 @@ body.pdf-generating.has-comparison .comparison-section {
 
 /* Seção Resumo Final — destaque máximo, fundo verde escuro */
 .sg-report-section--resumo-final .sg-report-section-head {
-  background: var(--color-primary, #192b24);
-  border-bottom: 1px solid rgba(205,173,125,0.3);
+  background: var(--color-primary, #0b3b54);
+  border-bottom: 1px solid rgba(0, 184, 240,0.3);
 }
 .sg-report-section--resumo-final .sg-report-section-title {
   color: #fff;
   font-size: 15px;
 }
 .sg-report-section--resumo-final .sg-report-icon--resumo-final {
-  background: rgba(205,173,125,0.25);
-  color: var(--color-accent, #cdad7d);
+  background: rgba(0, 184, 240,0.25);
+  color: var(--color-accent, #00b8f0);
 }
 
 .sg-resumo-final-tag {
@@ -5233,16 +5405,16 @@ body.pdf-generating.has-comparison .comparison-section {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: var(--color-accent, #cdad7d);
-  background: rgba(205,173,125,0.15);
-  border: 1px solid rgba(205,173,125,0.3);
+  color: var(--color-accent, #00b8f0);
+  background: rgba(0, 184, 240,0.15);
+  border: 1px solid rgba(0, 184, 240,0.3);
   border-radius: 99px;
   padding: 3px 10px;
   white-space: nowrap;
 }
 
 .sg-resumo-final-body {
-  background: #f8faf9;
+  background: #f5f9fc;
   padding: 0 !important;
 }
 
@@ -5260,14 +5432,14 @@ body.pdf-generating.has-comparison .comparison-section {
   align-items: baseline;
 }
 .sg-resumo-field:last-child { border-bottom: 0; }
-.sg-resumo-field:nth-child(even) { background: rgba(25,43,36,0.025); }
+.sg-resumo-field:nth-child(even) { background: rgba(11, 59, 84,0.025); }
 
 .sg-resumo-field-label {
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.07em;
-  color: var(--color-primary, #192b24);
+  color: var(--color-primary, #0b3b54);
   white-space: nowrap;
 }
 
@@ -5279,7 +5451,7 @@ body.pdf-generating.has-comparison .comparison-section {
 }
 
 .sg-resumo-field-value em {
-  color: var(--color-text-muted, #9ca3af);
+  color: var(--color-text-muted, #9bacbd);
   font-style: italic;
 }
 
@@ -5425,7 +5597,7 @@ body.pdf-generating.has-comparison .comparison-section {
   justify-content: space-between;
   gap: 24px;
   padding: 28px 32px;
-  background: var(--color-primary, #192b24);
+  background: var(--color-primary, #0b3b54);
   flex-wrap: wrap;
   position: relative;
 }
@@ -5434,7 +5606,7 @@ body.pdf-generating.has-comparison .comparison-section {
   position: absolute;
   bottom: 0; left: 0; right: 0;
   height: 3px;
-  background: linear-gradient(90deg, var(--color-accent, #cdad7d) 0%, #b8944f 100%);
+  background: linear-gradient(90deg, var(--color-accent, #00b8f0) 0%, #0093c4 100%);
 }
 
 .fl-masthead-left { flex: 1; min-width: 0; }
@@ -5445,7 +5617,7 @@ body.pdf-generating.has-comparison .comparison-section {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.14em;
-  color: var(--color-accent, #cdad7d);
+  color: var(--color-accent, #00b8f0);
   margin-bottom: 8px;
 }
 .fl-report-title {
@@ -5479,13 +5651,13 @@ body.pdf-generating.has-comparison .comparison-section {
   align-items: center;
   gap: 10px;
   padding: 12px 20px;
-  background: var(--color-surface-muted, #f8faf9);
+  background: var(--color-surface-muted, #f5f9fc);
   border-bottom: 1px solid var(--color-border);
 }
 
 .fl-section-icon {
   width: 18px; height: 18px;
-  color: var(--color-primary, #192b24);
+  color: var(--color-primary, #0b3b54);
   flex-shrink: 0;
 }
 
@@ -5493,7 +5665,7 @@ body.pdf-generating.has-comparison .comparison-section {
   font-family: var(--font-heading);
   font-size: 13.5px;
   font-weight: 700;
-  color: var(--color-primary, #192b24);
+  color: var(--color-primary, #0b3b54);
   margin: 0;
   border: 0;
   padding: 0;
@@ -5503,7 +5675,7 @@ body.pdf-generating.has-comparison .comparison-section {
 
 /* Seção parecer */
 .fl-report-section--parecer .fl-section-head {
-  background: var(--color-primary-light, #2e5045);
+  background: var(--color-primary-light, #1b6d95);
   border-bottom-color: rgba(255,255,255,0.1);
 }
 .fl-report-section--parecer .fl-section-title { color: #fff; }
@@ -5515,10 +5687,10 @@ body.pdf-generating.has-comparison .comparison-section {
   border-collapse: collapse;
   font-size: 13px;
 }
-.fl-dados-table thead tr { background: var(--color-primary, #192b24); }
+.fl-dados-table thead tr { background: var(--color-primary, #0b3b54); }
 .fl-dados-table th {
   padding: 9px 16px;
-  color: var(--color-accent, #cdad7d);
+  color: var(--color-accent, #00b8f0);
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
@@ -5532,7 +5704,7 @@ body.pdf-generating.has-comparison .comparison-section {
   vertical-align: top;
   line-height: 1.5;
 }
-.fl-dados-table tbody tr:nth-child(even) td { background: #f8faf9; }
+.fl-dados-table tbody tr:nth-child(even) td { background: #f5f9fc; }
 .fl-dados-table tbody tr:last-child td { border-bottom: 0; }
 
 .fl-dados-label {
@@ -5549,7 +5721,7 @@ body.pdf-generating.has-comparison .comparison-section {
 }
 .fl-dados-fonte {
   font-size: 11.5px;
-  color: var(--color-text-muted, #9ca3af);
+  color: var(--color-text-muted, #9bacbd);
   width: 35%;
 }
 .fl-dados-fonte em { font-style: italic; }
@@ -5572,10 +5744,10 @@ body.pdf-generating.has-comparison .comparison-section {
   cursor: pointer;
   list-style: none;
   user-select: none;
-  background: var(--color-surface-muted, #f8faf9);
+  background: var(--color-surface-muted, #f5f9fc);
 }
 .fl-clausula-summary::-webkit-details-marker { display: none; }
-.fl-clausula-summary:hover { background: #f0f4f2; }
+.fl-clausula-summary:hover { background: var(--color-surface-muted); }
 
 .fl-clausula-titulo {
   flex: 1;
@@ -5643,7 +5815,7 @@ details[open] .fl-clausula-chevron { transform: rotate(180deg); }
 /* Fonte/citação */
 .fl-fonte-cite {
   font-size: 11.5px;
-  color: var(--color-text-muted, #9ca3af);
+  color: var(--color-text-muted, #9bacbd);
   margin-top: 4px;
 }
 
@@ -5653,11 +5825,11 @@ details[open] .fl-clausula-chevron { transform: rotate(180deg); }
   font-size: 13.5px;
   color: #fff;
   line-height: 1.65;
-  background: var(--color-primary-light, #2e5045);
+  background: var(--color-primary-light, #1b6d95);
 }
 .fl-parecer-justificativa { margin: 0 0 14px; opacity: 0.92; }
 .fl-condicoes { margin: 0 0 12px; }
-.fl-condicoes-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--color-accent, #cdad7d); margin-bottom: 8px; }
+.fl-condicoes-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--color-accent, #00b8f0); margin-bottom: 8px; }
 .fl-condicoes ul { margin: 0; padding-left: 20px; }
 .fl-condicoes li { margin-bottom: 4px; font-size: 13px; opacity: 0.9; }
 .fl-resumo-text { margin: 0; font-size: 12.5px; opacity: 0.78; font-style: italic; }
@@ -5691,13 +5863,13 @@ details[open] .fl-clausula-chevron { transform: rotate(180deg); }
   height: 7px;
   border-radius: var(--radius-full);
   background: var(--color-accent);
-  box-shadow: 0 0 0 0 rgba(205, 173, 125, 0.5);
+  box-shadow: 0 0 0 0 rgba(0, 184, 240, 0.5);
   animation: lim-pulse 2.4s ease-out infinite;
 }
 @keyframes lim-pulse {
-  0%   { box-shadow: 0 0 0 0 rgba(205, 173, 125, 0.5); }
-  70%  { box-shadow: 0 0 0 6px rgba(205, 173, 125, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(205, 173, 125, 0); }
+  0%   { box-shadow: 0 0 0 0 rgba(0, 184, 240, 0.5); }
+  70%  { box-shadow: 0 0 0 6px rgba(0, 184, 240, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(0, 184, 240, 0); }
 }
 
 .lim-console-row {
@@ -5727,7 +5899,7 @@ details[open] .fl-clausula-chevron { transform: rotate(180deg); }
   font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
   letter-spacing: 0.12em;
-  color: var(--color-accent-hover);
+  color: var(--color-accent-ink);
   border-right: 1px solid var(--color-border);
 }
 .lim-console-input {
@@ -5938,7 +6110,7 @@ details[open] .fl-clausula-chevron { transform: rotate(180deg); }
 .lim-modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(20, 20, 19, 0.5);
+  background: rgba(11, 26, 36, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -6611,7 +6783,7 @@ details[open] .fl-clausula-chevron { transform: rotate(180deg); }
 
 /* ── TC Email: header com logo (espelha o dashboard hero) ── */
 .tc-email-header {
-  background: #192b24;
+  background: #0b3b54;
   padding: 28px 32px;
   display: flex;
   align-items: center;
@@ -6626,7 +6798,7 @@ details[open] .fl-clausula-chevron { transform: rotate(180deg); }
 
 .tc-email-header-eyebrow {
   margin: 0 0 6px;
-  color: #cdad7d;
+  color: #00b8f0;
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
@@ -6698,8 +6870,8 @@ details[open] .fl-clausula-chevron { transform: rotate(180deg); }
 .tc-email-kpi--aprovado   .tc-email-kpi-bar { background: #16a34a; }
 .tc-email-kpi--declinado  .tc-email-kpi-bar { background: #dc2626; }
 .tc-email-kpi--concorrente .tc-email-kpi-bar { background: #b45309; }
-.tc-email-kpi--capacidade .tc-email-kpi-bar { background: #1a2533; }
-.tc-email-kpi--maior      .tc-email-kpi-bar { background: #cdad7d; }
+.tc-email-kpi--capacidade .tc-email-kpi-bar { background: #12212e; }
+.tc-email-kpi--maior      .tc-email-kpi-bar { background: #00b8f0; }
 
 .tc-email-kpi-label {
   margin: 0 0 5px;

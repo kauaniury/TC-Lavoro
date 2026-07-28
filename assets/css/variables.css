@@ -1,22 +1,27 @@
 :root {
-  --color-primary: #192b24;
-  --color-primary-hover: #243d33;
-  --color-primary-light: #2e5045;
-  --color-accent: #cdad7d;
-  --color-accent-hover: #b8944f;
-  --color-accent-light: #e8d9bc;
-  --color-background: #f8f7f2;
+  /* Paleta institucional Lavoro — extraida do logo:
+     navy/petrol #104058 (marca escura) e ciano #00b8f0 (simbolo). */
+  --color-primary: #0b3b54;
+  --color-primary-hover: #114e6e;
+  --color-primary-light: #1b6d95;
+  --color-accent: #00b8f0;
+  --color-accent-hover: #0093c4;
+  --color-accent-light: #d8f2fd;
+  /* Ciano puro nao tem contraste suficiente como texto sobre fundo claro —
+     use --color-accent-ink sempre que o accent for TEXTO em superficie clara. */
+  --color-accent-ink: #0a6c9c;
+  --color-background: #f4f7fa;
   --color-surface: #ffffff;
-  --color-surface-soft: #eeead6;
-  --color-surface-muted: #f3f2ec;
-  --color-text: #1a2533;
-  --color-text-secondary: #4b5563;
-  --color-text-muted: #6b7280;
-  --color-text-faint: #9ca3af;
+  --color-surface-soft: #e4eff7;
+  --color-surface-muted: #f1f5f9;
+  --color-text: #12212e;
+  --color-text-secondary: #46586b;
+  --color-text-muted: #6a7d90;
+  --color-text-faint: #9bacbd;
   --color-text-inverse: #ffffff;
-  --color-border: #e5e7eb;
-  --color-border-strong: #d1d5db;
-  --color-border-brand: #cdad7d;
+  --color-border: #dfe7ee;
+  --color-border-strong: #c6d3de;
+  --color-border-brand: #00b8f0;
   --color-success: #16a34a;
   --color-success-bg: #dcfce7;
   --color-success-border: #86efac;
@@ -62,11 +67,11 @@
   --radius-lg: 12px;
   --radius-xl: 16px;
   --radius-full: 9999px;
-  --shadow-xs: 0 1px 2px rgba(25, 43, 36, 0.04);
-  --shadow-sm: 0 1px 3px rgba(25, 43, 36, 0.06), 0 1px 2px rgba(25, 43, 36, 0.04);
-  --shadow-md: 0 4px 12px rgba(25, 43, 36, 0.08), 0 2px 4px rgba(25, 43, 36, 0.04);
-  --shadow-lg: 0 12px 32px rgba(25, 43, 36, 0.10), 0 4px 8px rgba(25, 43, 36, 0.06);
-  --shadow-focus: 0 0 0 3px rgba(205, 173, 125, 0.35);
+  --shadow-xs: 0 1px 2px rgba(11, 59, 84, 0.05);
+  --shadow-sm: 0 1px 3px rgba(11, 59, 84, 0.07), 0 1px 2px rgba(11, 59, 84, 0.05);
+  --shadow-md: 0 4px 12px rgba(11, 59, 84, 0.09), 0 2px 4px rgba(11, 59, 84, 0.05);
+  --shadow-lg: 0 12px 32px rgba(11, 59, 84, 0.12), 0 4px 8px rgba(11, 59, 84, 0.07);
+  --shadow-focus: 0 0 0 3px rgba(0, 184, 240, 0.32);
   --transition-fast: all 0.12s ease;
   --transition-base: all 0.20s ease;
   --transition-slow: all 0.35s ease;
@@ -83,6 +88,9 @@
   --sidebar-width-collapsed: 68px;
   --sidebar-width-expanded: 256px;
   --content-max-width: 1300px;
+  /* Respiro lateral unico de todas as paginas: acompanha a largura da tela,
+     de 16px no celular a 32px no desktop. Use em vez de padding fixo. */
+  --page-gutter: clamp(16px, 3.5vw, 32px);
 
   /* Legacy aliases kept for the existing JavaScript surface. */
   --bg: var(--color-background);
@@ -98,8 +106,8 @@
   --text-secondary: var(--color-text-secondary);
   --text-muted: var(--color-text-muted);
   --cyan: var(--color-primary);
-  --cyan-dim: rgba(25, 43, 36, 0.08);
-  --cyan-glow: rgba(205, 173, 125, 0.18);
+  --cyan-dim: rgba(11, 59, 84, 0.08);
+  --cyan-glow: rgba(0, 184, 240, 0.20);
   --blue: var(--color-primary-light);
   --violet: var(--color-accent);
   --green: var(--color-success);

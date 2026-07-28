@@ -1,6 +1,6 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.28  
+> Versao: 2.30  
 > Atualizado em: 2026-07-28
 
 ## 1. Visão Geral
@@ -26,6 +26,9 @@ A navegação principal é uma sidebar fixa à esquerda (`.sidebar`, `index.html
 - Expande em overlay (`--sidebar-width-expanded`, 256px) em `:hover` ou `:focus-within` (o foco-dentro mantém aberta para navegação via teclado mesmo sem mouse sobre o elemento), revelando o logo completo e o rótulo de cada item — não empurra o conteúdo, que sempre reserva `margin-left: var(--sidebar-width-collapsed)` via `.app-content`.
 - Cada botão (`.sidebar-item`) mantém os mesmos atributos `data-page`/`data-pages`/`onclick="switchTab(...)"` de antes; `switchTab()` alterna `.active`/`aria-current` em `.sidebar-item` (não mais `.topbar-tab`).
 - O botão "Exportar relatório" (`#btnDownloadTop`, usado pelo T&C Dashboard e pela Análise Financeira) deixou de viver dentro da barra de navegação — agora é um botão flutuante (`position: fixed`, canto superior direito), já que sua visibilidade é alternada por dois fluxos diferentes via JS e não pertence a nenhuma página específica.
+  - **Dono declarado** (`_downloadTopOwner` + `setDownloadTopOwner(pagina)` / `syncDownloadTopVisibility()` em `app.js`): o botão só aparece na página que o gerou (`dashboard` ou `analise-financeira`). `switchTab()` chama `syncDownloadTopVisibility()` a cada navegação. Antes ele permanecia visível ao trocar de aba e cobria a topbar dos fluxos de IA.
+  - Alinhamento: o `right` acompanha a coluna de conteúdo (`max(var(--page-gutter), (100vw − sidebar − content-max-width)/2 + gutter)`), então em telas largas ele encosta na borda do conteúdo, não na da janela.
+  - Em ≤768px ele deixou de ser `display:none` (não havia como exportar no celular) e passou a flutuar no canto inferior direito, longe do FAB do menu.
 - `--topbar-height` foi zerado em `variables.css` (mantido só porque várias fórmulas de sticky-offset ainda somam esse token) — não representa mais uma barra horizontal.
 - Durante captura de PDF (`body.pdf-generating`) e impressão, `.sidebar` fica oculta e `.app-content` perde a margem reservada, evitando espaço em branco à esquerda no conteúdo exportado.
 
@@ -77,6 +80,38 @@ TC Lavoro/
 - Usar `fmtBRL()` para monetários em PT-BR.
 - Não hardcodar cores/espaçamentos; usar `assets/css/variables.css`.
 - `app.js` deve permanecer em UTF-8.
+
+#### 3.2a Identidade visual — paleta azul institucional
+
+A paleta é derivada do logo Lavoro: **navy/petrol `#104058`** (marca escura) e **ciano `#00b8f0`** (símbolo). A antiga paleta verde-escuro + dourado foi substituída integralmente.
+
+| Token | Valor | Papel |
+|---|---|---|
+| `--color-primary` | `#0b3b54` | superfícies escuras: sidebar, mastheads, botões primários |
+| `--color-primary-hover` / `--color-primary-light` | `#114e6e` / `#1b6d95` | estados e gradientes |
+| `--color-accent` | `#00b8f0` | ciano da marca: bordas ativas, ícones, filetes, texto sobre fundo escuro |
+| `--color-accent-ink` | `#0a6c9c` | **obrigatório** quando o accent é *texto sobre superfície clara* — ciano puro não atinge contraste |
+| `--color-accent-light` | `#d8f2fd` | fundos suaves (ex.: linha da IS) |
+| `--color-background` / `--color-surface-soft` / `--color-surface-muted` | `#f4f7fa` / `#e4eff7` / `#f1f5f9` | neutros frios (substituem os creme) |
+| `--shadow-*` | `rgba(11, 59, 84, …)` | sombras azuladas |
+| `--shadow-focus` | `0 0 0 3px rgba(0, 184, 240, 0.32)` | foco visível |
+
+Cores **semânticas não mudam**: verde de sucesso (`#16a34a` e derivados), vermelho de erro, âmbar de aviso continuam sinalizando estado, não marca. As séries de gráfico do T&C (`brandBars` em `app.js`) passaram a usar tons de azul — mudança apenas cromática, sem alteração de lógica.
+
+#### 3.2b Grid e respiro lateral — `--page-gutter`
+
+`--page-gutter: clamp(16px, 3.5vw, 32px)` é o respiro lateral único de todas as páginas (16px no celular → 32px no desktop). Usar esse token em vez de padding fixo.
+
+Aplicado em `.page-container`, `.content`, `.hero-inner`, `.tab-upload-section`, `.sg-chat-topbar-inner` e `.ai-split-body`. Com isso a topbar do relatório e o corpo (relatório + chat) passaram a compartilhar o mesmo modelo de caixa (`max-width: var(--content-max-width)` + gutter interno) e começam exatamente na mesma coluna.
+
+Layouts de duas colunas viraram **grid** (eram flex com largura fixa):
+
+| Container | Colunas | Colapsa em |
+|---|---|---|
+| `.ai-split-body` (relatório + chat de SG/FL/Apólice) | `minmax(0, 1fr)` + `clamp(320px, 32vw, 460px)` | ≤1024px |
+| `.af-split-layout` (Análise Financeira) | `minmax(0, 1fr)` + `clamp(280px, 26vw, 340px)` | ≤1024px |
+
+Correções de responsividade que vieram junto: `.ai-split-body` tinha `padding: 0 200px 0 0` fixo (espremia o relatório em telas médias) e era zerado em ≤900px (colava o card na borda); `.sg-chat-topbar-actions` empilhava em coluna e estourava a largura da janela no celular (gerava scroll horizontal) — agora é linha com `flex-wrap` e, em ≤768px, o título fica acima e as ações abaixo. Verificado em 390px, 820px e 1440px: **sem scroll horizontal e com margens simétricas** nos três.
 
 ### 3.3 IA / Dados
 
@@ -362,11 +397,30 @@ Cada id tem orientação dedicada cobrindo finalidade, momento do risco, partes,
 
 Em Fiança Locatícia, toda orientação recebe também o checklist de **coberturas** (aluguel, condomínio, IPTU, água, energia elétrica, gás, danos ao imóvel, pintura interna, pintura externa, multa por rescisão contratual, encargos legais). Cobertura **não é** modalidade: a IA deve classificar cada uma como *encontrada no documento* (com fonte), *solicitada nas considerações* ("informado pelo usuário"), *recomendada* ou *não localizada* — nunca como contratada sem evidência documental.
 
+#### 5.7.1a Escopo fechado — a análise entrega só a modalidade pedida
+
+Quando há `context.modalidade`, a análise trata **exclusivamente** daquela modalidade:
+
+- **Síntese final (SG):** o array `modalidades` do JSON deve conter **exatamente um item** — o da modalidade solicitada. Todos os campos desse item (IS, base de cálculo, vigência, objeto, cláusulas) descrevem apenas ela; `coberturas_clausulas_exigidas`, `prazo_e_forma_de_apresentacao`, pendências, perguntas, resumo e parecer também.
+- Outras modalidades exigidas no documento **não viram card**: entram em `alertas_de_risco` no formato `"Documento tambem exige [modalidade] ([fonte]) — fora do escopo desta analise"`.
+- Se a modalidade solicitada não estiver nos documentos, o item único volta com campos `null`, o alerta é registrado e `conclusao_operacional` reflete isso.
+- **Fiança:** mesmo princípio — a locação é analisada sob a ótica da modalidade escolhida; destinação divergente vira `riscos`, não troca de análise.
+- **Etapa de chunk é diferente** (`buildAnalysisContext(manifest, 'chunk')`): ali a IA continua registrando todas as modalidades citadas no trecho — a síntese precisa dessa evidência para apontar divergência. O fechamento do escopo acontece só na síntese (`stage = 'final'`, padrão).
+
+**Rede de segurança no front-end** (`app.js`): mesmo com a instrução no prompt, o modelo pode devolver modalidades extras. `separarModalidadesPorEscopo(modalidades, contexto)` classifica cada item por palavras-chave (`SG_MODALIDADE_PALAVRAS`, comparação sem acento via `normalizarTextoBusca`):
+
+- item que casa com a modalidade solicitada → card normal;
+- item que casa com **outra** modalidade do catálogo → bloco `buildSgForaEscopoHtml` ("Outras modalidades citadas no documento"), sem card;
+- item **ambíguo** (não casa com nenhuma) → permanece como card, para nunca esconder informação do subscritor;
+- sem contexto, ou modalidade `outra` → nada é filtrado (retrocompatibilidade).
+
+Se nenhum item casar com a modalidade pedida, `buildSgModalidadeAusenteHtml` exibe o aviso "Modalidade solicitada não localizada". O contrato JSON continua o mesmo — o filtro é de **renderização**.
+
 #### 5.7.2 Onde o contexto entra nos prompts
 
 | Ponto | Função | Arquivo |
 |---|---|---|
-| Bloco único de contexto | `buildAnalysisContext(manifest)` | Worker |
+| Bloco único de contexto | `buildAnalysisContext(manifest, stage)` — `stage` = `'chunk'` (coleta) ou `'final'` (escopo fechado) | Worker |
 | Orientação por modalidade | `getSeguroGarantiaModalityGuidance(id)` / `getFiancaModalityGuidance(id)` | Worker |
 | Análise de chunk | `buildChunkPrompt(flow, fileNames, chunk, contextBlock)` | Worker |
 | Síntese final | `buildFinalPrompt(flow, fileNames, chunkNotes, contextBlock)` | Worker |
@@ -394,7 +448,7 @@ Defesa técnica complementar: a sanitização (front-end **e** Worker) remove qu
 - A modalidade selecionada é a **finalidade declarada da demanda**, não prova documental.
 - A IA prioriza a análise especializada nessa modalidade, mas registra divergência se os documentos indicarem outra — nunca troca a modalidade silenciosamente.
 - Documentos incompatíveis com a modalidade selecionada devem ser sinalizados explicitamente.
-- Em Seguro Garantia, o array `modalidades` do JSON final continua refletindo **apenas** as modalidades identificadas nos documentos.
+- Em Seguro Garantia, o array `modalidades` do JSON final traz **um único item**: a modalidade solicitada (ver 5.7.1a). As demais aparecem como alerta, nunca como card.
 - Em Fiança Locatícia, nenhuma cobertura entra como contratada sem evidência documental.
 - **O contrato JSON final de nenhum fluxo foi alterado nesta versão.**
 
@@ -616,6 +670,16 @@ A função `renderSeguroGarantiaReport` (markdown) é mantida como legado para f
 
 O bloco é renderizado a partir de `sgContextoDemanda` — o estado validado do front-end no início da análise — e não depende de a IA repetir esses dados. Todo conteúdo dinâmico passa por `esc()`. O mesmo vale para Fiança Locatícia com `flContextoDemanda`.
 
+Funções e classes adicionadas nesta versão: `separarModalidadesPorEscopo`, `buildSgForaEscopoHtml`, `buildSgModalidadeAusenteHtml`, `modalidadeCombina`, `normalizarTextoBusca` (`app.js`); `.sg-fora-escopo-card`, `.sg-fora-escopo-card--alerta`, `.sg-fora-escopo-titulo`, `.sg-fora-escopo-nota`, `.sg-fora-escopo-lista`, `.sg-fora-escopo-detalhe`, `.sg-dado-item--destaque`, `.sg-report-gen-date` (`styles.css`).
+
+### 7.2d Refinamento visual do relatório (2.29)
+
+- Masthead com gradiente navy + brilho ciano no canto direito; `.sg-report-gen-date` ganhou regra própria (antes ficava sem estilo, colando no badge de veredicto) e `.sg-report-masthead-right` passou a ter `gap`.
+- `.sg-dado-item` virou **grid** rótulo/valor (antes flex com largura fixa), rótulo em caixa alta discreta, sem zebra — o realce agora é semântico: `.sg-dado-item--destaque` marca linhas monetárias (IS, valor da garantia) com faixa `--color-accent-light` e valor em `--font-mono` grande. `buildEmissaoFieldRow` e `buildDadoItem` aplicam a classe quando `format === 'brl'` e o valor é numérico.
+- `.sg-dado-fonte` virou chip com fundo e borda, para a fonte documental nunca ser lida como parte do valor.
+- `.sg-modalidade-emission-head` com gradiente, filete ciano à esquerda e título em serifada.
+- Em ≤480px a linha de dado empilha rótulo e valor.
+
 ### 7.3 Arquitetura de renderização
 
 A primeira mensagem da IA no chat é renderizada como **card de emissão** (`div.sg-report-wrapper`). Mensagens subsequentes usam o layout de balão padrão (`sg-chat-msg--user` / `sg-chat-msg--ai`).
@@ -653,6 +717,7 @@ Os três sidebars de Q&A (Seguro Garantia, Fiança Locatícia, Análise Financei
 - **Botão de clipe** (`ai-chat-attach-btn`) abre o seletor de arquivos: `.pdf .png .jpg .jpeg .xlsx .xls .csv .txt`
 - **Drag-and-drop** na área de input (`ai-sidebar-input-area`) — IDs: `sgInputArea`, `flInputArea`, `afInputArea`
 - **Chips visuais** (`ai-chat-file-chip`) exibem arquivos pendentes; podem ser removidos individualmente
+- **Sugestões de perguntas são botões funcionais**: `_addChatHint(messagesId, questions, flow)` monta cada sugestão como `<button class="ai-chat-hint-btn">` (texto via `textContent`, sem `innerHTML`) e o clique chama `enviarSugestaoChat(flow, pergunta)`, que preenche o input do fluxo e dispara o envio. `CHAT_FLOW_CONFIG` mapeia `sg`/`fl`/`af`/`ap` para `{ inputId, enviar }`. Sem `flow`, a sugestão continua como texto simples (retrocompatível).
 - Ao enviar: `_buildChatMessage(flow, text)` extrai conteúdo via `extrairConteudoArquivo()`:
   - Imagens → `{type:'image_url', image_url:{url: base64}}` no array de content
   - Textuais → conteúdo extraído prefixado ao texto da mensagem
