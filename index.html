@@ -51,7 +51,7 @@
     </button>
     <button type="button" class="sidebar-item" id="tab-consulta-limites" data-page="consulta-limites" onclick="switchTab('consulta-limites')" title="Consulta de Limites">
       <span class="sidebar-item-icon" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none"><circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" stroke-width="1.6"/><path d="M13 13l4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="square"/></svg></span>
-      <span class="sidebar-item-label">Consulta de Limites</span>
+      <span class="sidebar-item-label">Consulta de Limites (homolog)</span>
     </button>
   </nav>
 </aside>
@@ -493,6 +493,36 @@
         </div>
 
         <div class="upload-card-body">
+          <div class="demanda-fields">
+            <div class="demanda-field">
+              <label class="demanda-label" for="sgModalidade">Modalidade do Seguro Garantia <span class="demanda-req">obrigatório</span></label>
+              <span class="demanda-select-wrap">
+                <select class="demanda-select" id="sgModalidade" required aria-required="true" aria-describedby="sgModalidadeHint" onchange="onDemandaModalidadeChange('sg')">
+                  <option value="" disabled selected>Selecione a modalidade</option>
+                </select>
+              </span>
+              <p class="demanda-hint" id="sgModalidadeHint">Define a análise especializada que a IA vai aplicar aos documentos.</p>
+            </div>
+
+            <div class="demanda-field" id="sgModalidadeOutraWrap" hidden>
+              <label class="demanda-label" for="sgModalidadeOutra">Informe a modalidade <span class="demanda-req">obrigatório</span></label>
+              <input type="text" class="demanda-input" id="sgModalidadeOutra" maxlength="160" autocomplete="off"
+                     placeholder="Ex.: Garantia de obrigações ambientais" aria-describedby="sgModalidadeOutraHint"
+                     oninput="onDemandaFieldInput('sg')">
+              <p class="demanda-hint" id="sgModalidadeOutraHint">Descreva a modalidade da demanda em poucas palavras.</p>
+            </div>
+
+            <div class="demanda-field">
+              <label class="demanda-label" for="sgConsideracoes">Considerações para a IA <span class="demanda-opt">opcional</span></label>
+              <textarea class="demanda-textarea" id="sgConsideracoes" rows="4" maxlength="2000"
+                        placeholder="Informe particularidades da demanda, dúvidas, regras comerciais ou pontos que merecem atenção na análise."
+                        aria-describedby="sgConsideracoesCounter" oninput="onDemandaFieldInput('sg')"></textarea>
+              <p class="demanda-counter" id="sgConsideracoesCounter" aria-live="polite">0 / 2000 caracteres</p>
+            </div>
+
+            <p class="demanda-error" id="sgDemandaError" role="alert" hidden></p>
+          </div>
+
           <label class="drop-zone drop-zone--garantia" id="dropZoneGarantia" tabindex="0" aria-label="Clique ou arraste documentos de seguro garantia">
             <input type="file" id="fileInputGarantia" accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.csv" multiple>
             <svg class="drop-icon" viewBox="0 0 48 48" fill="none" aria-hidden="true"><rect x="6" y="4" width="28" height="36" rx="2" stroke="currentColor" stroke-width="2.5"/><path d="M28 4v10h10" stroke="currentColor" stroke-width="2.5" stroke-linecap="square"/><path d="M14 22h20M14 29h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
@@ -609,6 +639,36 @@
           <span class="badge-ia-tag badge-ia-tag--fianca">Lavoro IA</span>
         </div>
         <div class="upload-card-body">
+          <div class="demanda-fields">
+            <div class="demanda-field">
+              <label class="demanda-label" for="flModalidade">Modalidade da Fiança Locatícia <span class="demanda-req">obrigatório</span></label>
+              <span class="demanda-select-wrap">
+                <select class="demanda-select" id="flModalidade" required aria-required="true" aria-describedby="flModalidadeHint" onchange="onDemandaModalidadeChange('fl')">
+                  <option value="" disabled selected>Selecione a modalidade</option>
+                </select>
+              </span>
+              <p class="demanda-hint" id="flModalidadeHint">Define a análise especializada que a IA vai aplicar aos documentos.</p>
+            </div>
+
+            <div class="demanda-field" id="flModalidadeOutraWrap" hidden>
+              <label class="demanda-label" for="flModalidadeOutra">Informe a modalidade <span class="demanda-req">obrigatório</span></label>
+              <input type="text" class="demanda-input" id="flModalidadeOutra" maxlength="160" autocomplete="off"
+                     placeholder="Ex.: Locação de temporada" aria-describedby="flModalidadeOutraHint"
+                     oninput="onDemandaFieldInput('fl')">
+              <p class="demanda-hint" id="flModalidadeOutraHint">Descreva a modalidade da demanda em poucas palavras.</p>
+            </div>
+
+            <div class="demanda-field">
+              <label class="demanda-label" for="flConsideracoes">Considerações para a IA <span class="demanda-opt">opcional</span></label>
+              <textarea class="demanda-textarea" id="flConsideracoes" rows="4" maxlength="2000"
+                        placeholder="Informe particularidades da locação, coberturas solicitadas, dúvidas, regras comerciais ou pontos que merecem atenção."
+                        aria-describedby="flConsideracoesCounter" oninput="onDemandaFieldInput('fl')"></textarea>
+              <p class="demanda-counter" id="flConsideracoesCounter" aria-live="polite">0 / 2000 caracteres</p>
+            </div>
+
+            <p class="demanda-error" id="flDemandaError" role="alert" hidden></p>
+          </div>
+
           <label class="drop-zone drop-zone--fianca" id="dropZoneFianca" tabindex="0" aria-label="Clique ou arraste documentos de fiança locatícia">
             <input type="file" id="fileInputFianca" accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.csv" multiple>
             <svg class="drop-icon" viewBox="0 0 48 48" fill="none" aria-hidden="true"><rect x="6" y="4" width="28" height="36" rx="2" stroke="currentColor" stroke-width="2.5"/><path d="M28 4v10h10" stroke="currentColor" stroke-width="2.5" stroke-linecap="square"/><path d="M14 22h20M14 29h14M14 36h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>

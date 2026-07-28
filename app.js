@@ -830,7 +830,16 @@ function handleContratoFiles(files, fileArray, maxFiles, extensions, listId, btn
     fileArray.push(file);
   }
   renderContratoFileList(fileArray, listId, tipo);
-  document.getElementById(btnId).disabled = fileArray.length === 0;
+  atualizarBotaoAnalise(tipo, fileArray, btnId);
+}
+
+// Seguro Garantia e Fiança dependem também da modalidade selecionada; os demais
+// fluxos continuam habilitando o botão apenas pela presença de arquivos.
+function atualizarBotaoAnalise(tipo, fileArray, btnId) {
+  if (tipo === 'garantia') return refreshDemandaState('sg');
+  if (tipo === 'fianca') return refreshDemandaState('fl');
+  const btn = document.getElementById(btnId);
+  if (btn) btn.disabled = fileArray.length === 0;
 }
 
 function renderContratoFileList(fileArray, listId, tipo) {
@@ -854,12 +863,12 @@ function removeContratoFile(tipo, index) {
   if (tipo === 'garantia') {
     garantiaFiles.splice(index, 1);
     renderContratoFileList(garantiaFiles, 'garantiaFileList', 'garantia');
-    document.getElementById('btnAnalyzeGarantia').disabled = garantiaFiles.length === 0;
+    refreshDemandaState('sg');
     hideGarantiaError();
   } else if (tipo === 'fianca') {
     fiancaFiles.splice(index, 1);
     renderContratoFileList(fiancaFiles, 'fiancaFileList', 'fianca');
-    document.getElementById('btnAnalyzeFianca').disabled = fiancaFiles.length === 0;
+    refreshDemandaState('fl');
     hideFiancaError();
   } else if (tipo === 'apolice') {
     apoliceFiles.splice(index, 1);
@@ -868,6 +877,239 @@ function removeContratoFile(tipo, index) {
     hideApoliceError();
   }
 }
+
+// ── Contexto da demanda: modalidade + considerações (Seguro Garantia / Fiança) ──
+//
+// Catálogo centralizado da UI. Os ids são os mesmos validados pelo Worker
+// (workers/deepseek-memory-worker.js → SG_MODALIDADES / FL_MODALIDADES) e usados
+// pelas orientações especializadas de deepseek.js. Alterar um id aqui exige
+// alterar os três arquivos.
+
+const DEMANDA_CONSIDERACOES_MAX = 2000;
+const DEMANDA_MODALIDADE_LABEL_MAX = 160;
+
+const SG_MODALIDADES_CATALOGO = [
+  { id: 'licitante-proposta', label: 'Garantia do Licitante / Garantia de Proposta' },
+  { id: 'execucao-fiel-cumprimento', label: 'Garantia de Execução / Fiel Cumprimento' },
+  { id: 'adiantamento-pagamento', label: 'Garantia de Adiantamento de Pagamento' },
+  { id: 'retencao-pagamento', label: 'Garantia de Retenção de Pagamento' },
+  { id: 'manutencao-corretiva', label: 'Garantia de Manutenção Corretiva / Perfeito Funcionamento' },
+  { id: 'trabalhista-previdenciaria', label: 'Garantia Trabalhista e Previdenciária' },
+  { id: 'aduaneira', label: 'Garantia Aduaneira' },
+  { id: 'judicial', label: 'Garantia Judicial' },
+  { id: 'judicial-execucao-fiscal', label: 'Garantia Judicial para Execução Fiscal' },
+  { id: 'recursal', label: 'Garantia Recursal' },
+  { id: 'administrativa-creditos-tributarios', label: 'Garantia Administrativa de Créditos Tributários' },
+  { id: 'parcelamento-administrativo-fiscal', label: 'Garantia de Parcelamento Administrativo Fiscal' },
+  { id: 'imobiliaria', label: 'Garantia Imobiliária' },
+  { id: 'concessoes', label: 'Garantia para Concessões' },
+  { id: 'energia', label: 'Garantia para o Setor de Energia' },
+  { id: 'completion', label: 'Garantia de Completion / Conclusão de Projeto' },
+  { id: 'outra', label: 'Outra modalidade' },
+];
+
+const FL_MODALIDADES_CATALOGO = [
+  { id: 'residencial', label: 'Locação Residencial' },
+  { id: 'comercial', label: 'Locação Comercial' },
+  { id: 'nao-residencial', label: 'Locação Não Residencial' },
+  { id: 'pessoa-juridica', label: 'Locação por Pessoa Jurídica' },
+  { id: 'construcao-built-to-suit', label: 'Imóvel em Construção / Built to Suit' },
+  { id: 'outra', label: 'Outra modalidade' },
+];
+
+const DEMANDA_CONFIG = {
+  sg: {
+    catalogo: SG_MODALIDADES_CATALOGO,
+    selectId: 'sgModalidade',
+    outraWrapId: 'sgModalidadeOutraWrap',
+    outraInputId: 'sgModalidadeOutra',
+    consideracoesId: 'sgConsideracoes',
+    counterId: 'sgConsideracoesCounter',
+    errorId: 'sgDemandaError',
+    btnId: 'btnAnalyzeGarantia',
+    nomeCampo: 'modalidade do seguro garantia',
+    arquivos: () => garantiaFiles,
+  },
+  fl: {
+    catalogo: FL_MODALIDADES_CATALOGO,
+    selectId: 'flModalidade',
+    outraWrapId: 'flModalidadeOutraWrap',
+    outraInputId: 'flModalidadeOutra',
+    consideracoesId: 'flConsideracoes',
+    counterId: 'flConsideracoesCounter',
+    errorId: 'flDemandaError',
+    btnId: 'btnAnalyzeFianca',
+    nomeCampo: 'modalidade da fiança locatícia',
+    arquivos: () => fiancaFiles,
+  },
+};
+
+// Contexto validado no momento em que cada análise começou — o relatório renderiza
+// a partir daqui, nunca do que a IA repetiu de volta.
+let sgContextoDemanda = null;
+let flContextoDemanda = null;
+
+// Percorre por code point para não depender de escapes \uXXXX no regex.
+function stripCaracteresDeControle(texto) {
+  let out = '';
+  for (const ch of texto) {
+    const code = ch.codePointAt(0);
+    const controle = (code < 32 && ch !== '\n') || (code >= 127 && code <= 159);
+    out += controle ? ' ' : ch;
+  }
+  return out;
+}
+
+// Texto do usuário: sem HTML, sem caracteres de controle, espaços normalizados e
+// truncado. Só espaços vira string vazia. O Worker repete a sanitização no servidor.
+function sanitizeDemandaTexto(value, maxLength) {
+  if (typeof value !== 'string') return '';
+  return stripCaracteresDeControle(value.replace(/\r\n?/g, '\n'))
+    .replace(/<[^>]*>/g, ' ')
+    .split('\n')
+    .map(linha => linha.replace(/\s+/g, ' ').trim())
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+    .slice(0, maxLength)
+    .trim();
+}
+
+function initDemandaFields() {
+  Object.keys(DEMANDA_CONFIG).forEach(flow => {
+    const cfg = DEMANDA_CONFIG[flow];
+    const select = document.getElementById(cfg.selectId);
+    if (!select) return;
+    cfg.catalogo.forEach(item => {
+      const opt = document.createElement('option');
+      opt.value = item.id;
+      opt.textContent = item.label;
+      select.appendChild(opt);
+    });
+    updateConsideracoesCounter(flow);
+    refreshDemandaState(flow);
+  });
+}
+
+function onDemandaModalidadeChange(flow) {
+  const cfg = DEMANDA_CONFIG[flow];
+  const select = document.getElementById(cfg.selectId);
+  const wrap = document.getElementById(cfg.outraWrapId);
+  const outra = document.getElementById(cfg.outraInputId);
+  const isOutra = !!select && select.value === 'outra';
+  if (wrap) wrap.hidden = !isOutra;
+  if (outra) {
+    if (isOutra) outra.focus();
+    else outra.value = '';
+  }
+  refreshDemandaState(flow);
+}
+
+function onDemandaFieldInput(flow) {
+  updateConsideracoesCounter(flow);
+  refreshDemandaState(flow);
+}
+
+function updateConsideracoesCounter(flow) {
+  const cfg = DEMANDA_CONFIG[flow];
+  const campo = document.getElementById(cfg.consideracoesId);
+  const counter = document.getElementById(cfg.counterId);
+  if (!campo || !counter) return;
+  const total = campo.value.length;
+  counter.textContent = total + ' / ' + DEMANDA_CONSIDERACOES_MAX + ' caracteres';
+  counter.classList.toggle('demanda-counter--limite', total >= DEMANDA_CONSIDERACOES_MAX);
+}
+
+// Retorna { ok, contexto } ou { ok: false, erro, foco } — nunca lança.
+function lerContextoDemanda(flow) {
+  const cfg = DEMANDA_CONFIG[flow];
+  const select = document.getElementById(cfg.selectId);
+  const id = select ? select.value : '';
+  if (!id) return { ok: false, erro: 'Selecione a ' + cfg.nomeCampo + ' antes de iniciar a análise.', foco: cfg.selectId };
+
+  const item = cfg.catalogo.find(mod => mod.id === id);
+  if (!item) return { ok: false, erro: 'Modalidade inválida. Escolha uma opção da lista.', foco: cfg.selectId };
+
+  let label = item.label;
+  if (id === 'outra') {
+    const outra = document.getElementById(cfg.outraInputId);
+    label = sanitizeDemandaTexto(outra ? outra.value : '', DEMANDA_MODALIDADE_LABEL_MAX);
+    if (!label) return { ok: false, erro: 'Informe o nome da modalidade em "Outra modalidade".', foco: cfg.outraInputId };
+  }
+
+  const campo = document.getElementById(cfg.consideracoesId);
+  const consideracoes = sanitizeDemandaTexto(campo ? campo.value : '', DEMANDA_CONSIDERACOES_MAX);
+  return { ok: true, contexto: { modalidade: { id, label }, consideracoes } };
+}
+
+function showDemandaErro(flow, msg, foco) {
+  const cfg = DEMANDA_CONFIG[flow];
+  const el = document.getElementById(cfg.errorId);
+  if (el) { el.textContent = msg; el.hidden = false; }
+  const alvo = foco && document.getElementById(foco);
+  if (alvo) alvo.focus();
+}
+
+function hideDemandaErro(flow) {
+  const el = document.getElementById(DEMANDA_CONFIG[flow].errorId);
+  if (el) { el.textContent = ''; el.hidden = true; }
+}
+
+// Botão de análise exige arquivos E modalidade válida; a mensagem só aparece
+// depois que há arquivos, para não cobrar o campo antes da hora.
+function refreshDemandaState(flow) {
+  const cfg = DEMANDA_CONFIG[flow];
+  const leitura = lerContextoDemanda(flow);
+  const temArquivos = cfg.arquivos().length > 0;
+
+  const btn = document.getElementById(cfg.btnId);
+  if (btn) btn.disabled = !temArquivos || !leitura.ok;
+
+  if (temArquivos && !leitura.ok) {
+    const el = document.getElementById(cfg.errorId);
+    if (el) { el.textContent = leitura.erro; el.hidden = false; }
+  } else {
+    hideDemandaErro(flow);
+  }
+}
+
+function resetDemandaFields(flow) {
+  const cfg = DEMANDA_CONFIG[flow];
+  const select = document.getElementById(cfg.selectId);
+  if (select) select.selectedIndex = 0;
+  const wrap = document.getElementById(cfg.outraWrapId);
+  if (wrap) wrap.hidden = true;
+  const outra = document.getElementById(cfg.outraInputId);
+  if (outra) outra.value = '';
+  const campo = document.getElementById(cfg.consideracoesId);
+  if (campo) campo.value = '';
+  updateConsideracoesCounter(flow);
+  hideDemandaErro(flow);
+  refreshDemandaState(flow);
+}
+
+// Cabeçalho do relatório: renderizado do estado validado do front-end, não da IA.
+function buildDemandaContextoHtml(contexto) {
+  if (!contexto || !contexto.modalidade || !contexto.modalidade.label) return '';
+  const consideracoes = (contexto.consideracoes || '').trim();
+  const consideracoesHtml = consideracoes
+    ? `<div class="demanda-contexto-bloco">
+        <p class="demanda-contexto-label">Considerações informadas</p>
+        <p class="demanda-contexto-texto">${esc(consideracoes)}</p>
+      </div>`
+    : '';
+  return `
+    <div class="demanda-contexto-card">
+      <div class="demanda-contexto-bloco">
+        <p class="demanda-contexto-label">Modalidade solicitada</p>
+        <p class="demanda-contexto-modalidade">${esc(contexto.modalidade.label)}</p>
+        <p class="demanda-contexto-nota">Informada pelo usuário na abertura da análise — não representa a modalidade identificada nos documentos.</p>
+      </div>
+      ${consideracoesHtml}
+    </div>`;
+}
+
+initDemandaFields();
 
 // Garantia drop zone
 const dzGarantia = document.getElementById('dropZoneGarantia');
@@ -953,7 +1195,20 @@ function hideApoliceError() {
 
 // ── Process functions
 async function processarSeguroGarantia() {
-  if (garantiaFiles.length === 0) return;
+  if (garantiaFiles.length === 0) {
+    showGarantiaError('Anexe ao menos um documento antes de analisar.');
+    return;
+  }
+
+  // Revalida a modalidade no envio — nunca confia só no estado do botão.
+  const leitura = lerContextoDemanda('sg');
+  if (!leitura.ok) {
+    showDemandaErro('sg', leitura.erro, leitura.foco);
+    return;
+  }
+  sgContextoDemanda = leitura.contexto;
+  hideDemandaErro('sg');
+
   const btn = document.getElementById('btnAnalyzeGarantia');
   btn.disabled = true;
   btn.querySelector('.btn-label').textContent = 'Analisando…';
@@ -968,8 +1223,8 @@ async function processarSeguroGarantia() {
   document.getElementById('sgChatMessages').innerHTML = '';
 
   try {
-    const respData = await analisarSeguroGarantia(garantiaFiles);
-    sgChatHistory = criarHistoricoSeguroGarantia(garantiaFiles, respData);
+    const respData = await analisarSeguroGarantia(garantiaFiles, sgContextoDemanda);
+    sgChatHistory = criarHistoricoSeguroGarantia(garantiaFiles, respData, sgContextoDemanda);
 
     const title = garantiaFiles.length === 1 ? garantiaFiles[0].name : garantiaFiles.length + ' documentos analisados';
     const files = garantiaFiles.map(f => f.name).join(' · ');
@@ -990,8 +1245,8 @@ async function processarSeguroGarantia() {
     document.getElementById('sgUploadSection').hidden = false;
     showGarantiaError('Erro ao analisar: ' + err.message);
   } finally {
-    btn.disabled = false;
     btn.querySelector('.btn-label').textContent = 'Analisar com IA';
+    refreshDemandaState('sg');
   }
 }
 
@@ -999,8 +1254,9 @@ function resetSeguroGarantia() {
   garantiaFiles = [];
   sgChatHistory = [];
   sgFirstAnalysis = true;
+  sgContextoDemanda = null;
   renderContratoFileList(garantiaFiles, 'garantiaFileList', 'garantia');
-  document.getElementById('btnAnalyzeGarantia').disabled = true;
+  resetDemandaFields('sg');
   document.getElementById('sgChatArea').hidden = true;
   document.getElementById('sgUploadSection').hidden = false;
   document.getElementById('sgChatMessages').innerHTML = '';
@@ -1240,6 +1496,7 @@ function renderSeguroGarantiaReport(text) {
         </div>
       </div>
       <div class="sg-report-sections">
+        ${buildDemandaContextoHtml(sgContextoDemanda)}
         ${sections.map(renderReportSection).join('')}
       </div>
     </div>`;
@@ -1331,6 +1588,8 @@ function renderSeguroGarantiaCard(data) {
 
       <div class="sg-emission-body">
         ${docs.length > 0 ? `<div class="sg-docs-analisados">${docs.map(d => `<span class="sg-doc-badge">${esc(d)}</span>`).join('')}</div>` : ''}
+
+        ${buildDemandaContextoHtml(sgContextoDemanda)}
 
         ${resumoHtml}
 
@@ -1845,7 +2104,20 @@ let flFirstAnalysis = true;
 let flAnaliseData = null;
 
 async function processarFiancaLocaticia() {
-  if (fiancaFiles.length === 0) return;
+  if (fiancaFiles.length === 0) {
+    showFiancaError('Anexe ao menos um documento antes de analisar.');
+    return;
+  }
+
+  // Revalida a modalidade no envio — nunca confia só no estado do botão.
+  const leitura = lerContextoDemanda('fl');
+  if (!leitura.ok) {
+    showDemandaErro('fl', leitura.erro, leitura.foco);
+    return;
+  }
+  flContextoDemanda = leitura.contexto;
+  hideDemandaErro('fl');
+
   const btn = document.getElementById('btnAnalyzeFianca');
   btn.disabled = true;
   btn.querySelector('.btn-label').textContent = 'Analisando…';
@@ -1861,7 +2133,7 @@ async function processarFiancaLocaticia() {
   if (flExportBtn) flExportBtn.hidden = true;
 
   try {
-    const resultado = await analisarFiancaLocaticia(fiancaFiles);
+    const resultado = await analisarFiancaLocaticia(fiancaFiles, flContextoDemanda);
     flAnaliseData = resultado;
     renderFiancaLocaticia(resultado);
   } catch (err) {
@@ -1869,8 +2141,8 @@ async function processarFiancaLocaticia() {
     document.getElementById('flUploadSection').hidden = false;
     showFiancaError('Erro ao analisar: ' + err.message);
   } finally {
-    btn.disabled = false;
     btn.querySelector('.btn-label').textContent = 'Analisar com IA';
+    refreshDemandaState('fl');
   }
 }
 
@@ -1879,8 +2151,9 @@ function resetFiancaLocaticia() {
   flChatHistory = [];
   flFirstAnalysis = true;
   flAnaliseData = null;
+  flContextoDemanda = null;
   renderContratoFileList(fiancaFiles, 'fiancaFileList', 'fianca');
-  document.getElementById('btnAnalyzeFianca').disabled = true;
+  resetDemandaFields('fl');
   document.getElementById('flChatArea').hidden = true;
   document.getElementById('flUploadSection').hidden = false;
   document.getElementById('flChatMessages').innerHTML = '';
@@ -1907,7 +2180,7 @@ function renderFiancaLocaticia(data) {
   document.getElementById('flChatFiles').textContent = filesText;
 
   // Build chat history context
-  flChatHistory = criarHistoricoFiancaLocaticia(fiancaFiles, JSON.stringify(data));
+  flChatHistory = criarHistoricoFiancaLocaticia(fiancaFiles, JSON.stringify(data), flContextoDemanda);
 
   // Render as first chat message
   const reportHtml = buildFlReportHtml(data, locatario, imovel, dateStr);
@@ -2157,6 +2430,8 @@ function buildFlReportHtml(data, locatario, imovel, dateStr) {
 
       <div class="fl-report-body">
         ${docs.length > 0 ? `<div class="sg-docs-analisados">${docs.map(d => `<span class="sg-doc-badge">${esc(d)}</span>`).join('')}</div>` : ''}
+
+        ${buildDemandaContextoHtml(flContextoDemanda)}
 
         ${temPartes ? `<div class="sg-emission-partes-grid">${locatarioHtml}${locadorHtml}</div>` : ''}
 
