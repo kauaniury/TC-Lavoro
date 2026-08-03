@@ -5,7 +5,7 @@ const CORS_HEADERS = {
 };
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
-const WORKER_VERSION = '2026-08-03.1';
+const WORKER_VERSION = '2026-08-03.2';
 const PRIMARY_DEEPSEEK_MODEL = 'deepseek-chat';
 const FALLBACK_DEEPSEEK_MODEL = 'deepseek-chat';
 const JOB_TTL_SECONDS = 60 * 60 * 6;
@@ -81,6 +81,22 @@ export default {
 
       if (request.method === 'POST' && url.pathname === '/v1/limits/query') {
         return withCors(await handleLimitsQuery(request, env));
+      }
+
+      if (request.method === 'POST' && url.pathname === '/v1/tc/analises') {
+        return withCors(await handleCreateTcAnalise(request, env));
+      }
+
+      if (request.method === 'GET' && url.pathname === '/v1/tc/analises') {
+        return withCors(await handleListTcAnalises(url, env));
+      }
+
+      const tcMatch = url.pathname.match(/^\/v1\/tc\/analises\/(\d+)$/);
+      if (request.method === 'GET' && tcMatch) {
+        return withCors(await handleGetTcAnalise(tcMatch[1], env));
+      }
+      if (request.method === 'DELETE' && tcMatch) {
+        return withCors(await handleDeleteTcAnalise(tcMatch[1], env));
       }
 
       const jobMatch = url.pathname.match(/^\/v1\/analysis-jobs\/([^/]+)$/);
@@ -1568,6 +1584,89 @@ async function queryFator(env, cnpj) {
   // HTTP 200 — nunca deve ser tratado como erro tecnico. So HTTP nao-2xx e falha real.
   if (!res.ok) throw new Error(extractErrorMessage(await parseJsonSafe(res), `Fator consulta error ${res.status}`));
   return res.json();
+}
+
+// ── T&C — historico de analises por tomador (D1) ────────────────────────────
+//
+// Cada analise do T&C Dashboard (upload de planilha ou tabela manual) vira um
+// snapshot: os `rows[]` completos (SPEC.md secao 4.3) ficam como JSON em
+// `tc_analises.rows_json`, sem normalizar por seguradora/modalidade. E um
+// arquivo, nao um relatorio cruzado — se um dia for preciso comparar o limite
+// de uma seguradora ao longo do tempo, normaliza-se entao uma tabela filha a
+// partir desses snapshots. Ver workers/migrations/0001_create_tc_tables.sql.
+
+function requireDb(env) {
+  if (!env.DB) throw new Error('Configure o binding D1 "DB" no wrangler.toml antes de usar o historico de T&C.');
+  return env.DB;
+}
+
+async function handleCreateTcAnalise(request, env) {
+  const db = requireDb(env);
+  const body = await request.json();
+  const cnpj = normalizeCnpj(body.cnpj);
+  if (cnpj.length !== 14) throw new Error('Informe um CNPJ valido com 14 digitos.');
+  if (!Array.isArray(body.rows)) throw new Error('rows deve ser uma lista.');
+
+  const tomador = typeof body.tomador === 'string' ? body.tomador.trim().slice(0, 200) || null : null;
+  const origem = body.origem === 'manual' ? 'manual' : 'upload';
+  const rowsJson = JSON.stringify(body.rows);
+
+  const tomadorRow = await db.prepare(
+    `INSERT INTO tc_tomadores (cnpj, nome) VALUES (?1, ?2)
+     ON CONFLICT(cnpj) DO UPDATE SET
+       nome = COALESCE(excluded.nome, tc_tomadores.nome),
+       atualizado_em = datetime('now')
+     RETURNING id`
+  ).bind(cnpj, tomador).first();
+
+  const analise = await db.prepare(
+    `INSERT INTO tc_analises (tomador_id, cnpj, tomador, origem, rows_json)
+     VALUES (?1, ?2, ?3, ?4, ?5)
+     RETURNING id, criado_em`
+  ).bind(tomadorRow.id, cnpj, tomador, origem, rowsJson).first();
+
+  return jsonResponse({ version: WORKER_VERSION, id: analise.id, criadoEm: analise.criado_em }, 201);
+}
+
+async function handleListTcAnalises(url, env) {
+  const db = requireDb(env);
+  const cnpj = normalizeCnpj(url.searchParams.get('cnpj'));
+  if (cnpj.length !== 14) throw new Error('Informe um CNPJ valido com 14 digitos.');
+
+  const { results } = await db.prepare(
+    `SELECT id, tomador, origem, criado_em FROM tc_analises WHERE cnpj = ?1 ORDER BY criado_em DESC`
+  ).bind(cnpj).all();
+
+  return jsonResponse({
+    version: WORKER_VERSION,
+    cnpj,
+    analises: results.map(r => ({ id: r.id, tomador: r.tomador, origem: r.origem, criadoEm: r.criado_em })),
+  });
+}
+
+async function handleGetTcAnalise(id, env) {
+  const db = requireDb(env);
+  const row = await db.prepare(
+    `SELECT id, cnpj, tomador, origem, rows_json, criado_em FROM tc_analises WHERE id = ?1`
+  ).bind(Number(id)).first();
+  if (!row) throw new Error('Analise nao encontrada.');
+
+  return jsonResponse({
+    version: WORKER_VERSION,
+    id: row.id,
+    cnpj: row.cnpj,
+    tomador: row.tomador,
+    origem: row.origem,
+    rows: JSON.parse(row.rows_json),
+    criadoEm: row.criado_em,
+  });
+}
+
+async function handleDeleteTcAnalise(id, env) {
+  const db = requireDb(env);
+  const res = await db.prepare(`DELETE FROM tc_analises WHERE id = ?1`).bind(Number(id)).run();
+  if (!res.meta || res.meta.changes === 0) throw new Error('Analise nao encontrada.');
+  return jsonResponse({ version: WORKER_VERSION, deleted: true });
 }
 
 function safeJobResponse(manifest) {

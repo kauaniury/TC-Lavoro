@@ -1244,3 +1244,47 @@ async function consultarLimitesSeguradoras(cnpj, seguradoras) {
 
   return resp.json();
 }
+
+// ── T&C — histórico de análises por tomador (D1, ver SPEC.md secao 13) ──────
+
+async function salvarTcAnalise(payload) {
+  const resp = await fetch(DEEPSEEK_WORKER_URL.replace(/\/+$/, '') + '/v1/tc/analises', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`Falha ao salvar T&C (${resp.status}): ${text}`);
+  }
+  return resp.json();
+}
+
+async function listarTcAnalises(cnpj) {
+  const resp = await fetch(DEEPSEEK_WORKER_URL.replace(/\/+$/, '') + '/v1/tc/analises?cnpj=' + encodeURIComponent(cnpj));
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`Falha ao listar historico (${resp.status}): ${text}`);
+  }
+  return resp.json();
+}
+
+async function buscarTcAnalise(id) {
+  const resp = await fetch(DEEPSEEK_WORKER_URL.replace(/\/+$/, '') + '/v1/tc/analises/' + encodeURIComponent(id));
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`Falha ao abrir analise (${resp.status}): ${text}`);
+  }
+  return resp.json();
+}
+
+async function apagarTcAnalise(id) {
+  const resp = await fetch(DEEPSEEK_WORKER_URL.replace(/\/+$/, '') + '/v1/tc/analises/' + encodeURIComponent(id), {
+    method: 'DELETE',
+  });
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`Falha ao apagar analise (${resp.status}): ${text}`);
+  }
+  return resp.json();
+}

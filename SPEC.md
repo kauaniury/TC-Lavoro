@@ -1,6 +1,6 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.31  
+> Versao: 2.33  
 > Atualizado em: 2026-08-03
 
 ## 1. Visão Geral
@@ -32,6 +32,22 @@ A navegação principal é uma sidebar fixa à esquerda (`.sidebar`, `index.html
 - `--topbar-height` foi zerado em `variables.css` (mantido só porque várias fórmulas de sticky-offset ainda somam esse token) — não representa mais uma barra horizontal.
 - Durante captura de PDF (`body.pdf-generating`) e impressão, `.sidebar` fica oculta e `.app-content` perde a margem reservada, evitando espaço em branco à esquerda no conteúdo exportado.
 
+#### 1.1z Item de sidebar com sub-itens — grupo "Relatório T&C"
+
+O item "Relatório T&C" deixou de navegar direto: agora é uma **pasta expansível** (`.sidebar-group`, `#tcSidebarGroup`) com três sub-itens (`.sidebar-subitem`), indentados, dentro de `.sidebar-group-list`:
+
+| Sub-item | Ação | Função (app.js) |
+|---|---|---|
+| Importar planilha | `switchTab('upload')` + `switchTcMode('upload')` | `abrirTcModo('upload')` |
+| Preencher manualmente | `switchTab('upload')` + `switchTcMode('manual')` | `abrirTcModo('manual')` |
+| TCs salvos | `switchTab('tc-salvos')` | `abrirTcSalvosPage()` |
+
+- O botão-cabeçalho (`#tab-relatorio-tc`, ainda `.sidebar-item`) só **abre/fecha** a pasta (`toggleTcSidebarGroup()`) — não navega mais sozinho. Mantém `data-pages="upload dashboard tc-salvos"`, então o laço genérico de `switchTab()` continua marcando-o `.active`/`aria-current="page"` normalmente sempre que a página ativa for uma dessas três (nenhuma mudança precisou no `switchTab()` em si).
+- Os três sub-itens usam a classe `.sidebar-subitem` (não `.sidebar-item`) — ficam **fora** do laço genérico de `switchTab()` de propósito, porque `upload` e `manual` compartilham a mesma página (`#page-upload`) e o laço não teria como diferenciá-los. O estado ativo dos três é gerido manualmente por `updateTcSubNav(chave)` (`'upload' | 'manual' | 'salvos'`), chamada por `switchTcMode()`, `abrirTcModo()`, `abrirTcSalvosPage()` e no fim de `generateDashboard()` (usando `_tcOrigemAtual`, para o dashboard saber qual dos dois sub-itens veio da análise atual).
+- `abrirTcSidebarGroup()` força a pasta aberta (remove `.sidebar-group--collapsed`) sempre que a navegação entra em qualquer página do grupo — clicar num sub-item nunca deixa a pasta fechada escondendo o próprio item que acabou de ficar ativo.
+- O logo da sidebar (`.sidebar-brand`) chama `abrirTcModo('upload')` em vez de `switchTab('upload')` puro, para manter a pasta e o sub-item corretos sincronizados ao clicar no logo.
+- Em mobile, o chevron (`.sidebar-group-chevron`) segue a mesma regra do rótulo (`.sidebar-item-label`): força `opacity: 1` no breakpoint ≤768px, já que não existe `:hover`/`:focus-within` em touch.
+
 #### 1.1a Sidebar em mobile (≤768px) — drawer off-canvas
 
 O padrão hover/`:focus-within` do desktop não existe em touch — nesses aparelhos o toque em um item foca o botão e mantém `:focus-within` "ligado" indefinidamente, deixando a sidebar expandida sobreposta ao conteúdo até o usuário tocar fora dela (bug real, reproduzido via toque programático no Playwright). Por isso ≤768px usa um drawer explícito, controlado por JS, e não apenas CSS:
@@ -62,7 +78,10 @@ TC Lavoro/
 │   │   └── base.css
 │   └── img/
 └── workers/
-    └── deepseek-memory-worker.js
+    ├── deepseek-memory-worker.js
+    ├── wrangler.toml
+    └── migrations/
+        └── 0001_create_tc_tables.sql
 ```
 
 ## 3. Regras Críticas
@@ -122,7 +141,7 @@ Correções de responsividade que vieram junto: `.ai-split-body` tinha `padding:
 
 ## 4. Fluxo 1 — T&C Dashboard
 
-Mantido sem alteração estrutural.
+O parsing, a tabela manual e a estrutura de `rows[]` (4.1–4.3) seguem sem alteração. A mudança estrutural desta versão foi explicitamente pedida pelo usuário: navegação em pasta na sidebar (1.1z) e persistência de histórico por tomador (4.4, complementando a seção 13).
 
 ### 4.1 Parsing
 
@@ -170,6 +189,16 @@ As classes CSS `tc-email-status-ccg-head` e `tc-email-status-ccg-cell` mantem um
 }
 ```
 
+### 4.4 Salvar tomador e reabrir histórico (D1)
+
+Front-end conectado aos endpoints da seção 13. `_tcOrigemAtual` (`'upload' | 'manual'`) rastreia qual dos dois modos gerou o `parsedData` atual — definida em `handleFile()` (sucesso do upload) e em `generateDashboardFromForm()`, e lida por `salvarTomadorAtual()` ao montar o payload e por `updateTcSubNav()` para destacar o sub-item certo da sidebar quando a página é `dashboard` (página compartilhada pelos dois modos).
+
+- **Botão "Salvar tomador"** (`#btnSalvarTomador`, dentro de `#page-dashboard`, logo abaixo do hero): `salvarTomadorAtual()` valida que `parsedData.cnpj` tem 14 dígitos (mesma normalização do Worker, `onlyDigits()` espelhando `normalizeCnpj()`), monta `{ cnpj, tomador, origem, rows }` e chama `salvarTcAnalise()` (`deepseek.js`). Sem CNPJ válido, mostra erro em `#tcSaveStatus` sem chamar o Worker. `resetTcSaveStatus()` limpa a mensagem toda vez que um novo dashboard é gerado (evita mensagem de uma análise anterior sobrando na tela).
+- **Página "TCs salvos"** (`#page-tc-salvos`, tab `tc-salvos`): console de busca por CNPJ igual ao da Consulta de Limites (mesmas classes `.lim-console`/`.lim-console-*`, reaproveitadas). `buscarTcSalvos()` chama `listarTcAnalises(cnpj)` e `renderTcSalvosResultados()` monta um card (`.tc-salvo-card`) por análise, com badge de origem (upload/manual), data formatada e dois botões:
+  - **Abrir** → `abrirTcSalvo(id)` chama `buscarTcAnalise(id)`, repopula `parsedData` e `_tcOrigemAtual`, e chama `generateDashboard()` (que já navega para `dashboard` sozinho).
+  - **Remover** → `removerTcSalvo(id)` confirma via `confirm()`, chama `apagarTcAnalise(id)` e atualiza a lista.
+- **Funções em `deepseek.js`**: `salvarTcAnalise(payload)`, `listarTcAnalises(cnpj)`, `buscarTcAnalise(id)`, `apagarTcAnalise(id)` — wrappers finos sobre `fetch` para `/v1/tc/analises`, no mesmo padrão de `consultarLimitesSeguradoras()` (erro lança `Error` com status HTTP no texto).
+- Nenhuma mudança no contrato JSON de `rows[]` (4.3) nem no schema do banco (13.1) — esta seção só liga UI já existente aos endpoints já testados.
 ## 5. Fluxos IA
 
 ### 5.1 Proxy Cloudflare Worker
@@ -1073,3 +1102,59 @@ Em caso de `401`, o token é invalidado e a consulta refeita uma vez com login n
 - Se o Worker novo ainda não estiver publicado, o front-end usa fallback automático para o endpoint legado `/`.
 - Para a Consulta de Limites, publicar o Worker atualizado (`/v1/limits/query`) e configurar todos os secrets listados na seção 10.3, incluindo `ONPOINT_BROKER_CNPJ` e `FATOR_CORRETOR_ID`.
 - CORS do Worker hoje libera `Access-Control-Allow-Origin: '*'` para todos os endpoints. Como a Consulta de Limites expõe dados de crédito mais sensíveis que o proxy de IA, considerar restringir a origem ao domínio de produção do front-end.
+
+## 13. Persistência — Histórico de T&C (Cloudflare D1)
+
+### 13.0 Visão geral
+
+Único uso de banco de dados relacional do projeto: guardar cada análise do **T&C Dashboard** (upload de planilha ou tabela manual) como um snapshot recuperável depois, associado ao CNPJ do tomador. Não cobre autenticação, nem histórico de Análise Financeira/Seguro Garantia/Fiança/Apólice/Consulta de Limites — só o fluxo 1.
+
+Banco: **Cloudflare D1** (SQLite gerenciado), no mesmo Worker que já processa os outros fluxos — sem infraestrutura nova, sem segundo fornecedor.
+
+### 13.1 Schema (`workers/migrations/0001_create_tc_tables.sql`)
+
+```sql
+CREATE TABLE tc_tomadores (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cnpj TEXT NOT NULL UNIQUE,
+  nome TEXT,
+  criado_em TEXT NOT NULL DEFAULT (datetime('now')),
+  atualizado_em TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE tc_analises (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  tomador_id INTEGER NOT NULL REFERENCES tc_tomadores(id),
+  cnpj TEXT NOT NULL,
+  tomador TEXT,
+  origem TEXT NOT NULL DEFAULT 'upload', -- 'upload' | 'manual'
+  rows_json TEXT NOT NULL,
+  criado_em TEXT NOT NULL DEFAULT (datetime('now'))
+);
+```
+
+**Cada análise é um snapshot, não um relatório normalizado.** `rows_json` guarda o array `rows[]` inteiro (seção 4.3) exatamente como `parseWorkbook`/`buildManualParsedData` o produzem — nenhuma coluna por seguradora ou modalidade. O objetivo declarado é arquivar o que já foi feito, não cruzar dados entre seguradoras ao longo do tempo; se essa necessidade aparecer, uma tabela filha normalizada pode ser derivada destes snapshots depois, sem migração destrutiva.
+
+`tc_tomadores` existe para não duplicar o mesmo CNPJ a cada análise: `handleCreateTcAnalise` faz `INSERT ... ON CONFLICT(cnpj) DO UPDATE` (atualiza `nome` e `atualizado_em`, preserva o `id`).
+
+### 13.2 Endpoints do Worker
+
+| Endpoint | Papel |
+|---|---|
+| `POST /v1/tc/analises` | Cria um snapshot. Body: `{ cnpj, tomador, origem: 'upload'\|'manual', rows: [...] }`. Resposta 201: `{ version, id, criadoEm }` |
+| `GET /v1/tc/analises?cnpj=...` | Lista o histórico do CNPJ (mais recente primeiro), sem os `rows[]` completos: `{ version, cnpj, analises: [{ id, tomador, origem, criadoEm }] }` |
+| `GET /v1/tc/analises/:id` | Devolve o snapshot completo, incluindo `rows[]` já parseado de volta de JSON — pronto para recarregar em `parsedData` e renderizar o dashboard |
+| `DELETE /v1/tc/analises/:id` | Remove um snapshot. 404 lógico (`Analise nao encontrada`) vira erro 500 pelo mesmo padrão do restante do Worker (ver 13.4) |
+
+`cnpj` é normalizado com a mesma `normalizeCnpj()` já usada pela Consulta de Limites (seção 10) — reaproveitada, não duplicada. `requireDb(env)` lança erro explícito se o binding `DB` não estiver configurado, no mesmo estilo de `redisCall` para `UPSTASH_REDIS_REST_URL` ausente.
+
+### 13.3 Front-end — conectado (ver seção 4.4 e 1.1z)
+
+Os endpoints acima estão ligados à UI: botão "Salvar tomador" no T&C Dashboard (`salvarTomadorAtual()`) e página "TCs salvos" (`#page-tc-salvos`, sub-item da pasta "Relatório T&C" na sidebar) para buscar, reabrir e remover snapshots por CNPJ. Detalhes de função e markup em 4.4; estrutura da sidebar em pasta em 1.1z.
+
+### 13.4 Convenções e limitações conhecidas
+
+- Todo endpoint devolve `version: WORKER_VERSION`, como os demais fluxos.
+- Erros de validação (CNPJ inválido, `rows` que não é array, id inexistente) lançam `Error` comum e caem no mesmo catch-all do `fetch()` do Worker — sempre HTTP 500, igual ao restante do Worker hoje (`validateCreateJobBody`, CNPJ da Consulta de Limites). Não é o código HTTP mais correto (um 400/404 seria mais preciso), mas é consistente com o padrão já existente; não foi introduzido um padrão novo só para este recurso.
+- Sem paginação em `GET /v1/tc/analises?cnpj=...` — o volume esperado (histórico de um único tomador) não justifica ainda.
+- Sem autenticação própria — depende do que já existe fora deste Worker; **nenhuma mudança de auth foi feita como parte desta persistência.**

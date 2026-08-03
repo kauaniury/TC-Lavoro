@@ -1,6 +1,9 @@
 ﻿// â"€â"€ State
 let chartBarInst, chartDoughnutInst;
 let parsedData = null;
+// 'upload' | 'manual' — qual método gerou o parsedData atual; usado ao salvar
+// no histórico (D1) e para destacar o sub-item certo na sidebar.
+let _tcOrigemAtual = 'upload';
 let _tcCounter = 0;
 let _tcModalCounters = {};
 const TC_SEGURADORAS = [
@@ -123,6 +126,7 @@ function handleFile(file) {
     try {
       const wb = XLSX.read(e.target.result, { type: 'array' });
       parsedData = parseWorkbook(wb);
+      _tcOrigemAtual = 'upload';
       if (!parsedData || parsedData.rows.length === 0) {
         showError('Nenhum dado válido encontrado. Verifique se a planilha possui colunas "Seguradora" e "Status".');
         document.getElementById('btnGenerate').disabled = true;
@@ -482,6 +486,9 @@ function generateDashboard() {
   generateButton.classList.remove('is-loading');
   generateButton.disabled = false;
   switchTab('dashboard');
+  abrirTcSidebarGroup();
+  updateTcSubNav(_tcOrigemAtual);
+  resetTcSaveStatus();
 }
 
 // Captura o #page-dashboard e cria página com altura exata do conteúdo
@@ -3086,6 +3093,184 @@ function switchTcMode(mode) {
     btnManual.setAttribute('aria-selected', 'true');
     if (_tcTabs.length === 0) initTcTabs();
   }
+  updateTcSubNav(mode);
+}
+
+// â"€â"€ T&C â€" sidebar em "pasta" (Importar planilha / Preencher manualmente / TCs salvos)
+
+function toggleTcSidebarGroup() {
+  const group = document.getElementById('tcSidebarGroup');
+  const toggle = document.getElementById('tab-relatorio-tc');
+  const collapsed = group.classList.toggle('sidebar-group--collapsed');
+  toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+}
+
+function abrirTcSidebarGroup() {
+  document.getElementById('tcSidebarGroup').classList.remove('sidebar-group--collapsed');
+  document.getElementById('tab-relatorio-tc').setAttribute('aria-expanded', 'true');
+}
+
+function updateTcSubNav(activeKey) {
+  const map = { upload: 'tab-tc-planilha', manual: 'tab-tc-manual', salvos: 'tab-tc-salvos' };
+  Object.values(map).forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove('sidebar-subitem--active');
+  });
+  const activeEl = document.getElementById(map[activeKey]);
+  if (activeEl) activeEl.classList.add('sidebar-subitem--active');
+}
+
+function abrirTcModo(mode) {
+  switchTab('upload');
+  switchTcMode(mode);
+  abrirTcSidebarGroup();
+}
+
+function abrirTcSalvosPage() {
+  switchTab('tc-salvos');
+  abrirTcSidebarGroup();
+  updateTcSubNav('salvos');
+}
+
+// â"€â"€ T&C â€" salvar tomador atual no histórico (D1)
+
+function resetTcSaveStatus() {
+  const statusEl = document.getElementById('tcSaveStatus');
+  if (statusEl) { statusEl.textContent = ''; statusEl.className = 'tc-save-status'; }
+}
+
+async function salvarTomadorAtual() {
+  const statusEl = document.getElementById('tcSaveStatus');
+  const btn = document.getElementById('btnSalvarTomador');
+  if (!parsedData || !statusEl || !btn) return;
+
+  const cnpjDigits = onlyDigits(parsedData.cnpj || '');
+  if (cnpjDigits.length !== 14) {
+    statusEl.textContent = 'Informe um CNPJ válido (planilha ou formulário) antes de salvar.';
+    statusEl.className = 'tc-save-status tc-save-status--err';
+    return;
+  }
+
+  btn.disabled = true;
+  statusEl.textContent = 'Salvando…';
+  statusEl.className = 'tc-save-status';
+
+  try {
+    const resp = await salvarTcAnalise({
+      cnpj: cnpjDigits,
+      tomador: parsedData.tomador || null,
+      origem: _tcOrigemAtual === 'manual' ? 'manual' : 'upload',
+      rows: parsedData.rows,
+    });
+    statusEl.textContent = 'Salvo com sucesso (#' + resp.id + ').';
+    statusEl.className = 'tc-save-status tc-save-status--ok';
+  } catch (err) {
+    statusEl.textContent = 'Erro ao salvar: ' + err.message;
+    statusEl.className = 'tc-save-status tc-save-status--err';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// â"€â"€ T&C â€" página "TCs salvos" (buscar / abrir / remover histórico por CNPJ)
+
+function tcSalvosShowError(msg) {
+  const el = document.getElementById('tcSalvosErrorMsg');
+  const txt = document.getElementById('tcSalvosErrorText');
+  if (el && txt) { txt.textContent = msg; el.classList.add('show'); }
+}
+
+function tcSalvosHideError() {
+  const el = document.getElementById('tcSalvosErrorMsg');
+  if (el) el.classList.remove('show');
+}
+
+async function buscarTcSalvos() {
+  tcSalvosHideError();
+  const cnpj = onlyDigits(document.getElementById('tcSalvosCnpjInput').value);
+  if (cnpj.length !== 14) {
+    tcSalvosShowError('Informe um CNPJ válido com 14 dígitos.');
+    return;
+  }
+
+  const loading = document.getElementById('tcSalvosLoading');
+  const empty = document.getElementById('tcSalvosEmpty');
+  const results = document.getElementById('tcSalvosResults');
+  const btn = document.getElementById('tcSalvosBtnBuscar');
+
+  loading.hidden = false;
+  empty.hidden = true;
+  results.innerHTML = '';
+  btn.disabled = true;
+
+  try {
+    const data = await listarTcAnalises(cnpj);
+    renderTcSalvosResultados(data.analises || []);
+  } catch (err) {
+    tcSalvosShowError('Erro ao buscar histórico: ' + err.message);
+    empty.hidden = false;
+  } finally {
+    loading.hidden = true;
+    btn.disabled = false;
+  }
+}
+
+function renderTcSalvosResultados(lista) {
+  const empty = document.getElementById('tcSalvosEmpty');
+  const results = document.getElementById('tcSalvosResults');
+
+  if (!lista.length) {
+    empty.hidden = false;
+    const title = empty.querySelector('.empty-state-title');
+    const text = empty.querySelector('.empty-state-text');
+    if (title) title.textContent = 'Nenhuma análise salva';
+    if (text) text.textContent = 'Esse CNPJ ainda não tem T&C salvo.';
+    results.innerHTML = '';
+    return;
+  }
+
+  empty.hidden = true;
+  results.innerHTML = lista.map(item => {
+    const parsed = new Date(String(item.criadoEm || '').replace(' ', 'T') + 'Z');
+    const dataStr = isNaN(parsed)
+      ? (item.criadoEm || '-')
+      : parsed.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const isManual = item.origem === 'manual';
+    return '<article class="tc-salvo-card">' +
+      '<div class="tc-salvo-card-top">' +
+        '<p class="tc-salvo-nome">' + esc(item.tomador || 'Tomador sem nome') + '</p>' +
+        '<span class="tc-salvo-origem ' + (isManual ? 'tc-salvo-origem--manual' : 'tc-salvo-origem--upload') + '">' + (isManual ? 'Manual' : 'Planilha') + '</span>' +
+      '</div>' +
+      '<p class="tc-salvo-data">Salvo em ' + esc(dataStr) + '</p>' +
+      '<div class="tc-salvo-actions">' +
+        '<button type="button" class="tc-salvo-btn-abrir" onclick="abrirTcSalvo(' + Number(item.id) + ')">Abrir</button>' +
+        '<button type="button" class="tc-salvo-btn-remover" onclick="removerTcSalvo(' + Number(item.id) + ')" aria-label="Remover análise salva">Remover</button>' +
+      '</div>' +
+    '</article>';
+  }).join('');
+}
+
+async function abrirTcSalvo(id) {
+  tcSalvosHideError();
+  try {
+    const data = await buscarTcAnalise(id);
+    parsedData = { rows: data.rows, tomador: data.tomador, cnpj: data.cnpj };
+    _tcOrigemAtual = data.origem === 'manual' ? 'manual' : 'upload';
+    generateDashboard();
+  } catch (err) {
+    tcSalvosShowError('Erro ao abrir análise: ' + err.message);
+  }
+}
+
+async function removerTcSalvo(id) {
+  if (!confirm('Remover esta análise salva? Essa ação não pode ser desfeita.')) return;
+  tcSalvosHideError();
+  try {
+    await apagarTcAnalise(id);
+    buscarTcSalvos();
+  } catch (err) {
+    tcSalvosShowError('Erro ao remover: ' + err.message);
+  }
 }
 
 function initTcTabs() {
@@ -3541,6 +3726,7 @@ function generateDashboardFromForm() {
     return;
   }
   parsedData = data;
+  _tcOrigemAtual = 'manual';
   generateDashboard();
 }
 
