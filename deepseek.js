@@ -1260,8 +1260,12 @@ async function salvarTcAnalise(payload) {
   return resp.json();
 }
 
-async function listarTcAnalises(cnpj) {
-  const resp = await fetch(DEEPSEEK_WORKER_URL.replace(/\/+$/, '') + '/v1/tc/analises?cnpj=' + encodeURIComponent(cnpj));
+async function listarTcAnalises(filtro) {
+  const params = new URLSearchParams();
+  if (filtro && filtro.cnpj) params.set('cnpj', filtro.cnpj);
+  if (filtro && filtro.nome) params.set('nome', filtro.nome);
+
+  const resp = await fetch(DEEPSEEK_WORKER_URL.replace(/\/+$/, '') + '/v1/tc/analises?' + params.toString());
   if (!resp.ok) {
     const text = await resp.text();
     throw new Error(`Falha ao listar historico (${resp.status}): ${text}`);

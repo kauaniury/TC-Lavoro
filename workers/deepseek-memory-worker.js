@@ -1628,19 +1628,40 @@ async function handleCreateTcAnalise(request, env) {
   return jsonResponse({ version: WORKER_VERSION, id: analise.id, criadoEm: analise.criado_em }, 201);
 }
 
+const TC_SEARCH_RESULT_LIMIT = 50;
+const TC_NOME_QUERY_MAX_LENGTH = 200;
+
+// Busca por CNPJ (exata) ou por nome do tomador (parcial, via tc_tomadores —
+// e nao tc_analises.tomador direto, porque tc_tomadores e a fonte canonica do
+// nome e nao duplica por causa de pequenas variacoes de grafia entre snapshots).
 async function handleListTcAnalises(url, env) {
   const db = requireDb(env);
-  const cnpj = normalizeCnpj(url.searchParams.get('cnpj'));
-  if (cnpj.length !== 14) throw new Error('Informe um CNPJ valido com 14 digitos.');
+  const cnpjParam = url.searchParams.get('cnpj');
+  const nomeParam = url.searchParams.get('nome');
 
-  const { results } = await db.prepare(
-    `SELECT id, tomador, origem, criado_em FROM tc_analises WHERE cnpj = ?1 ORDER BY criado_em DESC`
-  ).bind(cnpj).all();
+  const cnpj = cnpjParam ? normalizeCnpj(cnpjParam) : '';
+  const nome = nomeParam ? nomeParam.trim().slice(0, TC_NOME_QUERY_MAX_LENGTH) : '';
+
+  if (!cnpj && !nome) throw new Error('Informe um CNPJ ou o nome do tomador para buscar.');
+  if (cnpjParam && cnpj.length !== 14) throw new Error('Informe um CNPJ valido com 14 digitos.');
+
+  const { results } = cnpj
+    ? await db.prepare(
+        `SELECT id, cnpj, tomador, origem, criado_em FROM tc_analises
+         WHERE cnpj = ?1 ORDER BY criado_em DESC LIMIT ${TC_SEARCH_RESULT_LIMIT}`
+      ).bind(cnpj).all()
+    : await db.prepare(
+        `SELECT a.id, a.cnpj, a.tomador, a.origem, a.criado_em FROM tc_analises a
+         JOIN tc_tomadores t ON t.id = a.tomador_id
+         WHERE LOWER(t.nome) LIKE '%' || LOWER(?1) || '%'
+         ORDER BY a.criado_em DESC LIMIT ${TC_SEARCH_RESULT_LIMIT}`
+      ).bind(nome).all();
 
   return jsonResponse({
     version: WORKER_VERSION,
-    cnpj,
-    analises: results.map(r => ({ id: r.id, tomador: r.tomador, origem: r.origem, criadoEm: r.criado_em })),
+    cnpj: cnpj || null,
+    nome: nome || null,
+    analises: results.map(r => ({ id: r.id, cnpj: r.cnpj, tomador: r.tomador, origem: r.origem, criadoEm: r.criado_em })),
   });
 }
 

@@ -1,6 +1,6 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.33  
+> Versao: 2.34  
 > Atualizado em: 2026-08-03
 
 ## 1. Visão Geral
@@ -47,6 +47,12 @@ O item "Relatório T&C" deixou de navegar direto: agora é uma **pasta expansív
 - `abrirTcSidebarGroup()` força a pasta aberta (remove `.sidebar-group--collapsed`) sempre que a navegação entra em qualquer página do grupo — clicar num sub-item nunca deixa a pasta fechada escondendo o próprio item que acabou de ficar ativo.
 - O logo da sidebar (`.sidebar-brand`) chama `abrirTcModo('upload')` em vez de `switchTab('upload')` puro, para manter a pasta e o sub-item corretos sincronizados ao clicar no logo.
 - Em mobile, o chevron (`.sidebar-group-chevron`) segue a mesma regra do rótulo (`.sidebar-item-label`): força `opacity: 1` no breakpoint ≤768px, já que não existe `:hover`/`:focus-within` em touch.
+- **`.sidebar-group-list` fica oculta por padrão** (`display: none`) e só aparece com `.sidebar:hover`/`:focus-within` — a mesma condição que revela `.sidebar-item-label` — **e** apenas se a pasta não tiver sido fechada manualmente (`.sidebar-group:not(.sidebar-group--collapsed)`). Sem isso, a pasta "aberta" continuava mostrando os três ícones dos sub-itens (sem rótulo, sem sentido) mesmo com a sidebar recolhida só em ícones — o toggle manual (`toggleTcSidebarGroup()`) e o hover da sidebar são duas condições independentes, e as duas precisam ser verdadeiras para o sub-menu aparecer. Em mobile (≤768px, sem hover) a regra volta a ser só o toggle manual, já que o drawer nesse breakpoint é sempre a versão "expandida" quando visível (ver 1.1a).
+- **O antigo alternador visual dentro da página** (`.tc-mode-toggle`, botões `tcBtnUpload`/`tcBtnManual` acima do cartão de upload) foi removido de `index.html` — virou redundante depois que a navegação passou para a sidebar. `switchTcMode(mode)` continua existindo em `app.js` e não lê mais esses botões (só alterna `#tcUploadCard`/`#tcManualCard` e chama `updateTcSubNav`); classes CSS `.tc-mode-toggle`/`.tc-mode-btn*` (desktop e mobile) foram removidas por não terem mais uso.
+
+#### 1.1z-bis Correção — logo do cabeçalho aparecia sempre na tela
+
+`.print-hero-logo` (logo Lavoro no canto do hero do T&C Dashboard) tinha um `display: block` incondicional em `styles.css`, apesar do nome e do comentário original ("Logo hidden on screen, shown only in print header") indicarem que deveria ficar oculto na tela. Resultado visível: o logo colidia com o botão flutuante "Exportar relatório" (`#btnDownloadTop`, `position: fixed` no canto superior direito) sempre que o dashboard estava no topo da página. Corrigido para `display: none` por padrão; `body.pdf-generating .print-hero-logo` (exportação PDF) e `@media print .print-hero-logo` (impressão nativa) continuam forçando `display: block` — nesses dois casos a sidebar e o botão flutuante já ficam ocultos, então não há mais colisão.
 
 #### 1.1a Sidebar em mobile (≤768px) — drawer off-canvas
 
@@ -194,11 +200,12 @@ As classes CSS `tc-email-status-ccg-head` e `tc-email-status-ccg-cell` mantem um
 Front-end conectado aos endpoints da seção 13. `_tcOrigemAtual` (`'upload' | 'manual'`) rastreia qual dos dois modos gerou o `parsedData` atual — definida em `handleFile()` (sucesso do upload) e em `generateDashboardFromForm()`, e lida por `salvarTomadorAtual()` ao montar o payload e por `updateTcSubNav()` para destacar o sub-item certo da sidebar quando a página é `dashboard` (página compartilhada pelos dois modos).
 
 - **Botão "Salvar tomador"** (`#btnSalvarTomador`, dentro de `#page-dashboard`, logo abaixo do hero): `salvarTomadorAtual()` valida que `parsedData.cnpj` tem 14 dígitos (mesma normalização do Worker, `onlyDigits()` espelhando `normalizeCnpj()`), monta `{ cnpj, tomador, origem, rows }` e chama `salvarTcAnalise()` (`deepseek.js`). Sem CNPJ válido, mostra erro em `#tcSaveStatus` sem chamar o Worker. `resetTcSaveStatus()` limpa a mensagem toda vez que um novo dashboard é gerado (evita mensagem de uma análise anterior sobrando na tela).
-- **Página "TCs salvos"** (`#page-tc-salvos`, tab `tc-salvos`): console de busca por CNPJ igual ao da Consulta de Limites (mesmas classes `.lim-console`/`.lim-console-*`, reaproveitadas). `buscarTcSalvos()` chama `listarTcAnalises(cnpj)` e `renderTcSalvosResultados()` monta um card (`.tc-salvo-card`) por análise, com badge de origem (upload/manual), data formatada e dois botões:
+- **Página "TCs salvos"** (`#page-tc-salvos`, tab `tc-salvos`): console de busca igual ao da Consulta de Limites (mesmas classes `.lim-console`/`.lim-console-*`, reaproveitadas), campo único `#tcSalvosQueryInput` — **CNPJ ou nome do tomador**. `buscarTcSalvos()` decide o modo no cliente: se o texto digitado tem 14 dígitos após remover não-dígitos, busca por CNPJ (`listarTcAnalises({ cnpj })`); senão, busca por nome com o texto original (`listarTcAnalises({ nome })`). Sem mascara de CNPJ no campo (`fmtTcCnpj` foi removido dele) — texto livre, já que agora também precisa aceitar nome. `renderTcSalvosResultados()` monta um card (`.tc-salvo-card`) por análise, sempre mostrando o CNPJ (`.tc-salvo-cnpj`, formatado por `formatTcCnpj()`) além do nome — necessário porque uma busca por nome pode trazer tomadores diferentes com nomes parecidos e CNPJs distintos (ver 13.2). Cada card tem:
   - **Abrir** → `abrirTcSalvo(id)` chama `buscarTcAnalise(id)`, repopula `parsedData` e `_tcOrigemAtual`, e chama `generateDashboard()` (que já navega para `dashboard` sozinho).
   - **Remover** → `removerTcSalvo(id)` confirma via `confirm()`, chama `apagarTcAnalise(id)` e atualiza a lista.
-- **Funções em `deepseek.js`**: `salvarTcAnalise(payload)`, `listarTcAnalises(cnpj)`, `buscarTcAnalise(id)`, `apagarTcAnalise(id)` — wrappers finos sobre `fetch` para `/v1/tc/analises`, no mesmo padrão de `consultarLimitesSeguradoras()` (erro lança `Error` com status HTTP no texto).
+- **Funções em `deepseek.js`**: `salvarTcAnalise(payload)`, `listarTcAnalises({ cnpj } | { nome })`, `buscarTcAnalise(id)`, `apagarTcAnalise(id)` — wrappers finos sobre `fetch` para `/v1/tc/analises`, no mesmo padrão de `consultarLimitesSeguradoras()` (erro lança `Error` com status HTTP no texto). `listarTcAnalises` monta a query string via `URLSearchParams`, incluindo só o parâmetro presente no filtro.
 - Nenhuma mudança no contrato JSON de `rows[]` (4.3) nem no schema do banco (13.1) — esta seção só liga UI já existente aos endpoints já testados.
+
 ## 5. Fluxos IA
 
 ### 5.1 Proxy Cloudflare Worker
@@ -1142,11 +1149,13 @@ CREATE TABLE tc_analises (
 | Endpoint | Papel |
 |---|---|
 | `POST /v1/tc/analises` | Cria um snapshot. Body: `{ cnpj, tomador, origem: 'upload'\|'manual', rows: [...] }`. Resposta 201: `{ version, id, criadoEm }` |
-| `GET /v1/tc/analises?cnpj=...` | Lista o histórico do CNPJ (mais recente primeiro), sem os `rows[]` completos: `{ version, cnpj, analises: [{ id, tomador, origem, criadoEm }] }` |
+| `GET /v1/tc/analises?cnpj=...` **ou** `?nome=...` | Lista histórico (mais recente primeiro), sem os `rows[]` completos: `{ version, cnpj, nome, analises: [{ id, cnpj, tomador, origem, criadoEm }] }` |
 | `GET /v1/tc/analises/:id` | Devolve o snapshot completo, incluindo `rows[]` já parseado de volta de JSON — pronto para recarregar em `parsedData` e renderizar o dashboard |
 | `DELETE /v1/tc/analises/:id` | Remove um snapshot. 404 lógico (`Analise nao encontrada`) vira erro 500 pelo mesmo padrão do restante do Worker (ver 13.4) |
 
 `cnpj` é normalizado com a mesma `normalizeCnpj()` já usada pela Consulta de Limites (seção 10) — reaproveitada, não duplicada. `requireDb(env)` lança erro explícito se o binding `DB` não estiver configurado, no mesmo estilo de `redisCall` para `UPSTASH_REDIS_REST_URL` ausente.
+
+**Busca por CNPJ ou por nome (`handleListTcAnalises`):** exatamente um dos dois parâmetros é aceito por chamada — `cnpj` é normalizado e exige 14 dígitos (busca exata, direto em `tc_analises.cnpj`); `nome` faz `LIKE` parcial case-insensitive contra `tc_tomadores.nome` (via `JOIN tc_analises.tomador_id = tc_tomadores.id`), **não** contra `tc_analises.tomador` — `tc_tomadores` é a fonte canônica do nome, então a busca não duplica nem perde resultado por causa de pequenas variações de grafia entre snapshots do mesmo tomador. Sem nenhum parâmetro, erro `Informe um CNPJ ou o nome do tomador para buscar.`; `cnpj` presente e inválido continua sendo erro (`Informe um CNPJ valido com 14 digitos.`), mesmo com `nome` também presente. Ambos os modos aplicam `LIMIT 50` (`TC_SEARCH_RESULT_LIMIT`) — uma busca por nome genérico pode, em tese, casar com muito mais tomadores do que uma busca por CNPJ (sempre no máximo um). Testado com SQLite real (`node:sqlite`): CNPJ exato, nome parcial trazendo múltiplos CNPJs distintos, case-insensitividade, ausência de parâmetros e CNPJ inválido.
 
 ### 13.3 Front-end — conectado (ver seção 4.4 e 1.1z)
 

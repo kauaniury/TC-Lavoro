@@ -89,17 +89,10 @@
         <p class="upload-header-sub">Carregue o arquivo Excel com as respostas das seguradoras para gerar o dashboard executivo.</p>
       </div>
 
-      <div class="tc-mode-toggle" role="tablist" aria-label="Método de entrada">
-        <button type="button" class="tc-mode-btn tc-mode-btn--active" id="tcBtnUpload" role="tab" aria-selected="true" onclick="switchTcMode('upload')">
-          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2" y="3" width="12" height="9" rx="1.2" stroke="currentColor" stroke-width="1.4"/><path d="M5 7.5h6M5 10h4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M8 3V1.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
-          Importar Planilha Excel
-        </button>
-        <button type="button" class="tc-mode-btn" id="tcBtnManual" role="tab" aria-selected="false" onclick="switchTcMode('manual')">
-          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2" y="1.5" width="9" height="12" rx="1" stroke="currentColor" stroke-width="1.4"/><path d="M4.5 5.5h5M4.5 8h3.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M11 10l1.5 1.5-2.5 2.5-1.5-1.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          Preencher Manualmente
-        </button>
-      </div>
-
+      <!-- Alternância de método (planilha/manual) agora vive na sidebar, dentro da
+           pasta "Relatório T&C" (ver .sidebar-group em #appSidebar). tcBtnUpload/
+           tcBtnManual e o toggle visual saíram daqui; switchTcMode(mode) continua
+           existindo e é quem os sub-itens da sidebar chamam. -->
       <div class="upload-card card" id="tcUploadCard">
         <div class="upload-card-header">
           <p class="upload-card-title">Selecione o arquivo</p>
@@ -958,7 +951,7 @@
       <div class="upload-header">
         <p class="upload-header-eyebrow">Relatório T&amp;C</p>
         <h1 class="upload-header-title">TCs salvos por tomador</h1>
-        <p class="upload-header-sub">Busque pelo CNPJ do tomador para reabrir uma análise de T&amp;C salva anteriormente.</p>
+        <p class="upload-header-sub">Busque pelo CNPJ ou pelo nome do tomador para reabrir uma análise de T&amp;C salva anteriormente.</p>
       </div>
 
       <div class="lim-console">
@@ -969,8 +962,8 @@
 
         <div class="lim-console-row">
           <div class="lim-console-field">
-            <span class="lim-console-tag" aria-hidden="true">CNPJ</span>
-            <input type="text" id="tcSalvosCnpjInput" class="lim-console-input" placeholder="00.000.000/0000-00" inputmode="numeric" maxlength="18" autocomplete="off" aria-label="CNPJ do tomador" oninput="fmtTcCnpj(this)" onkeydown="if(event.key==='Enter'){event.preventDefault();buscarTcSalvos();}">
+            <span class="lim-console-tag" aria-hidden="true">BUSCAR</span>
+            <input type="text" id="tcSalvosQueryInput" class="lim-console-input" placeholder="CNPJ ou nome do tomador" autocomplete="off" aria-label="CNPJ ou nome do tomador" onkeydown="if(event.key==='Enter'){event.preventDefault();buscarTcSalvos();}">
           </div>
           <button type="button" class="lim-console-submit" id="tcSalvosBtnBuscar" onclick="buscarTcSalvos()">
             <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" stroke-width="1.7"/><path d="M13 13l4 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
@@ -990,7 +983,7 @@
 
       <div class="empty-state" id="tcSalvosEmpty">
         <div class="search-empty-icon" aria-hidden="true">⌕</div>
-        <p class="empty-state-title">Busque um CNPJ</p>
+        <p class="empty-state-title">Busque um CNPJ ou nome</p>
         <p class="empty-state-text">As análises salvas para o tomador aparecem aqui.</p>
       </div>
 

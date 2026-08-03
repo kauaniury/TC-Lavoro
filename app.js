@@ -3071,26 +3071,19 @@ let financialFiles = [];
 const MAX_FINANCIAL_FILES = 6;
 
 // T&C Formulario Manual
+// A alternância visual (tcBtnUpload/tcBtnManual) saiu do index.html — quem
+// chama switchTcMode() agora são os sub-itens da sidebar (abrirTcModo()), que
+// já cuidam do próprio estado ativo via updateTcSubNav().
 function switchTcMode(mode) {
   const uploadCard = document.getElementById('tcUploadCard');
   const manualCard = document.getElementById('tcManualCard');
-  const btnUpload  = document.getElementById('tcBtnUpload');
-  const btnManual  = document.getElementById('tcBtnManual');
 
   if (mode === 'upload') {
     uploadCard.hidden = false;
     manualCard.hidden = true;
-    btnUpload.classList.add('tc-mode-btn--active');
-    btnManual.classList.remove('tc-mode-btn--active');
-    btnUpload.setAttribute('aria-selected', 'true');
-    btnManual.setAttribute('aria-selected', 'false');
   } else {
     uploadCard.hidden = true;
     manualCard.hidden = false;
-    btnUpload.classList.remove('tc-mode-btn--active');
-    btnManual.classList.add('tc-mode-btn--active');
-    btnUpload.setAttribute('aria-selected', 'false');
-    btnManual.setAttribute('aria-selected', 'true');
     if (_tcTabs.length === 0) initTcTabs();
   }
   updateTcSubNav(mode);
@@ -3187,9 +3180,14 @@ function tcSalvosHideError() {
 
 async function buscarTcSalvos() {
   tcSalvosHideError();
-  const cnpj = onlyDigits(document.getElementById('tcSalvosCnpjInput').value);
-  if (cnpj.length !== 14) {
-    tcSalvosShowError('Informe um CNPJ válido com 14 dígitos.');
+  const raw = document.getElementById('tcSalvosQueryInput').value.trim();
+  const cnpjDigits = onlyDigits(raw);
+  // Se o texto digitado tem 14 dígitos, trata como CNPJ (busca exata); senão,
+  // trata o texto como nome do tomador (busca parcial, sem diferenciar maiúsculas).
+  const isCnpj = cnpjDigits.length === 14;
+
+  if (!raw) {
+    tcSalvosShowError('Informe um CNPJ ou o nome do tomador.');
     return;
   }
 
@@ -3204,7 +3202,9 @@ async function buscarTcSalvos() {
   btn.disabled = true;
 
   try {
-    const data = await listarTcAnalises(cnpj);
+    const data = isCnpj
+      ? await listarTcAnalises({ cnpj: cnpjDigits })
+      : await listarTcAnalises({ nome: raw });
     renderTcSalvosResultados(data.analises || []);
   } catch (err) {
     tcSalvosShowError('Erro ao buscar histórico: ' + err.message);
@@ -3224,7 +3224,7 @@ function renderTcSalvosResultados(lista) {
     const title = empty.querySelector('.empty-state-title');
     const text = empty.querySelector('.empty-state-text');
     if (title) title.textContent = 'Nenhuma análise salva';
-    if (text) text.textContent = 'Esse CNPJ ainda não tem T&C salvo.';
+    if (text) text.textContent = 'Nenhum T&C encontrado para essa busca.';
     results.innerHTML = '';
     return;
   }
@@ -3236,11 +3236,14 @@ function renderTcSalvosResultados(lista) {
       ? (item.criadoEm || '-')
       : parsed.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
     const isManual = item.origem === 'manual';
+    // CNPJ sempre visível: uma busca por nome pode trazer tomadores diferentes
+    // (nomes parecidos, CNPJs distintos), então o CNPJ é o que desambigua.
     return '<article class="tc-salvo-card">' +
       '<div class="tc-salvo-card-top">' +
         '<p class="tc-salvo-nome">' + esc(item.tomador || 'Tomador sem nome') + '</p>' +
         '<span class="tc-salvo-origem ' + (isManual ? 'tc-salvo-origem--manual' : 'tc-salvo-origem--upload') + '">' + (isManual ? 'Manual' : 'Planilha') + '</span>' +
       '</div>' +
+      '<p class="tc-salvo-cnpj">' + esc(formatTcCnpj(item.cnpj || '')) + '</p>' +
       '<p class="tc-salvo-data">Salvo em ' + esc(dataStr) + '</p>' +
       '<div class="tc-salvo-actions">' +
         '<button type="button" class="tc-salvo-btn-abrir" onclick="abrirTcSalvo(' + Number(item.id) + ')">Abrir</button>' +
