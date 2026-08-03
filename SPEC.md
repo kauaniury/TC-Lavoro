@@ -1,6 +1,6 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.35  
+> Versao: 2.36  
 > Atualizado em: 2026-08-03
 
 ## 1. Visão Geral
@@ -29,6 +29,7 @@ A navegação principal é uma sidebar fixa à esquerda (`.sidebar`, `index.html
   - **Dono declarado** (`_downloadTopOwner` + `setDownloadTopOwner(pagina)` / `syncDownloadTopVisibility()` em `app.js`): o botão só aparece na página que o gerou (`dashboard` ou `analise-financeira`). `switchTab()` chama `syncDownloadTopVisibility()` a cada navegação. Antes ele permanecia visível ao trocar de aba e cobria a topbar dos fluxos de IA.
   - Alinhamento: o `right` acompanha a coluna de conteúdo (`max(var(--page-gutter), (100vw − sidebar − content-max-width)/2 + gutter)`), então em telas largas ele encosta na borda do conteúdo, não na da janela.
   - Em ≤768px ele deixou de ser `display:none` (não havia como exportar no celular) e passou a flutuar no canto inferior direito, longe do FAB do menu.
+  - **Correção — fundo transparente sobre o hero escuro:** `.btn-download` (regra genérica, mesma especificidade de `.topbar-download`) também define `background`, e por vir depois no arquivo vencia o empate — o botão ficava com fundo transparente, mostrando só a borda ao rolar a página sobre o hero escuro do T&C Dashboard. Corrigido com uma segunda regra `.topbar-download { background: var(--color-surface); }` posicionada depois de `.btn-download` no arquivo, restaurando o fundo opaco sem usar `!important` nem afetar `.btn-download:hover` (que tem especificidade maior por causa do pseudo-seletor e continua funcionando normalmente).
 - `--topbar-height` foi zerado em `variables.css` (mantido só porque várias fórmulas de sticky-offset ainda somam esse token) — não representa mais uma barra horizontal.
 - Durante captura de PDF (`body.pdf-generating`) e impressão, `.sidebar` fica oculta e `.app-content` perde a margem reservada, evitando espaço em branco à esquerda no conteúdo exportado.
 

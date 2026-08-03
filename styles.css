@@ -376,6 +376,14 @@
   background: var(--color-accent-light);
 }
 
+/* Reforça o fundo opaco do botão flutuante de exportar: .btn-download (acima)
+   também define background e, tendo a mesma especificidade, venceria por
+   vir depois no arquivo — deixava o botão transparente (só a borda visível,
+   texto/ícone somem) ao rolar a página sobre o hero escuro do dashboard. */
+.topbar-download {
+  background: var(--color-surface);
+}
+
 .btn-download svg {
   width: 16px;
   height: 16px;
