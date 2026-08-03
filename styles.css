@@ -1796,6 +1796,7 @@ body.pdf-generating .topbar-download,
 body.pdf-generating .table-toolbar,
 body.pdf-generating .footer,
 body.pdf-generating .app-footer,
+body.pdf-generating .tc-save-bar-wrap,
 body.pdf-generating .comparison-section {
   display: none !important;
 }
@@ -1851,7 +1852,8 @@ body.pdf-generating.has-comparison .comparison-section {
   .search-empty,
   .btn-download,
   .topbar-download,
-  .table-toolbar {
+  .table-toolbar,
+  .tc-save-bar-wrap {
     display: none !important;
   }
 

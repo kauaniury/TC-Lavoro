@@ -1,6 +1,6 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.34  
+> Versao: 2.35  
 > Atualizado em: 2026-08-03
 
 ## 1. Visão Geral
@@ -205,6 +205,7 @@ Front-end conectado aos endpoints da seção 13. `_tcOrigemAtual` (`'upload' | '
   - **Remover** → `removerTcSalvo(id)` confirma via `confirm()`, chama `apagarTcAnalise(id)` e atualiza a lista.
 - **Funções em `deepseek.js`**: `salvarTcAnalise(payload)`, `listarTcAnalises({ cnpj } | { nome })`, `buscarTcAnalise(id)`, `apagarTcAnalise(id)` — wrappers finos sobre `fetch` para `/v1/tc/analises`, no mesmo padrão de `consultarLimitesSeguradoras()` (erro lança `Error` com status HTTP no texto). `listarTcAnalises` monta a query string via `URLSearchParams`, incluindo só o parâmetro presente no filtro.
 - Nenhuma mudança no contrato JSON de `rows[]` (4.3) nem no schema do banco (13.1) — esta seção só liga UI já existente aos endpoints já testados.
+- `.tc-save-bar-wrap` (botão "Salvar tomador" + status) entra na mesma lista de elementos ocultos durante a exportação (`body.pdf-generating`) e na impressão nativa (`@media print`), junto de `.search-bar-wrap`/`.btn-download`/`.topbar-download` — sem isso o botão e a mensagem de "Salvo com sucesso" apareciam no PDF exportado.
 
 ## 5. Fluxos IA
 
