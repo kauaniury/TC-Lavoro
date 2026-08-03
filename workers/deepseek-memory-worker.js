@@ -5,14 +5,32 @@ const CORS_HEADERS = {
 };
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
-const WORKER_VERSION = '2026-07-28.1';
+const WORKER_VERSION = '2026-08-03.1';
 const PRIMARY_DEEPSEEK_MODEL = 'deepseek-chat';
 const FALLBACK_DEEPSEEK_MODEL = 'deepseek-chat';
 const JOB_TTL_SECONDS = 60 * 60 * 6;
 const CHUNK_NOTE_MAX_TOKENS = 4000;
 const FINAL_RESULT_MAX_TOKENS_DEFAULT = 8000;
-const FINAL_RESULT_MAX_TOKENS_SG = 10000;
-const FINAL_RESULT_MAX_TOKENS_AF = 12000;
+const FINAL_RESULT_MAX_TOKENS_SG = 8000;
+const FINAL_RESULT_MAX_TOKENS_AF = 8000;
+// Teto duro de saida da API DeepSeek. Pedir mais que isso faz a API responder 400
+// e derrubar a analise inteira na sintese final — clampMaxTokens protege todas as chamadas.
+const DEEPSEEK_MAX_OUTPUT_TOKENS = 8192;
+
+// ── Reducao hierarquica de notas ────────────────────────────────────────────
+// A sintese final nao aguenta receber todas as notas de chunk de uma vez: com 10
+// arquivos grandes o job gera 50-100 notas de ate 4.000 tokens cada (200K-400K
+// tokens), muito acima da janela de contexto do modelo. Antes disso o job falhava
+// ou o modelo truncava, "esquecendo" documentos inteiros.
+// Agora, quando sobram mais notas do que MAX_NOTES_FOR_FINAL, o job entra no
+// estagio `reducing`: consolida grupos de REDUCE_GROUP_SIZE notas em uma nota de
+// nivel superior (uma chamada por passo do /run) e repete ate caber na sintese.
+const REDUCE_GROUP_SIZE = 6;
+const MAX_NOTES_FOR_FINAL = 10;
+const REDUCE_NOTE_MAX_TOKENS = 4000;
+// Comandos por lote no pipeline do Upstash: evita estourar o limite de
+// subrequests do Worker ao gravar dezenas de chunks na criacao do job.
+const REDIS_PIPELINE_BATCH = 25;
 
 const JNS_BASE = 'https://api.jnsseguros.com.br/igc/v1';
 const JUNTO_BASE = 'https://ms-gateway.juntoseguros.com/guarantee/api/v2';
@@ -113,14 +131,19 @@ async function handleCreateJob(request, env) {
   const { manifest, chunks } = buildJobManifest(jobId, body);
 
   await redisSet(env, jobKey(jobId), manifest, JOB_TTL_SECONDS);
-  for (const chunk of chunks) {
-    await redisSet(env, chunkKey(jobId, chunk.index), chunk, JOB_TTL_SECONDS);
-  }
+  // Pipeline: um SETEX por chunk em requisicoes separadas estourava o limite de
+  // subrequests do Worker em jobs com muitos chunks (documentos grandes).
+  await redisSetMany(
+    env,
+    chunks.map(chunk => ({ key: chunkKey(jobId, chunk.index), value: chunk })),
+    JOB_TTL_SECONDS,
+  );
 
   return jsonResponse({
     jobId,
     status: manifest.status,
     totalChunks: manifest.totalChunks,
+    estimatedSteps: estimateTotalSteps(manifest),
     createdAt: manifest.createdAt,
     version: WORKER_VERSION,
   }, 201);
@@ -142,23 +165,26 @@ async function handleRunJob(jobId, env) {
     if (!chunk) throw new Error(`Chunk ${chunkIndex} nao encontrado.`);
 
     manifest.status = 'processing';
+    manifest.stage = 'chunks';
     manifest.updatedAt = new Date().toISOString();
-    await redisSet(env, jobKey(jobId), manifest, JOB_TTL_SECONDS);
 
     const note = await analyzeChunk(env, manifest, chunk);
-    const noteData = {
-      index: chunkIndex,
-      fileName: chunk.fileName,
-      chunkLabel: chunk.chunkLabel,
-      note,
-    };
-    await redisSet(env, noteKey(jobId, chunkIndex), noteData, JOB_TTL_SECONDS);
-    manifest.chunkNotes.push({
+    const ref = {
       index: chunkIndex,
       fileName: chunk.fileName,
       chunkLabel: chunk.chunkLabel,
       noteKey: noteKey(jobId, chunkIndex),
-    });
+      level: 0,
+    };
+    await redisSet(env, ref.noteKey, {
+      index: chunkIndex,
+      fileName: chunk.fileName,
+      chunkLabel: chunk.chunkLabel,
+      note,
+    }, JOB_TTL_SECONDS);
+
+    manifest.chunkNotes.push(ref);
+    manifest.pendingNotes.push(ref);
     manifest.nextChunkIndex = chunkIndex;
     manifest.updatedAt = new Date().toISOString();
 
@@ -169,6 +195,21 @@ async function handleRunJob(jobId, env) {
     });
   }
 
+  // Todas as notas de chunk existem, mas ainda nao cabem juntas na sintese final:
+  // consolida um grupo por passo ate sobrarem no maximo MAX_NOTES_FOR_FINAL notas.
+  if (needsReduction(manifest)) {
+    manifest.status = 'processing';
+    manifest.stage = 'reducing';
+    await runReduceStep(env, manifest);
+    manifest.updatedAt = new Date().toISOString();
+    await redisSet(env, jobKey(jobId), manifest, JOB_TTL_SECONDS);
+    return jsonResponse({
+      ...safeJobResponse(manifest),
+      retryAfterMs: 150,
+    });
+  }
+
+  manifest.stage = 'final';
   const finalResult = await synthesizeFinalResult(env, manifest);
   manifest.status = 'completed';
   manifest.result = finalResult;
@@ -197,11 +238,15 @@ function buildJobManifest(jobId, body) {
   // nivel do job — nunca por arquivo. Fluxos sem contexto continuam com null.
   const context = normalizeJobContext(body.flow, body.context);
   const chunks = [];
-  const images = [];
+  const imageNames = [];
 
   body.files.forEach(file => {
+    // `deepseek-chat` nao tem visao: mandar `image_url` derrubava a chamada e, com
+    // ela, a analise inteira. O front-end passou a fazer OCR das imagens e enviar
+    // texto; um cliente antigo que ainda mande base64 recebe apenas o registro do
+    // arquivo — nunca o base64 no manifest (que estouraria o SETEX do Upstash).
     if (file.tipo === 'imagem') {
-      images.push({ nome: file.nome, conteudo: file.conteudo });
+      imageNames.push(file.nome);
       return;
     }
 
@@ -226,13 +271,13 @@ function buildJobManifest(jobId, body) {
     });
   });
 
-  if (chunks.length === 0 && images.length > 0) {
+  if (chunks.length === 0 && imageNames.length > 0) {
     chunks.push({
       index: 1,
-      fileName: images.map(image => image.nome).join(', '),
+      fileName: imageNames.join(', '),
       chunkLabel: 'Imagens enviadas',
       page: null,
-      content: '[Documento composto somente por imagens. Use as imagens anexadas como fonte principal.]',
+      content: `[Os arquivos ${imageNames.join(', ')} sao imagens e nao puderam ser lidos como texto. Registre isso como limitacao da analise e nao presuma o conteudo deles.]`,
     });
   }
 
@@ -241,17 +286,27 @@ function buildJobManifest(jobId, body) {
       jobId,
       flow: body.flow,
       status: 'pending',
+      stage: chunks.length > 0 ? 'chunks' : 'final',
       createdAt,
       updatedAt: createdAt,
       totalChunks: chunks.length,
       nextChunkIndex: 0,
       context,
-      images,
+      imageNames,
       fileNames: body.files.map(file => file.nome),
       chunkNotes: [],
+      // Fila da reducao hierarquica: comeca vazia e recebe uma referencia por nota
+      // de chunk; cada passo de reducao substitui um grupo por uma nota consolidada.
+      pendingNotes: [],
+      reduceBuffer: [],
+      reduceCursor: 0,
+      reduceLevel: 0,
+      reduceCount: 0,
       result: null,
       error: null,
-      chunks: chunks.map(({ content, ...rest }) => rest),
+      // O indice de chunks NAO fica no manifest: ele nunca era lido e, num job de
+      // centenas de chunks, engordava em dezenas de KB cada SETEX do manifest —
+      // que e reescrito a cada passo do /run.
     },
     chunks,
   };
@@ -259,20 +314,82 @@ function buildJobManifest(jobId, body) {
 
 async function analyzeChunk(env, manifest, chunk) {
   const prompt = buildChunkPrompt(manifest.flow, manifest.fileNames, chunk, buildAnalysisContext(manifest, 'chunk'));
-  const content = [
-    { type: 'text', text: prompt },
-    ...manifest.images.map(image => ({ type: 'image_url', image_url: { url: image.conteudo } })),
-  ];
   // Usa deepseek-chat para chunks: mais rápido, sem overhead de reasoning, evita content vazio
   const payload = {
     model: FALLBACK_DEEPSEEK_MODEL,
-    messages: [
-      { role: 'user', content },
-    ],
-    max_tokens: CHUNK_NOTE_MAX_TOKENS,
+    messages: [{ role: 'user', content: prompt }],
+    max_tokens: clampMaxTokens(CHUNK_NOTE_MAX_TOKENS),
   };
   const response = await callDeepSeek(env, payload);
   return extractMessageContent(response);
+}
+
+// ── Reducao hierarquica ─────────────────────────────────────────────────────
+
+function needsReduction(manifest) {
+  const pending = Array.isArray(manifest.pendingNotes) ? manifest.pendingNotes : [];
+  const buffer = Array.isArray(manifest.reduceBuffer) ? manifest.reduceBuffer : [];
+  // Ainda ha grupo pendente no nivel atual, ou o nivel atual continua grande demais.
+  if (buffer.length > 0 || (manifest.reduceCursor || 0) > 0) return true;
+  return pending.length > MAX_NOTES_FOR_FINAL;
+}
+
+// Um grupo por chamada de /run: mantem uma unica chamada a DeepSeek por passo,
+// dentro dos limites de CPU e subrequests do Worker.
+async function runReduceStep(env, manifest) {
+  const pending = manifest.pendingNotes;
+  const cursor = manifest.reduceCursor || 0;
+  const group = pending.slice(cursor, cursor + REDUCE_GROUP_SIZE);
+
+  if (group.length === 0) {
+    advanceReduceLevel(manifest);
+    return;
+  }
+
+  // Grupo de uma nota so nao precisa de chamada: sobe de nivel como esta.
+  if (group.length === 1) {
+    manifest.reduceBuffer.push(group[0]);
+    manifest.reduceCursor = cursor + 1;
+    if (manifest.reduceCursor >= pending.length) advanceReduceLevel(manifest);
+    return;
+  }
+
+  const notes = await loadNotes(env, manifest, group);
+  const level = (manifest.reduceLevel || 0) + 1;
+  const prompt = buildReducePrompt(manifest.flow, notes, buildAnalysisContext(manifest, 'chunk'));
+  const response = await callDeepSeek(env, {
+    model: FALLBACK_DEEPSEEK_MODEL,
+    messages: [{ role: 'user', content: prompt }],
+    max_tokens: clampMaxTokens(REDUCE_NOTE_MAX_TOKENS),
+  });
+
+  manifest.reduceCount = (manifest.reduceCount || 0) + 1;
+  const index = `r${level}-${manifest.reduceCount}`;
+  const fileName = uniqueList(notes.map(n => n.fileName)).join(', ');
+  const chunkLabel = `Consolidado ${group[0].chunkLabel} → ${group[group.length - 1].chunkLabel}`;
+  const ref = { index, fileName, chunkLabel, noteKey: noteKey(manifest.jobId, index), level };
+
+  await redisSet(env, ref.noteKey, {
+    index,
+    fileName,
+    chunkLabel,
+    note: extractMessageContent(response),
+  }, JOB_TTL_SECONDS);
+
+  manifest.reduceBuffer.push(ref);
+  manifest.reduceCursor = cursor + group.length;
+  if (manifest.reduceCursor >= pending.length) advanceReduceLevel(manifest);
+}
+
+function advanceReduceLevel(manifest) {
+  manifest.pendingNotes = manifest.reduceBuffer;
+  manifest.reduceBuffer = [];
+  manifest.reduceCursor = 0;
+  manifest.reduceLevel = (manifest.reduceLevel || 0) + 1;
+}
+
+function uniqueList(values) {
+  return Array.from(new Set(values.filter(Boolean)));
 }
 
 async function synthesizeFinalResult(env, manifest) {
@@ -286,10 +403,26 @@ async function synthesizeFinalResult(env, manifest) {
   const payload = {
     model: PRIMARY_DEEPSEEK_MODEL,
     messages: [{ role: 'user', content: prompt }],
-    max_tokens: maxTokens,
+    max_tokens: clampMaxTokens(maxTokens),
   };
   const response = await callDeepSeek(env, payload);
   return extractMessageContent(response);
+}
+
+function clampMaxTokens(value) {
+  return Math.max(1, Math.min(Number(value) || DEEPSEEK_MAX_OUTPUT_TOKENS, DEEPSEEK_MAX_OUTPUT_TOKENS));
+}
+
+// Estimativa de passos do /run (chunks + reducoes + sintese) para a barra de progresso.
+function estimateTotalSteps(manifest) {
+  let steps = manifest.totalChunks;
+  let notes = manifest.totalChunks;
+  while (notes > MAX_NOTES_FOR_FINAL) {
+    const groups = Math.ceil(notes / REDUCE_GROUP_SIZE);
+    steps += groups;
+    notes = groups;
+  }
+  return steps + 1;
 }
 
 // ── Contexto da demanda (modalidade + consideracoes do usuario) ──────────────
@@ -828,23 +961,64 @@ Retorne apenas JSON.${ctx}`;
 }
 
 async function loadChunkNotes(env, manifest) {
-  const refs = Array.isArray(manifest.chunkNotes) ? manifest.chunkNotes : [];
-  const notes = [];
+  // Depois da reducao hierarquica, `pendingNotes` guarda as notas que realmente
+  // vao para a sintese (podem ser consolidados de varios chunks). Jobs criados
+  // pela versao anterior nao tem esse campo e caem em `chunkNotes`.
+  const refs = Array.isArray(manifest.pendingNotes) && manifest.pendingNotes.length > 0
+    ? manifest.pendingNotes
+    : (Array.isArray(manifest.chunkNotes) ? manifest.chunkNotes : []);
+  return loadNotes(env, manifest, refs);
+}
 
-  for (const ref of refs) {
-    if (!ref || !ref.index) continue;
+// Carrega o conteudo real das notas referenciadas, preservando a ordem das refs.
+async function loadNotes(env, manifest, refs) {
+  const wanted = (refs || []).filter(ref => ref && ref.index);
+  if (wanted.length === 0) return [];
 
-    if (ref && ref.note) {
-      notes.push(ref);
-      continue;
+  const inline = new Map();
+  const keys = [];
+  wanted.forEach(ref => {
+    if (ref.note) {
+      inline.set(ref.index, ref);
+      return;
     }
+    keys.push(ref.noteKey || noteKey(manifest.jobId, ref.index));
+  });
 
-    const key = ref.noteKey || noteKey(manifest.jobId, ref.index);
-    const stored = await redisGet(env, key);
-    if (stored) notes.push(stored);
-  }
+  const stored = await redisGetMany(env, keys);
+  const byKey = new Map(keys.map((key, i) => [key, stored[i]]));
 
-  return notes.sort((a, b) => (a.index || 0) - (b.index || 0));
+  return wanted
+    .map(ref => inline.get(ref.index) || byKey.get(ref.noteKey || noteKey(manifest.jobId, ref.index)))
+    .filter(Boolean);
+}
+
+// Consolidacao intermediaria: junta varias notas parciais numa so, SEM concluir
+// nada. O objetivo e caber na janela de contexto da sintese final preservando
+// todos os dados e fontes coletados nos trechos.
+function buildReducePrompt(flow, notes, contextBlock = '') {
+  const notesBlock = notes
+    .map(note => `### ${note.fileName} / ${note.chunkLabel}\n${note.note}`)
+    .join('\n\n');
+  const ctx = contextBlock ? `\n\n${contextBlock}` : '';
+
+  return `Voce esta consolidando notas parciais de uma analise documental (fluxo: ${flow}). Estas notas vieram de trechos diferentes dos MESMOS documentos e serao usadas depois para montar o relatorio final.
+
+TAREFA: produzir UMA unica nota consolidada que substitua as notas abaixo.
+
+REGRAS OBRIGATORIAS:
+1. NAO conclua, NAO opine, NAO gere o relatorio final. Esta etapa e apenas de consolidacao de evidencias.
+2. NAO invente nada e NAO complete lacunas. Campo sem evidencia continua null.
+3. NAO descarte dado presente em nenhuma nota: preserve valores, percentuais, datas, nomes, CNPJ, numeros de edital/contrato/apolice e o texto de cada "fonte" (pagina, item, clausula).
+4. Una as listas (modalidades, coberturas, clausulas, alertas, riscos, trechos) eliminando apenas duplicatas literais.
+5. Se duas notas divergirem sobre o mesmo dado, mantenha AS DUAS versoes com suas fontes e registre a divergencia em "alertas" (ou no campo de alertas equivalente).
+6. Mantenha exatamente o mesmo formato JSON das notas recebidas. Se as notas usarem chaves diferentes entre si, use a uniao das chaves.
+7. Preserve indicacoes de escala (ex.: "milhares"), de empresa e de periodo — nunca misture empresas ou periodos diferentes num mesmo objeto.
+
+Retorne apenas o JSON consolidado, sem texto antes ou depois.
+
+NOTAS PARCIAIS A CONSOLIDAR:
+${notesBlock}${ctx}`;
 }
 
 function buildFinalPrompt(flow, fileNames, chunkNotes, contextBlock = '') {
@@ -1402,8 +1576,12 @@ function safeJobResponse(manifest) {
     jobId: manifest.jobId,
     flow: manifest.flow,
     status: manifest.status,
+    stage: manifest.stage || 'chunks',
     totalChunks: manifest.totalChunks,
     processedChunks: manifest.nextChunkIndex,
+    pendingNotes: Array.isArray(manifest.pendingNotes) ? manifest.pendingNotes.length : 0,
+    reduceLevel: manifest.reduceLevel || 0,
+    estimatedSteps: estimateTotalSteps(manifest),
     createdAt: manifest.createdAt,
     updatedAt: manifest.updatedAt,
     result: manifest.result,
@@ -1414,6 +1592,14 @@ function safeJobResponse(manifest) {
 async function requireJob(env, jobId) {
   const manifest = await redisGet(env, jobKey(jobId));
   if (!manifest) throw new Error('Job nao encontrado.');
+  // Jobs criados pela versao anterior do Worker ficam ate 6h no Redis e nao
+  // conhecem os campos da reducao hierarquica — normaliza antes de usar.
+  if (!Array.isArray(manifest.chunkNotes)) manifest.chunkNotes = [];
+  if (!Array.isArray(manifest.pendingNotes)) manifest.pendingNotes = manifest.chunkNotes.slice();
+  if (!Array.isArray(manifest.reduceBuffer)) manifest.reduceBuffer = [];
+  if (typeof manifest.reduceCursor !== 'number') manifest.reduceCursor = 0;
+  if (typeof manifest.reduceLevel !== 'number') manifest.reduceLevel = 0;
+  if (typeof manifest.reduceCount !== 'number') manifest.reduceCount = 0;
   return manifest;
 }
 
@@ -1438,12 +1624,47 @@ async function redisSet(env, key, value, ttlSeconds) {
   await redisCall(env, ['SETEX', key, String(ttlSeconds), JSON.stringify(value)]);
 }
 
-async function redisCall(env, command) {
+// Grava varias chaves em lotes de REDIS_PIPELINE_BATCH comandos por requisicao.
+async function redisSetMany(env, entries, ttlSeconds) {
+  const commands = entries.map(({ key, value }) => ['SETEX', key, String(ttlSeconds), JSON.stringify(value)]);
+  for (let i = 0; i < commands.length; i += REDIS_PIPELINE_BATCH) {
+    await redisPipeline(env, commands.slice(i, i + REDIS_PIPELINE_BATCH));
+  }
+}
+
+// Le varias chaves em lotes; devolve os valores ja parseados, na ordem das chaves.
+async function redisGetMany(env, keys) {
+  if (!keys || keys.length === 0) return [];
+  const out = [];
+  for (let i = 0; i < keys.length; i += REDIS_PIPELINE_BATCH) {
+    const batch = keys.slice(i, i + REDIS_PIPELINE_BATCH);
+    const results = await redisPipeline(env, batch.map(key => ['GET', key]));
+    batch.forEach((_key, idx) => {
+      const raw = results[idx] && results[idx].result;
+      out.push(raw ? JSON.parse(raw) : null);
+    });
+  }
+  return out;
+}
+
+async function redisPipeline(env, commands) {
+  if (!commands || commands.length === 0) return [];
+  const res = await redisCall(env, commands, '/pipeline');
+  if (!Array.isArray(res)) return [];
+  // O pipeline responde 200 mesmo com falha em um comando isolado — sem isso um
+  // chunk perdido só apareceria depois, como "Chunk N nao encontrado".
+  const failed = res.find(item => item && item.error);
+  if (failed) throw new Error(`Redis pipeline error: ${failed.error}`);
+  return res;
+}
+
+async function redisCall(env, command, path = '') {
   if (!env.UPSTASH_REDIS_REST_URL || !env.UPSTASH_REDIS_REST_TOKEN) {
     throw new Error('Configure UPSTASH_REDIS_REST_URL e UPSTASH_REDIS_REST_TOKEN no Worker.');
   }
 
-  const response = await fetch(env.UPSTASH_REDIS_REST_URL, {
+  const url = env.UPSTASH_REDIS_REST_URL.replace(/\/+$/, '') + path;
+  const response = await fetch(url, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${env.UPSTASH_REDIS_REST_TOKEN}`,

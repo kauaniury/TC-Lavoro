@@ -1,8 +1,10 @@
 const DEEPSEEK_WORKER_URL = 'https://lucky-hat-b241.kyuri887.workers.dev/';
 const DEEPSEEK_JOBS_URL = DEEPSEEK_WORKER_URL.replace(/\/+$/, '') + '/v1/analysis-jobs';
-const MAX_PDF_PAGES = 250;
+const MAX_PDF_PAGES = 600;
 const TEXT_CHUNK_SIZE = 30000;
-const MAX_JOB_ITERATIONS = 400;
+// Um passo de job = 1 chunk analisado, 1 grupo de notas consolidado ou a sintese
+// final. Com a reducao hierarquica o numero de passos supera o de chunks.
+const MAX_JOB_ITERATIONS = 1200;
 const OCR_TEXT_THRESHOLD = 100; // abaixo disto o PDF é tratado como imagem → usa OCR
 const RAW_TEXT_CHAT_LIMIT = 50000; // chars do texto bruto incluídos no contexto do chat
 
@@ -27,9 +29,11 @@ function sleep(ms) {
 }
 
 async function extrairTextosBrutos(arquivos) {
-  const extraidos = await Promise.all(
-    arquivos.map(async file => ({ nome: file.name, ...await extrairConteudoArquivo(file) }))
-  );
+  // Sequencial: OCR de varios arquivos em paralelo trava a aba (ver extrairImagem).
+  const extraidos = [];
+  for (const file of arquivos) {
+    extraidos.push({ nome: file.name, ...await extrairConteudoArquivo(file) });
+  }
   return extraidos
     .filter(a => a.tipo === 'texto')
     .map((a, i) => `--- DOCUMENTO ${i + 1}: ${a.nome} ---\n${String(a.conteudo || '')}`)
@@ -73,7 +77,19 @@ function quebrarTextoEmPartes(texto, maxChars, metaBase = {}) {
   return partes;
 }
 
-async function extrairConteudoArquivo(file) {
+// Extracao e cara (PDF.js + OCR) e cada arquivo era extraido duas vezes por analise:
+// uma em `extrairTextosBrutos` (texto do chat) e outra em `executarAnaliseEmLotes`.
+// O cache por objeto File elimina a segunda passada.
+const _extracaoCache = new WeakMap();
+
+function extrairConteudoArquivo(file) {
+  if (_extracaoCache.has(file)) return _extracaoCache.get(file);
+  const promessa = extrairConteudoArquivoSemCache(file);
+  _extracaoCache.set(file, promessa);
+  return promessa;
+}
+
+async function extrairConteudoArquivoSemCache(file) {
   const ext = file.name.split('.').pop().toLowerCase();
   if (['xlsx', 'xls'].includes(ext)) return extrairExcel(file);
   if (ext === 'csv' || ext === 'txt') return extrairTexto(file);
@@ -198,6 +214,11 @@ async function extrairPDFcomOCR(pdf, totalPaginas) {
   return { textoCompleto: textoCompleto.trim(), partes };
 }
 
+function comAvisoTruncado(partes, aviso) {
+  if (!aviso) return partes;
+  return partes.map(parte => ({ ...parte, conteudo: `${aviso}\n${parte.conteudo}` }));
+}
+
 async function extrairPDF(file) {
   try {
     const arrayBuffer = await file.arrayBuffer();
@@ -248,34 +269,83 @@ async function extrairPDF(file) {
       });
     }
 
+    // Documento maior que o teto: registra a limitacao como parte, para a IA
+    // declarar a lacuna em vez de analisar o PDF truncado sem avisar.
+    const avisoTruncado = pdf.numPages > totalPaginas
+      ? `[Aviso: ${file.name} tem ${pdf.numPages} paginas; apenas as ${totalPaginas} primeiras foram lidas. Registre essa limitacao na analise.]`
+      : '';
+
     // PDF sem texto reconhecível → fallback OCR (média de 100 chars/página)
     if (textoCompleto.trim().length < Math.max(OCR_TEXT_THRESHOLD, totalPaginas * 100)) {
       const ocr = await extrairPDFcomOCR(pdf, totalPaginas);
+      const ocrPartes = comAvisoTruncado(ocr.partes, avisoTruncado);
       return {
         tipo: 'texto',
-        conteudo: ocr.textoCompleto,
-        partes: ocr.partes,
-        meta: { origem: 'pdf-ocr', totalPaginas, totalPartes: ocr.partes.length },
+        conteudo: [ocr.textoCompleto, avisoTruncado].filter(Boolean).join('\n\n'),
+        partes: ocrPartes,
+        meta: { origem: 'pdf-ocr', totalPaginas, paginasNoArquivo: pdf.numPages, totalPartes: ocrPartes.length },
       };
     }
 
+    const partesFinais = comAvisoTruncado(partes, avisoTruncado);
     return {
       tipo: 'texto',
-      conteudo: textoCompleto.trim(),
-      partes,
-      meta: { origem: 'pdf', totalPaginas, totalPartes: partes.length },
+      conteudo: [textoCompleto.trim(), avisoTruncado].filter(Boolean).join('\n\n'),
+      partes: partesFinais,
+      meta: { origem: 'pdf', totalPaginas, paginasNoArquivo: pdf.numPages, totalPartes: partesFinais.length },
     };
   } catch (err) {
     return { tipo: 'texto', conteudo: '[PDF nao pode ser lido: ' + err.message + ']', partes: [] };
   }
 }
 
-function extrairImagem(file) {
-  return new Promise(resolve => {
+// O modelo usado no Worker (deepseek-chat) NAO tem visao: enviar a imagem como
+// `image_url` fazia a API responder erro e derrubava a analise inteira. Por isso
+// a imagem passa por OCR aqui no browser e entra no job como texto chunkado,
+// igual a qualquer outro documento.
+async function extrairImagem(file) {
+  const dataUrl = await new Promise(resolve => {
     const reader = new FileReader();
-    reader.onload = e => resolve({ tipo: 'imagem', conteudo: e.target.result });
+    reader.onload = e => resolve(e.target.result);
     reader.readAsDataURL(file);
   });
+
+  try {
+    await carregarTesseract();
+    const worker = await Tesseract.createWorker(['por', 'eng']);
+    const { data: { text } } = await worker.recognize(dataUrl);
+    await worker.terminate();
+
+    const texto = String(text || '').replace(/[ \t]+/g, ' ').trim();
+    if (!texto) {
+      return {
+        tipo: 'texto',
+        conteudo: `[Imagem ${file.name}: nenhum texto reconhecido pelo OCR.]`,
+        partes: [],
+        meta: { origem: 'imagem-ocr', totalPartes: 0 },
+      };
+    }
+
+    const partes = quebrarTextoEmPartes(texto, TEXT_CHUNK_SIZE).map((chunk, idx) => ({
+      indice: idx + 1,
+      rotulo: `${file.name} - parte ${idx + 1}`,
+      conteudo: `[Imagem: ${file.name}]\n${chunk.conteudo}`,
+    }));
+
+    return {
+      tipo: 'texto',
+      conteudo: `[Imagem: ${file.name}]\n${texto}`,
+      partes,
+      meta: { origem: 'imagem-ocr', totalPartes: partes.length },
+    };
+  } catch (err) {
+    return {
+      tipo: 'texto',
+      conteudo: `[Imagem ${file.name}: OCR indisponivel (${err.message}). Conteudo nao pode ser lido.]`,
+      partes: [],
+      meta: { origem: 'imagem-ocr-falha', totalPartes: 0 },
+    };
+  }
 }
 
 // ── Contexto da demanda (modalidade + consideracoes) ─────────────────────────
@@ -791,16 +861,20 @@ function mapArquivosParaJob(arquivosExtraidos) {
       return { nome: item.nome, tipo: 'imagem', conteudo: item.conteudo };
     }
 
+    const partes = (item.partes || []).map((parte, idx) => ({
+      indice: parte.indice || idx + 1,
+      rotulo: parte.rotulo || `Parte ${idx + 1}`,
+      pagina: parte.pagina || null,
+      conteudo: parte.conteudo,
+    }));
+
     return {
       nome: item.nome,
       tipo: 'texto',
-      conteudo: item.conteudo || '',
-      partes: (item.partes || []).map((parte, idx) => ({
-        indice: parte.indice || idx + 1,
-        rotulo: parte.rotulo || `Parte ${idx + 1}`,
-        pagina: parte.pagina || null,
-        conteudo: parte.conteudo,
-      })),
+      // `conteudo` so acompanha o arquivo quando nao ha partes: com partes ele e o
+      // mesmo texto repetido e dobrava o tamanho do POST de criacao do job.
+      conteudo: partes.length > 0 ? '' : (item.conteudo || ''),
+      partes,
       meta: item.meta || {},
     };
   });
@@ -835,10 +909,27 @@ function shouldFallbackToLegacy(err) {
   );
 }
 
+// Progresso da analise em lotes. app.js escuta este evento para atualizar o
+// texto de loading; nada quebra se ninguem estiver ouvindo.
+function emitirProgressoAnalise(flow, detalhe) {
+  if (typeof document === 'undefined' || !document.dispatchEvent) return;
+  document.dispatchEvent(new CustomEvent('analise-progresso', { detail: { flow, ...detalhe } }));
+}
+
 async function executarAnaliseEmLotes(flow, arquivos, context = null) {
-  const extraidos = await Promise.all(
-    arquivos.map(async file => ({ nome: file.name, ...await extrairConteudoArquivo(file) }))
-  );
+  // Extracao sequencial: PDF.js e Tesseract em paralelo para varios arquivos
+  // grandes travam a aba. Como o resultado fica em cache, o custo e pago uma vez.
+  const extraidos = [];
+  for (let i = 0; i < arquivos.length; i++) {
+    const file = arquivos[i];
+    emitirProgressoAnalise(flow, {
+      etapa: 'extracao',
+      atual: i + 1,
+      total: arquivos.length,
+      mensagem: `Lendo ${file.name} (${i + 1} de ${arquivos.length})...`,
+    });
+    extraidos.push({ nome: file.name, ...await extrairConteudoArquivo(file) });
+  }
 
   const payload = {
     flow,
@@ -858,14 +949,33 @@ async function executarAnaliseEmLotes(flow, arquivos, context = null) {
   const jobId = start && start.jobId;
   if (!jobId) throw new Error('O Worker nao retornou um jobId valido.');
 
+  const totalPassos = start.estimatedSteps || start.totalChunks || 0;
   for (let i = 0; i < MAX_JOB_ITERATIONS; i++) {
     const data = await postJson(`${DEEPSEEK_JOBS_URL}/${encodeURIComponent(jobId)}/run`, {});
     if (data.status === 'completed') return data.result;
     if (data.status === 'failed') throw new Error(data.error || 'Falha na analise em lotes.');
+    emitirProgressoAnalise(flow, {
+      etapa: data.stage || 'chunks',
+      atual: i + 1,
+      total: data.estimatedSteps || totalPassos,
+      mensagem: mensagemProgressoJob(data, i + 1, totalPassos),
+    });
     await sleep(data.retryAfterMs || 250);
   }
 
   throw new Error('A analise excedeu o numero maximo de iteracoes. Revise o Worker.');
+}
+
+function mensagemProgressoJob(data, passo, totalPassos) {
+  const total = data.estimatedSteps || totalPassos;
+  const sufixo = total ? ` (${Math.min(passo, total)} de ${total})` : '';
+  if (data.stage === 'reducing') return `Consolidando o que foi lido${sufixo}...`;
+  if (data.stage === 'final') return 'Montando a analise final...';
+  const lidos = data.processedChunks || 0;
+  const totalChunks = data.totalChunks || 0;
+  return totalChunks
+    ? `Analisando trecho ${Math.min(lidos + 1, totalChunks)} de ${totalChunks}...`
+    : `Analisando documentos${sufixo}...`;
 }
 
 async function chamarWorkerDireto(messages, maxTokens = 8192) {

@@ -1307,6 +1307,27 @@ function hideApoliceError() {
   if (el) el.classList.remove('show');
 }
 
+// ── Progresso da análise em lotes
+// `deepseek.js` emite `analise-progresso` a cada arquivo lido e a cada passo do
+// job (trecho analisado, consolidação de notas, síntese). Documentos grandes hoje
+// levam dezenas de passos — sem isso o usuário fica no spinner sem retorno.
+const AI_LOADING_BY_FLOW = {
+  'analise-financeira': 'afLoading',
+  'seguro-garantia': 'sgLoading',
+  'fianca-locaticia': 'flLoading',
+  'analise-apolice': 'apLoading',
+};
+
+document.addEventListener('analise-progresso', e => {
+  const detalhe = e.detail || {};
+  const loadingId = AI_LOADING_BY_FLOW[detalhe.flow];
+  if (!loadingId || !detalhe.mensagem) return;
+  const box = document.getElementById(loadingId);
+  if (!box || box.hidden) return;
+  const sub = box.querySelector('.af-loading-sub');
+  if (sub) sub.textContent = detalhe.mensagem;
+});
+
 // ── Process functions
 async function processarSeguroGarantia() {
   if (garantiaFiles.length === 0) {

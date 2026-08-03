@@ -1,7 +1,7 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.30  
-> Atualizado em: 2026-07-28
+> Versao: 2.31  
+> Atualizado em: 2026-08-03
 
 ## 1. Visão Geral
 
@@ -187,12 +187,14 @@ O front-end agora possui dois modos:
 
 ### 5.1a Modelo e tokens por fluxo
 
-| Fluxo | Chunk (`analyzeChunk`) | Síntese final (`synthesizeFinalResult`) |
-|---|---|---|
-| Análise Financeira | deepseek-chat / 4.000 tokens | deepseek-chat / **12.000 tokens** |
-| Seguro Garantia | deepseek-chat / 4.000 tokens | deepseek-chat / **10.000 tokens** |
-| Fiança Locatícia | deepseek-chat / 4.000 tokens | deepseek-chat / 8.000 tokens |
-| Análise de Apólice | deepseek-chat / 4.000 tokens | deepseek-chat / 8.000 tokens |
+| Fluxo | Chunk (`analyzeChunk`) | Redução (`runReduceStep`) | Síntese final (`synthesizeFinalResult`) |
+|---|---|---|---|
+| Análise Financeira | deepseek-chat / 4.000 tokens | deepseek-chat / 4.000 tokens | deepseek-chat / 8.000 tokens |
+| Seguro Garantia | deepseek-chat / 4.000 tokens | deepseek-chat / 4.000 tokens | deepseek-chat / 8.000 tokens |
+| Fiança Locatícia | deepseek-chat / 4.000 tokens | deepseek-chat / 4.000 tokens | deepseek-chat / 8.000 tokens |
+| Análise de Apólice | deepseek-chat / 4.000 tokens | deepseek-chat / 4.000 tokens | deepseek-chat / 8.000 tokens |
+
+**Teto duro de saída — `clampMaxTokens()`.** `DEEPSEEK_MAX_OUTPUT_TOKENS = 8192` é o limite de `max_tokens` da API DeepSeek; pedir mais faz a API responder **400 e derrubar a análise inteira**. Até a versão 2.30 a síntese de Análise Financeira pedia 12.000 e a de Seguro Garantia 10.000 — ambas acima do teto. Toda chamada ao modelo passa por `clampMaxTokens()`; nenhum `max_tokens` novo deve ser usado sem esse clamp.
 
 ### 5.2 Worker com Memória Redis
 
@@ -209,8 +211,11 @@ Responsabilidades:
 - persistir o texto completo de cada chunk separadamente no Redis
 - processar partes sequencialmente
 - armazenar notas parciais por chunk (referenciadas em `manifest.chunkNotes[]`, cada item apontando para a chave real via `noteKey`)
+- **reduzir hierarquicamente as notas** quando elas não couberem na síntese (ver 5.5a)
 - sintetizar resultado final só após o documento completo
 - expor `version` em respostas do Worker para auditoria de deploy
+
+**O Worker não recebe mais imagens.** `deepseek-chat` não tem visão: enviar partes `image_url` fazia a API retornar erro e derrubava a análise inteira sempre que o usuário anexava um `.png`/`.jpg`. A imagem agora passa por OCR no browser (`extrairImagem`, seção 5.4) e chega como texto chunkado. Um cliente antigo que ainda envie `tipo: "imagem"` não quebra: o Worker registra apenas o **nome** do arquivo em `manifest.imageNames[]` (nunca o base64, que estouraria o `SETEX` do Upstash) e, se não houver nenhum texto no job, cria um chunk declarando a limitação para a IA registrá-la na análise em vez de presumir o conteúdo.
 
 Secrets esperados no Worker:
 
@@ -284,12 +289,17 @@ Body:
   - `sanitizeUserText()` remove tags/pseudo-tags (`<...>`, o que impede fechar o delimitador `</consideracoes_usuario>`), caracteres de controle e espaços excedentes; conteúdo só de espaços vira string vazia.
   - `context: {}` ou `context` sem modalidade e sem considerações equivale a ausente (`null`); considerações sem modalidade → erro.
 
+Resposta da criação inclui `jobId`, `status`, `totalChunks`, `estimatedSteps` e `version`.
+
 #### `POST /v1/analysis-jobs/:jobId/run`
 
-Executa um passo do job:
+Executa **um passo** do job — sempre exatamente uma chamada ao modelo, o que mantém cada requisição dentro dos limites de CPU e de subrequests do Worker:
 
-- processa o próximo chunk, ou
-- finaliza a síntese quando todos os chunks já foram lidos
+1. processa o próximo chunk (`stage: "chunks"`), ou
+2. consolida o próximo grupo de notas (`stage: "reducing"`, ver 5.5a), ou
+3. finaliza a síntese quando as notas já cabem no prompt final (`stage: "final"`)
+
+`safeJobResponse` devolve, além dos campos antigos, `stage`, `pendingNotes` (quantidade de notas ainda na fila), `reduceLevel` e `estimatedSteps` — é o que alimenta o progresso na tela.
 
 #### `GET /v1/analysis-jobs/:jobId`
 
@@ -314,11 +324,20 @@ Implementada em `deepseek.js`.
 | `extrairConteudoArquivo(file)` | roteia por extensão |
 | `extrairExcel(file)` | converte abas para CSV e divide em partes |
 | `extrairTexto(file)` | lê UTF-8 e divide em partes |
-| `extrairPDF(file)` | extrai até 250 páginas via PDF.js e agrupa várias páginas por chunk para reduzir latência |
-| `extrairImagem(file)` | gera DataURL |
+| `extrairPDF(file)` | extrai até `MAX_PDF_PAGES` (600) páginas via PDF.js e agrupa várias páginas por chunk; PDF sem texto cai no OCR (`extrairPDFcomOCR`) |
+| `extrairImagem(file)` | **OCR via Tesseract** — retorna `tipo: 'texto'` chunkado, nunca mais `tipo: 'imagem'` |
+| `comAvisoTruncado(partes, aviso)` | prefixa o aviso de truncamento em cada parte quando o PDF excede `MAX_PDF_PAGES` |
+| `extrairConteudoArquivo(file)` | roteia por extensão **com cache** (`WeakMap` por objeto `File`) |
 | `executarAnaliseEmLotes(flow, arquivos, context = null)` | cria job e itera até concluir; `context` entra no body do job apenas quando informado |
+| `emitirProgressoAnalise(flow, detalhe)` | dispara o evento DOM `analise-progresso` a cada arquivo lido e a cada passo do job |
 | `analisarApolice(arquivos)` | executa o fluxo de análise de apólice com job Redis e fallback legado |
 | `consultarLimitesSeguradoras(cnpj, seguradoras)` | chama `/v1/limits/query` no Worker (ver seção 10) |
+
+#### 5.4a Progresso na tela — evento `analise-progresso`
+
+Documentos grandes levam dezenas de passos; sem retorno o usuário fica só no spinner. `deepseek.js` dispara o evento DOM `analise-progresso` com `{ flow, etapa, atual, total, mensagem }` a cada arquivo lido (`etapa: 'extracao'`) e a cada passo do job (`chunks` | `reducing` | `final`, texto montado por `mensagemProgressoJob`).
+
+`app.js` escuta o evento e escreve a mensagem no `.af-loading-sub` do bloco de loading do fluxo ativo — `AI_LOADING_BY_FLOW` mapeia `analise-financeira → afLoading`, `seguro-garantia → sgLoading`, `fianca-locaticia → flLoading`, `analise-apolice → apLoading`. O emissor é `no-op` se ninguém estiver ouvindo; nenhuma assinatura de função pública mudou.
 
 ### 5.5 Estratégia para PDFs grandes
 
@@ -330,12 +349,40 @@ Antes:
 
 Agora:
 
-- PDF é lido página a página
-- páginas consecutivas são agrupadas em chunks maiores
+- PDF é lido página a página (até `MAX_PDF_PAGES = 600`; acima disso cada parte recebe um aviso explícito de truncamento, para a IA declarar a lacuna em vez de analisar um documento cortado sem avisar)
+- páginas consecutivas são agrupadas em chunks de até `TEXT_CHUNK_SIZE` (30.000 caracteres)
 - cada chunk vira uma unidade de trabalho no Worker
 - o Worker só finaliza após consumir todos os chunks
 
 Isso reduz estouro de contexto e cria memória transacional da análise no Redis.
+
+**Payload da criação do job:** quando o arquivo tem `partes[]`, o campo `conteudo` vai vazio. Antes o texto completo era enviado nos dois campos, dobrando o tamanho do POST sem uso — o Worker só lê `file.conteudo` quando não há partes.
+
+**Extração é sequencial e cacheada.** `extrairConteudoArquivo` memoiza por objeto `File` (`WeakMap`): antes, cada análise extraía tudo duas vezes — uma em `extrairTextosBrutos` (texto bruto do chat) e outra em `executarAnaliseEmLotes`. Com OCR isso dobrava a operação mais cara do fluxo. Os laços de extração também deixaram de ser `Promise.all`: vários workers de Tesseract/PDF.js em paralelo travavam a aba.
+
+### 5.5a Redução hierárquica de notas — o gargalo real da síntese
+
+Chunkar o documento resolvia só metade do problema: **a síntese final recebia todas as notas de chunk de uma vez**. Com 10 arquivos grandes o job gera 50–100 notas de até 4.000 tokens cada (200K–400K tokens), muito acima da janela de contexto do modelo — a chamada falhava ou o modelo truncava, "esquecendo" documentos inteiros. Era isso, e não a extração, que fazia a IA ignorar parte dos arquivos.
+
+Quando sobram mais de `MAX_NOTES_FOR_FINAL` (10) notas, o job entra no estágio `reducing` antes da síntese:
+
+| Constante | Valor | Papel |
+|---|---|---|
+| `REDUCE_GROUP_SIZE` | 6 | notas consolidadas por passo |
+| `MAX_NOTES_FOR_FINAL` | 10 | acima disso, reduz; abaixo, sintetiza |
+| `REDUCE_NOTE_MAX_TOKENS` | 4.000 | teto de saída da nota consolidada |
+
+Estado no manifest: `stage` (`chunks` | `reducing` | `final`), `pendingNotes[]` (refs das notas do nível atual), `reduceBuffer[]` (nível seguinte, em construção), `reduceCursor`, `reduceLevel`, `reduceCount`.
+
+Cada `/run` consolida **um** grupo (`runReduceStep`) e grava a nota resultante em `deepseek:job:{jobId}:note:r{nivel}-{n}`. Ao consumir o nível inteiro, `advanceReduceLevel` promove o buffer a `pendingNotes` e repete — reduções por nível, não acumulação rolante, para nenhum grupo sofrer viés de recência. Grupo de uma nota só sobe de nível sem chamar o modelo.
+
+`buildReducePrompt` é uma etapa de **consolidação de evidências, nunca de conclusão**: proíbe opinar, inventar ou descartar dado; manda unir listas removendo só duplicatas literais; manter as duas versões com suas fontes quando houver divergência (registrando-a nos alertas); preservar o mesmo formato JSON das notas recebidas; e preservar indicações de escala, empresa e período — a regra de não misturar empresas nem períodos vale também aqui. O bloco de contexto usado é `buildAnalysisContext(manifest, 'chunk')`, porque o escopo só fecha na síntese final (ver 5.7.1a).
+
+Verificado por simulação da máquina de estados (0, 1, 5, 10, 11, 12, 25, 50, 97, 240 e 600 chunks): sempre termina, nenhuma nota de chunk é perdida no caminho, e a síntese nunca recebe mais de 10 notas.
+
+`estimateTotalSteps(manifest)` projeta o total de passos (chunks + reduções + síntese) e vai em `estimatedSteps` nas respostas do Worker.
+
+**`MAX_JOB_ITERATIONS` (deepseek.js) = 1.200**, não mais 400: um passo de job agora pode ser um chunk, um grupo consolidado ou a síntese.
 
 ### 5.6 Arquitetura Redis — chaves e tamanho do manifest
 
@@ -343,9 +390,9 @@ Isso reduz estouro de contexto e cria memória transacional da análise no Redis
 
 | Chave | Conteúdo |
 |---|---|
-| `deepseek:job:{jobId}` | Manifest do job (metadados, status, índices, `chunkNotes[]` de referências) |
+| `deepseek:job:{jobId}` | Manifest do job (metadados, status, índices, `chunkNotes[]`/`pendingNotes[]` de referências) |
 | `deepseek:job:{jobId}:chunk:{index}` | Conteúdo textual bruto de cada chunk |
-| `deepseek:job:{jobId}:note:{index}` | Nota gerada pela IA para cada chunk |
+| `deepseek:job:{jobId}:note:{index}` | Nota gerada pela IA para cada chunk (`index` numérico) ou nota consolidada (`index` no formato `r{nivel}-{n}`, ver 5.5a) |
 
 TTL de todas as chaves: 6 horas (`JOB_TTL_SECONDS`).
 
@@ -365,13 +412,17 @@ fetch(UPSTASH_REDIS_REST_URL, {
 
 **Nunca usar path params** (formato `GET /{cmd}/{arg1}/{arg2}`) — o valor JSON encodado na URL ultrapassa os limites de tamanho (~8–32KB de URL).
 
+**Escrita e leitura em lote — `/pipeline`.** `redisSetMany` e `redisGetMany` agrupam comandos em lotes de `REDIS_PIPELINE_BATCH` (25) no endpoint `/pipeline` do Upstash. Um `SETEX` por chunk em requisições separadas estourava o **limite de subrequests do Cloudflare Worker** na criação de jobs com muitos chunks — o job falhava antes mesmo da primeira chamada ao modelo. `redisPipeline` inspeciona cada item da resposta: o pipeline responde 200 mesmo com falha em um comando isolado, e sem essa checagem um chunk perdido só apareceria depois como `Chunk N nao encontrado`.
+
+**Retrocompatibilidade de manifest:** `requireJob` normaliza `chunkNotes`, `pendingNotes`, `reduceBuffer`, `reduceCursor`, `reduceLevel` e `reduceCount` ao carregar. Jobs criados pela versão anterior do Worker ficam até 6h no Redis e não conhecem esses campos.
+
 **Contexto da demanda no manifest:** o manifest guarda somente o contexto **já normalizado**:
 
 ```js
 context: { modalidade: { id: '...', label: '...' }, consideracoes: '...' }   // ou null
 ```
 
-A estratégia de chaves, o TTL de 6h e a regra de as notas de chunk viverem fora do manifest **não mudaram**. `safeJobResponse` **não** expõe `context` (nem `images`, `chunks` ou `chunkNotes`): o front-end já tem o contexto validado localmente, então não há necessidade funcional de devolvê-lo — ele permanece interno ao Worker.
+A estratégia de chaves, o TTL de 6h e a regra de as notas de chunk viverem fora do manifest **não mudaram**. O índice `manifest.chunks[]` (metadados de cada chunk) foi **removido**: nunca era lido e, num job de centenas de chunks, engordava em dezenas de KB cada `SETEX` do manifest — que é reescrito a cada passo do `/run`. `safeJobResponse` **não** expõe `context` (nem `imageNames` ou o conteúdo de `chunkNotes`/`pendingNotes` — de `pendingNotes` sai só a contagem): o front-end já tem o contexto validado localmente, então não há necessidade funcional de devolvê-lo — ele permanece interno ao Worker.
 
 ### 5.7 Contexto da demanda — modalidade e considerações
 
@@ -1013,6 +1064,7 @@ Em caso de `401`, o token é invalidado e a consulta refeita uma vez com login n
 | html2canvas | 1.4.1 | captura para PDF |
 | jsPDF | 2.5.1 | geração de PDF |
 | PDF.js | 3.11.174 | extração de texto de PDFs |
+| Tesseract.js | 5 | OCR de imagens e de PDFs sem camada de texto (carregado sob demanda por `carregarTesseract()`) |
 
 ## 12. Observações de Deploy
 
