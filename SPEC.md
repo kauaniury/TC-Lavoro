@@ -1,7 +1,7 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.36  
-> Atualizado em: 2026-08-03
+> Versao: 2.37  
+> Atualizado em: 2026-08-13
 
 ## 1. Visão Geral
 
@@ -1067,9 +1067,19 @@ Resposta:
 
 - `fetchWithTimeout(url, options, timeoutMs)` (padrão 20s, 25s no Onpoint) envolve toda chamada externa com `AbortController`; ao abortar, lança `Error` com mensagem contendo "tempo limite" — o front-end reconhece essa string e classifica como aviso "Sem resposta", nunca como erro técnico vermelho (`classifyErrorMessage` em `app.js`).
 - `parseJsonSafe(response)` faz parse defensivo do corpo de erro (nunca estoura se a seguradora devolver texto puro em 5xx) e `extractErrorMessage(payload, fallback)` extrai a mensagem mais específica possível (`message`, `nm_retorno`, `Errors[]`, `errors{}` no formato ASP.NET, `title`, texto bruto).
-- **Junto — fluxo completo de limites** (`queryJunto`): autentica → `GET /policyholders/{cnpj}` + `GET /policyholders/{cnpj}/modalities` em paralelo → se qualquer uma falhar, tenta `POST /policyholders {federalId}` e aguarda 9000ms (propagação assíncrona documentada da Junto) antes de repetir as duas chamadas; se ainda falharem ambas, erro técnico. Para cada modalidade retornada, busca `GET /policyholders/{cnpj}/modalities/{submodalityId ?? modalityId}/rates` (uma submodalidade sem taxa não derruba a consulta — fica sem `limitAvailable`/`rate`, e o front-end mantém a modalidade sem valor). Retorna o array de modalidades já enriquecido com `limitAvailable`/`rate` por `submodality`.
-- **Onpoint — retry de "consulta em andamento"** (`queryOnpoint`): a Onpoint rejeita duas consultas simultâneas para o mesmo CNPJ mesmo entre seguradoras diferentes (por isso a família roda sequencial); quando a resposta HTTP 200 traz `{ Errors: ["...em andamento..."] }`, o Worker tenta de novo automaticamente (até 3 tentativas, 1500ms × tentativa) — qualquer outro conteúdo de `Errors[]` (bloqueado, sem alçada etc.) não é retry, é repassado como está para o front-end classificar como aviso de negócio.
-- Em todos os casos, HTTP não-2xx é sempre erro técnico (`queryInsurer` captura e devolve `{ status: 'erro', erro }`); mensagens de negócio (sem limite, bloqueado, nomeado) chegam com HTTP 200 e são responsabilidade do normalizador de cada seguradora no front-end.
+- **Junto — fluxo completo de limites** (`queryJunto`): autentica → `GET /policyholders/{cnpj}` + `GET /policyholders/{cnpj}/modalities` em paralelo → se qualquer uma falhar, tenta `POST /policyholders {federalId}` e aguarda 9000ms (propagação assíncrona documentada da Junto) antes de repetir as duas chamadas; se ainda falharem ambas, erro técnico. Para **cada modalidade** retornada por `/modalities`, busca `GET /policyholders/{cnpj}/modalities/{modalidade.id}/rates` usando **sempre o id de nível superior da modalidade** (nunca o id de uma submodalidade — esse endpoint é por modalidade, não por submodalidade; correção desta versão, antes usava `submodalityId ?? modalityId`). Uma falha pontual nessa chamada para uma modalidade não derruba as outras nem remove a modalidade do resultado (try/catch por modalidade — fica sem `limitAvailable`/`rate`, mas continua na lista). A resposta de `/rates` pode trazer mais de uma entrada (uma por submodalidade); `matchJuntoRateEntry` casa cada entrada com sua submodalidade pelo id (`submodalityId`/`subModalityId`/`id`) e, sem id para casar, cai para a posição ou para a única entrada disponível. Retorna o array de modalidades já enriquecido com `limitAvailable`/`rate` por `submodality`.
+- **Onpoint — retry de "consulta em andamento"** (`queryOnpointRequest`): a mensagem de erro é sempre extraída do corpo primeiro (via `extractErrorMessage`/`Errors[]`) e só depois classificada como retryable (`isOnpointInProgressMessage`) — **independente de a resposta ter vindo com HTTP 200 e `Errors[]` ou com status não-2xx** (a Onpoint foi observada retornando a mesma condição de "consulta em andamento" das duas formas). Havendo match, tenta de novo automaticamente (até 3 tentativas, 1500ms × tentativa); qualquer outro conteúdo de `Errors[]` (bloqueado, sem alçada, nomeado com outro corretor etc.) é erro de negócio, nunca retry, e segue como está para o front-end classificar como aviso. Ver 10.3b para o lock distribuído que precede essas chamadas.
+- Fora do caso específico acima (mensagem retryable da Onpoint), HTTP não-2xx continua sendo sempre erro técnico (`queryInsurer` captura e devolve `{ status: 'erro', erro }`); mensagens de negócio (sem limite, bloqueado, nomeado) chegam com HTTP 200 e são responsabilidade do normalizador de cada seguradora no front-end.
+
+### 10.3b Onpoint — lock distribuído por CNPJ entre requisições concorrentes
+
+O `for...of` sequencial de `handleLimitsQuery` (10.3) só serializa as chamadas Onpoint **dentro de uma mesma requisição** — não impede que duas requisições `/v1/limits/query` diferentes (duas abas, dois usuários, um duplo clique) consultem o mesmo CNPJ ao mesmo tempo. Como a Onpoint trata qualquer combinação de `essor`/`sombrero`/`newe`/`mitsui`/`axa` para o mesmo CNPJ como uma única fila por tomador, isso fazia seguradoras da família falharem aleatoriamente sob concorrência com `"Já existe uma consulta para este CNPJ."`, mesmo entre seguradoras diferentes.
+
+Como o Worker roda distribuído (múltiplos isolates/colos, sem processo único persistente), um lock em memória (`Map`) não seria confiável — `queryOnpoint(env, cnpj, key)` usa o Redis (Upstash, já usado para cache de token) como lock distribuído:
+
+- Antes de qualquer chamada Onpoint (`queryOnpointRequest`) para um CNPJ, `acquireOnpointLock` tenta `SET limits:onpoint-lock:{cnpj} 1 NX PX 30000` (`ONPOINT_LOCK_TTL_MS`); se não conseguir, aguarda `ONPOINT_LOCK_WAIT_MS` (400ms) e tenta de novo, até um teto de `ONPOINT_LOCK_MAX_WAIT_MS` (~20s) — esgotado o teto, desiste e segue sem lock (a Onpoint ainda tem o retry por mensagem de 10.3a como segunda linha de defesa).
+- `releaseOnpointLock` faz `DEL` da chave no `finally` de `queryOnpoint`, sucesso ou erro — **só quando este mesmo request chegou a adquirir o lock** (`locked === true`), para nunca apagar o lock de outra requisição que esteja com a fila legitimamente ocupada após esta ter desistido por timeout.
+- O lock é por CNPJ, não por seguradora — cobre a família Onpoint inteira, como a Onpoint exige.
 
 ### 10.4 Cache de token no Redis
 
@@ -1080,6 +1090,7 @@ Tokens de login (JNS, Junto, Fator) são cacheados no Redis para evitar novo log
 | `limits:token:jns` | 25 min (fixo — API não informa `expires_in`) |
 | `limits:token:junto` | `expiresIn` da resposta menos 30s de margem |
 | `limits:token:fator` | `expires_in` da resposta menos 30s de margem |
+| `limits:onpoint-lock:{cnpj}` | 30s (`ONPOINT_LOCK_TTL_MS`) — lock distribuído por CNPJ, não cache de token; ver 10.3b |
 
 Em caso de `401`, o token é invalidado e a consulta refeita uma vez com login novo.
 

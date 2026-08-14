@@ -5,7 +5,7 @@ const CORS_HEADERS = {
 };
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
-const WORKER_VERSION = '2026-08-03.2';
+const WORKER_VERSION = '2026-08-13.1';
 const PRIMARY_DEEPSEEK_MODEL = 'deepseek-chat';
 const FALLBACK_DEEPSEEK_MODEL = 'deepseek-chat';
 const JOB_TTL_SECONDS = 60 * 60 * 6;
@@ -1471,28 +1471,50 @@ async function queryJunto(env, cnpj) {
   const modalidades = await modalitiesRes.json();
   const lista = Array.isArray(modalidades) ? modalidades : [];
 
-  // Para cada submodalidade habilitada, busca a taxa/limite real. Uma falha pontual nao
-  // deve derrubar a consulta inteira — a submodalidade fica sem valor (front-end oculta).
+  // Taxa/limite e por MODALIDADE, nunca por submodalidade — o endpoint correto e
+  // sempre /modalities/{modalidade.id}/rates usando o id de nivel superior (o
+  // mesmo id do item de /modalities), nunca o id de uma submodalidade. Uma falha
+  // pontual nessa chamada para UMA modalidade nao pode derrubar as outras nem
+  // fazer a modalidade sumir do resultado: try/catch por modalidade, e em falha
+  // ela fica sem valor de taxa/limite mas continua na lista.
   const comTaxas = await Promise.all(lista.map(async mod => {
     const subs = Array.isArray(mod.submodalities) && mod.submodalities.length ? mod.submodalities : [{}];
-    const subsComTaxa = await Promise.all(subs.map(async sub => {
-      const rateId = sub.id ?? mod.id;
-      if (rateId === undefined || rateId === null) return { ...sub };
-      try {
-        const ratesRes = await fetchAuthorized(`/policyholders/${cnpj}/modalities/${rateId}/rates`);
-        if (!ratesRes.ok) return { ...sub };
-        const rates = await ratesRes.json();
-        const first = Array.isArray(rates) ? rates[0] : rates;
-        if (!first) return { ...sub };
-        return { ...sub, limitAvailable: first.limitAvailable, rate: first.rate };
-      } catch {
-        return { ...sub };
-      }
-    }));
-    return { ...mod, submodalities: subsComTaxa };
+    if (mod.id === undefined || mod.id === null) return { ...mod, submodalities: subs };
+
+    try {
+      const ratesRes = await fetchAuthorized(`/policyholders/${cnpj}/modalities/${mod.id}/rates`);
+      if (!ratesRes.ok) return { ...mod, submodalities: subs };
+      const rates = await ratesRes.json();
+      const ratesList = Array.isArray(rates) ? rates : (rates ? [rates] : []);
+
+      const subsComTaxa = subs.map((sub, idx) => {
+        const entry = matchJuntoRateEntry(ratesList, sub, idx);
+        return entry ? { ...sub, limitAvailable: entry.limitAvailable, rate: entry.rate } : { ...sub };
+      });
+      return { ...mod, submodalities: subsComTaxa };
+    } catch {
+      return { ...mod, submodalities: subs };
+    }
   }));
 
   return comTaxas;
+}
+
+// A resposta de /modalities/{id}/rates traz um array com uma entrada por
+// submodalidade quando a modalidade tem mais de uma. Casa cada entrada pela
+// submodalidade correspondente pelo id (checando os nomes de campo mais comuns);
+// sem id para casar, cai para a posicao (mesma ordem devolvida por /modalities)
+// e, no caso mais comum de uma unica entrada, usa-a diretamente — preserva o
+// comportamento anterior para modalidades sem submodalidades.
+function matchJuntoRateEntry(ratesList, sub, index) {
+  if (!ratesList.length) return null;
+  const subId = sub && sub.id;
+  if (subId !== undefined && subId !== null) {
+    const byId = ratesList.find(r => r && (r.submodalityId === subId || r.subModalityId === subId || r.id === subId));
+    if (byId) return byId;
+  }
+  if (ratesList.length === 1) return ratesList[0];
+  return ratesList[index] ?? ratesList[0];
 }
 
 // -- Onpoint (Essor / Sombrero / NEWE / Mitsui) e AXA --
@@ -1500,15 +1522,68 @@ async function queryJunto(env, cnpj) {
 const ONPOINT_IN_PROGRESS_RETRY_MS = 1500;
 const ONPOINT_IN_PROGRESS_MAX_ATTEMPTS = 3;
 
+// Lock distribuido por CNPJ entre requisicoes concorrentes ────────────────────
+// A Onpoint trata QUALQUER combinacao de essor/sombrero/newe/mitsui/axa para o
+// mesmo CNPJ como uma unica fila por tomador: duas requisicoes /v1/limits/query
+// concorrentes para o mesmo CNPJ (duas abas, dois usuarios, duplo clique) fazem a
+// Onpoint rejeitar a segunda com "Ja existe uma consulta para este CNPJ", mesmo
+// quando as seguradoras pedidas sao diferentes entre as duas requisicoes. O
+// for...of de handleLimitsQuery so serializa as chamadas DENTRO de uma mesma
+// requisicao — nao impede duas requisicoes diferentes de rodarem ao mesmo tempo.
+// Como o Worker roda distribuido (multiplos isolates/colos, sem processo unico
+// persistente), um lock em memoria (Map) nao seria confiavel — usa o Redis
+// (ja usado para cache de token) como lock distribuido via SET NX PX.
+const ONPOINT_LOCK_TTL_MS = 30000;
+const ONPOINT_LOCK_WAIT_MS = 400;
+const ONPOINT_LOCK_MAX_WAIT_MS = 20000;
+
+function onpointLockKey(cnpj) {
+  return `limits:onpoint-lock:${cnpj}`;
+}
+
+// Tenta adquirir o lock ate ~ONPOINT_LOCK_MAX_WAIT_MS; desiste (devolve false) em
+// vez de travar a consulta indefinidamente — a propria Onpoint ainda tem o retry
+// por mensagem abaixo como segunda linha de defesa se a corrida persistir.
+async function acquireOnpointLock(env, cnpj) {
+  const key = onpointLockKey(cnpj);
+  const deadline = Date.now() + ONPOINT_LOCK_MAX_WAIT_MS;
+  for (;;) {
+    const res = await redisCall(env, ['SET', key, '1', 'NX', 'PX', String(ONPOINT_LOCK_TTL_MS)]);
+    if (res.result === 'OK') return true;
+    if (Date.now() >= deadline) return false;
+    await sleep(ONPOINT_LOCK_WAIT_MS);
+  }
+}
+
+async function releaseOnpointLock(env, cnpj) {
+  await redisCall(env, ['DEL', onpointLockKey(cnpj)]);
+}
+
 function isOnpointInProgressMessage(message) {
   return /andamento|already.*progress/i.test(String(message || ''));
 }
 
-// A Onpoint pode devolver { Errors: [...] } (sem Response) tanto para erros de negocio
-// ("bloqueado", "sem alcada") quanto para o erro tecnico "consulta em andamento" — apenas
-// o segundo caso recebe retry automatico; qualquer outro Errors[] segue para o front-end
-// normalizar como aviso de negocio (nunca como erro tecnico).
-async function queryOnpoint(env, cnpj, key, attempt = 1) {
+// Adquire o lock do CNPJ antes de qualquer chamada Onpoint (familia inteira, nao
+// so esta seguradora) e libera no finally — sucesso ou erro. So libera se este
+// mesmo request chegou a adquirir (evita apagar o lock de outra requisicao apos
+// desistir por timeout).
+async function queryOnpoint(env, cnpj, key) {
+  const locked = await acquireOnpointLock(env, cnpj);
+  try {
+    return await queryOnpointRequest(env, cnpj, key);
+  } finally {
+    if (locked) await releaseOnpointLock(env, cnpj);
+  }
+}
+
+// A Onpoint pode sinalizar "consulta em andamento" de duas formas observadas em
+// producao: HTTP 200 com { Errors: [...] } (formato original previsto) OU HTTP
+// nao-2xx com a mesma mensagem no corpo — por isso a mensagem de erro e sempre
+// extraida primeiro (do corpo, via extractErrorMessage/Errors[]) e so DEPOIS
+// classificada como retryable ou nao, independente do status HTTP. Qualquer outra
+// mensagem de Errors[] (bloqueado, sem alcada, nomeado com outro corretor etc.) e
+// erro de negocio, nunca retry — segue para o front-end normalizar normalmente.
+async function queryOnpointRequest(env, cnpj, key, attempt = 1) {
   const insurer = ONPOINT_INSURERS[key];
   if (!insurer) throw new Error(`Seguradora Onpoint desconhecida: ${key}`);
 
@@ -1528,15 +1603,19 @@ async function queryOnpoint(env, cnpj, key, attempt = 1) {
   }, 25000);
 
   const payload = await parseJsonSafe(res);
-  if (!res.ok) throw new Error(extractErrorMessage(payload, `Onpoint (${insurer.name}) error ${res.status}`));
-
   const unwrapped = Array.isArray(payload) && payload.length === 1 ? payload[0] : payload;
   const errors = unwrapped && Array.isArray(unwrapped.Errors) ? unwrapped.Errors : [];
-  const inProgressMsg = errors.find(isOnpointInProgressMessage);
-  if (inProgressMsg && attempt < ONPOINT_IN_PROGRESS_MAX_ATTEMPTS) {
+
+  const message = res.ok
+    ? (errors.length ? errors.join(' ') : null)
+    : extractErrorMessage(unwrapped, `Onpoint (${insurer.name}) error ${res.status}`);
+
+  if (message && isOnpointInProgressMessage(message) && attempt < ONPOINT_IN_PROGRESS_MAX_ATTEMPTS) {
     await sleep(ONPOINT_IN_PROGRESS_RETRY_MS * attempt);
-    return queryOnpoint(env, cnpj, key, attempt + 1);
+    return queryOnpointRequest(env, cnpj, key, attempt + 1);
   }
+
+  if (!res.ok) throw new Error(message);
 
   return unwrapped;
 }
