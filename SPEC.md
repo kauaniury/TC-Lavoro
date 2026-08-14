@@ -1,6 +1,6 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.38  
+> Versao: 2.39  
 > Atualizado em: 2026-08-13
 
 ## 1. Visão Geral
@@ -1025,6 +1025,8 @@ Cada seguradora tem um formato de resposta próprio; `normalizeLimiteResultado(r
 | `normalizeLimiteFator` | `fator` | `cd_retorno !== 0` é sempre resposta de negócio (nunca erro técnico): `nm_retorno` é classificado via `classifyErrorMessage` — `nomeado` (mensagem original exibida, é acionável) se menciona corretor, senão `sem_limite` com a mensagem substituída pelo texto padrão `LIM_SEM_LIMITE_MSG` (o jargão bruto da Fator, ex. "tomador deve estar Aprovado e dentro da Data de Validade", não é repassado ao usuário). Quando `cd_retorno === 0`, parseia `DadosTomador[]` em modalidades (`NomeGrupoSubLimite`, `ValorLimiteDisponivel`, `ValorTaxa`), filtrando zerados; se a lista ficar vazia após o filtro, também usa `LIM_SEM_LIMITE_MSG` |
 
 `LIM_STATUS_CONFIG` mapeia `statusKey` para label e classe de badge: `aprovado` (verde), `bloqueado`/`nomeado`/`sem_resposta`/`instavel` (âmbar), `sem_limite` (cinza neutro), `erro` (vermelho), `aguardando` (neutro, só no placeholder pré-consulta).
+
+`classifyErrorMessage` reconhece, na família "instável" (JNS): `"motor de crédito"`/`"problema ao rodar"` **e** `"negado"` combinado com `"técnic[a/o]"` (ex.: `"Risco negado por questões técnicas."`) — apesar da palavra "negado", o texto atribui a causa a uma falha do motor da própria seguradora, não a uma decisão de crédito real, então não deve acender o badge vermelho de erro técnico (essas mensagens chegam via `r.status !== 'ok'`, HTTP não-2xx do lado da JNS, mas são resposta de negócio/instabilidade, não falha do Worker).
 
 `LIM_SEM_LIMITE_MSG` (constante em `app.js`, valor `"Sem limite liberado ao tomador."`) é a mensagem padrão exibida no card sempre que uma seguradora nega limite por regra de negócio sem uma causa mais específica e acionável (ex.: Fator com `cd_retorno` de status/validade do tomador) — evita expor jargão interno de seguradora na UI.
 

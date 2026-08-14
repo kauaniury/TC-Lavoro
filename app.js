@@ -4601,6 +4601,12 @@ function classifyErrorMessage(message) {
   if (t.includes('tempo limite') || t.includes('timeout') || t.includes('respond')) return 'sem_resposta';
   if (['motor de crédito', 'motor de credito', 'problema ao rodar', 'instável', 'instavel', 'indisponív', 'indisponiv']
     .some(kw => t.includes(kw))) return 'instavel';
+  // "Risco negado por questões técnicas" (JNS): apesar de "negado", o próprio texto
+  // atribui a causa a uma falha tecnica do motor da seguradora, nao a uma decisao de
+  // credito real — mesma familia de "motor de credito", nao deveria acender o badge
+  // vermelho de erro tecnico do nosso lado. Exige as duas partes juntas ("negado" +
+  // "tecnic[a/o]") para nao capturar um "negado" generico de negocio.
+  if (t.includes('negado') && (t.includes('técnic') || t.includes('tecnic'))) return 'instavel';
   if (t.includes('bloquead')) return 'bloqueado';
   return 'erro';
 }
