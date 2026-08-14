@@ -5,7 +5,7 @@ const CORS_HEADERS = {
 };
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
-const WORKER_VERSION = '2026-08-13.1';
+const WORKER_VERSION = '2026-08-13.2';
 const PRIMARY_DEEPSEEK_MODEL = 'deepseek-chat';
 const FALLBACK_DEEPSEEK_MODEL = 'deepseek-chat';
 const JOB_TTL_SECONDS = 60 * 60 * 6;
@@ -1297,6 +1297,11 @@ function sleep(ms) {
 // Toda chamada externa usa timeout — ao abortar, a mensagem contem "tempo limite" para
 // o front-end classificar como aviso "Sem resposta", nunca como erro tecnico vermelho.
 const LIMITS_FETCH_TIMEOUT_MS = 20000;
+// Junto tem o fluxo mais longo dos integrados (auth -> 2 GETs -> cadastro + espera fixa
+// de 9s -> repete os 2 GETs -> 1 GET de rates por modalidade) e ja foi observada
+// respondendo mais devagar que os 20s padrao nesse caminho — timeout proprio de 1 min
+// por chamada (nao cumulativo: cada fetch individual tem ate 60s, nao a sequencia toda).
+const LIMITS_FETCH_TIMEOUT_JUNTO_MS = 60000;
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = LIMITS_FETCH_TIMEOUT_MS) {
   const controller = new AbortController();
@@ -1396,7 +1401,7 @@ async function getJuntoToken(env, forceRefresh = false) {
       clientId: env.JUNTO_CLIENT_ID,
       clientSecret: env.JUNTO_CLIENT_SECRET,
     }),
-  });
+  }, LIMITS_FETCH_TIMEOUT_JUNTO_MS);
   if (!res.ok) throw new Error(extractErrorMessage(await parseJsonSafe(res), `Junto auth error ${res.status}`));
 
   const data = await res.json();
@@ -1430,13 +1435,13 @@ async function queryJunto(env, cnpj) {
     let res = await fetchWithTimeout(`${JUNTO_BASE}${path}`, {
       ...options,
       headers: { ...authHeaders(), ...(options.headers || {}) },
-    });
+    }, LIMITS_FETCH_TIMEOUT_JUNTO_MS);
     if (res.status === 401) {
       token = await getJuntoToken(env, true);
       res = await fetchWithTimeout(`${JUNTO_BASE}${path}`, {
         ...options,
         headers: { ...authHeaders(), ...(options.headers || {}) },
-      });
+      }, LIMITS_FETCH_TIMEOUT_JUNTO_MS);
     }
     return res;
   };
