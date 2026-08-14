@@ -1,7 +1,7 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.39  
-> Atualizado em: 2026-08-13
+> Versao: 2.40  
+> Atualizado em: 2026-08-14
 
 ## 1. Visão Geral
 
@@ -14,7 +14,7 @@ Aplicação web estática da **Lavoro Seguros** com seis fluxos independentes:
 | Seguro Garantia IA | Edital, contrato, aditivos, apostilamentos, PDF/imagem/planilhas | Relatório técnico estruturado (primeira resposta) + chat conversacional + exportação PDF |
 | Fiança Locatícia IA | Contrato de locação, aditivos, laudos, PDF/imagem/planilhas | JSON contratual renderizado em tela |
 | Análise de Apólice IA | Apólice, endossos, condições particulares, PDF/imagem/planilhas | JSON objetivo com dados essenciais da apólice renderizado em relatório |
-| Consulta de Limites | CNPJ do tomador | Consulta em tempo real dos limites disponíveis em cada seguradora integrada (JNS, Junto, Onpoint/Essor/Sombrero/NEWE/Mitsui, AXA, Fator) |
+| Consulta de Limites | CNPJ do tomador | Consulta em tempo real dos limites disponíveis em cada seguradora integrada (JNS, Junto, Onpoint/Essor/Sombrero/NEWE/Mitsui/Now, AXA, Fator) |
 
 O fluxo **T&C** continua estável e não deve ser alterado sem necessidade explícita.
 
@@ -1004,7 +1004,7 @@ Consulta em tempo real (sem upload de arquivo) do limite disponível para um CNP
 ### 10.1 Front-end
 
 - Aba `consulta-limites` (`index.html`), sem dependência de IA/chat.
-- Entrada em um **console de consulta** (`.lim-console`): eyebrow "Consulta automática · 8 seguradoras integradas" com indicador dourado pulsante (`.lim-console-dot`, respeita `prefers-reduced-motion`), campo instrumento (`.lim-console-field` com tag dourada `.lim-console-tag` "CNPJ" + input `.lim-console-input` em `--font-mono`) e o botão de ação `.lim-console-submit` (único elemento verde-escuro). O input aplica máscara ao vivo via `oninput="fmtTcCnpj(this)"` e dispara a consulta no Enter. Não há seleção manual de seguradoras — `consultarLimitesUI()` sempre consulta as 8 integradas (`LIM_ALL_SEGURADORAS`). Em telas ≤560px o console empilha (campo e botão full-width).
+- Entrada em um **console de consulta** (`.lim-console`): eyebrow "Consulta automática · 9 seguradoras integradas" com indicador dourado pulsante (`.lim-console-dot`, respeita `prefers-reduced-motion`), campo instrumento (`.lim-console-field` com tag dourada `.lim-console-tag` "CNPJ" + input `.lim-console-input` em `--font-mono`) e o botão de ação `.lim-console-submit` (único elemento verde-escuro). O input aplica máscara ao vivo via `oninput="fmtTcCnpj(this)"` e dispara a consulta no Enter. Não há seleção manual de seguradoras — `consultarLimitesUI()` sempre consulta as 9 integradas (`LIM_ALL_SEGURADORAS`). Em telas ≤560px o console empilha (campo e botão full-width).
 - Antes da primeira consulta, `renderLimitesPlaceholders()` (chamada por `switchTab('consulta-limites')`) já exibe um card por seguradora em estado **Aguardando** (`buildLimWaitingCardHtml`), com logo e texto instrutivo — nunca sobrescreve resultados já carregados (`#limResults[data-has-results]`).
 - `deepseek.js`: `consultarLimitesSeguradoras(cnpj, seguradoras)` — `POST` para `${DEEPSEEK_WORKER_URL}/v1/limits/query`.
 - `app.js`: `consultarLimitesUI()` valida CNPJ (14 dígitos), chama `consultarLimitesSeguradoras` e renderiza via `renderLimitesResults(data)`.
@@ -1021,7 +1021,7 @@ Cada seguradora tem um formato de resposta próprio; `normalizeLimiteResultado(r
 |---|---|---|
 | `normalizeLimiteJns` | `jns` | `dados.product_limits[]` (após filtrar zerados) vazio → `sem_limite`/`instavel` (conforme `d.message`); senão `aprovado` com um item por produto (`product_name`, `limit_available`/`approvedLimit`, `tax`/`feePercent`, `product_branch`) |
 | `normalizeLimiteJunto` | `junto` | `dados` é array de modalidades com `submodalities[]`, cada uma já enriquecida pelo Worker com `limitAvailable`/`rate` reais (ver 10.2). Lista vazia (ou só zerados) → `sem_limite`; senão `aprovado` com `valor`/`taxa` reais quando disponíveis |
-| `normalizeLimiteOnpoint` | `essor`, `sombrero`, `newe`, `mitsui`, `axa` | Aceita `dados.Response[0]` (envelope padrão) **ou** `dados` já desembrulhado pelo Worker; se `CanSetupAProposal` e `LimitsAndRates[]` presentes (após `.filter(Boolean)` e filtro de zerados) → `aprovado`; senão lê `Reasons[]`/`Errors[]` e classifica via `classifyErrorMessage` (`bloqueado`, `nomeado`, `instavel`, `sem_resposta` ou `sem_limite`) |
+| `normalizeLimiteOnpoint` | `essor`, `sombrero`, `newe`, `mitsui`, `axa`, `now` | Aceita `dados.Response[0]` (envelope padrão) **ou** `dados` já desembrulhado pelo Worker; se `CanSetupAProposal` e `LimitsAndRates[]` presentes (após `.filter(Boolean)` e filtro de zerados) → `aprovado`; senão lê `Reasons[]`/`Errors[]` e classifica via `classifyErrorMessage` (`bloqueado`, `nomeado`, `instavel`, `sem_resposta` ou `sem_limite`) |
 | `normalizeLimiteFator` | `fator` | `cd_retorno !== 0` é sempre resposta de negócio (nunca erro técnico): `nm_retorno` é classificado via `classifyErrorMessage` — `nomeado` (mensagem original exibida, é acionável) se menciona corretor, senão `sem_limite` com a mensagem substituída pelo texto padrão `LIM_SEM_LIMITE_MSG` (o jargão bruto da Fator, ex. "tomador deve estar Aprovado e dentro da Data de Validade", não é repassado ao usuário). Quando `cd_retorno === 0`, parseia `DadosTomador[]` em modalidades (`NomeGrupoSubLimite`, `ValorLimiteDisponivel`, `ValorTaxa`), filtrando zerados; se a lista ficar vazia após o filtro, também usa `LIM_SEM_LIMITE_MSG` |
 
 `LIM_STATUS_CONFIG` mapeia `statusKey` para label e classe de badge: `aprovado` (verde), `bloqueado`/`nomeado`/`sem_resposta`/`instavel` (âmbar), `sem_limite` (cinza neutro), `erro` (vermelho), `aguardando` (neutro, só no placeholder pré-consulta).
@@ -1059,11 +1059,13 @@ Resposta:
 |---|---|---|---|
 | JNS Seguros | `jns` | login (`username`+`password`+`token`) → Bearer, com retry automático em `401` | `JNS_USERNAME`, `JNS_PASSWORD`, `JNS_TOKEN` |
 | Junto Seguros | `junto` | `clientId`+`clientSecret` → `accessToken`; cadastra o tomador automaticamente se `policyholders/{cnpj}` ainda não existir | `JUNTO_CLIENT_ID`, `JUNTO_CLIENT_SECRET` |
-| Essor / Sombrero / NEWE / Mitsui Sumitomo (via Onpoint) | `essor`, `sombrero`, `newe`, `mitsui` | header fixo `application-key-v2`, sem login | `ONPOINT_APPLICATION_KEY_V2`, `ONPOINT_BROKER_CNPJ` |
+| Essor / Sombrero / NEWE / Mitsui Sumitomo / Now (via Onpoint) | `essor`, `sombrero`, `newe`, `mitsui`, `now` | header fixo `application-key-v2`, sem login | `ONPOINT_APPLICATION_KEY_V2`, `ONPOINT_BROKER_CNPJ` |
 | AXA (via Onpoint, rota dedicada `/axa/...`) | `axa` | mesma auth do Onpoint acima | idem |
 | Fator Seguradora | `fator` | OAuth2 `client_credentials` (Basic + `grant_type=client_credentials`) → Bearer | `FATOR_CLIENT_ID`, `FATOR_CLIENT_SECRET`, `FATOR_CORRETOR_ID`, `FATOR_NM_LOGIN` |
 
-**Regra crítica — a consulta roda inteiramente em fila (`for...of`), nunca em paralelo.** `handleLimitsQuery` consulta as seguradoras solicitadas uma de cada vez, na ordem recebida, aguardando cada `queryInsurer` terminar antes de iniciar a próxima. Isso evita sobrecarregar qualquer integração — em especial a Onpoint, que agrupa `essor`/`sombrero`/`newe`/`mitsui`/`axa` no mesmo endpoint e rejeita chamadas concorrentes para o mesmo CNPJ — mas agora vale para todas as 8 seguradoras, não só a família Onpoint. Como consequência, o tempo total de resposta escala linearmente com o número de seguradoras consultadas.
+Now Seguros usa a mesma credencial já cadastrada da Onpoint (`ONPOINT_APPLICATION_KEY_V2`/`ONPOINT_BROKER_CNPJ`) — nenhum secret novo foi adicionado, só mais um `InsuranceUniqueId` na família (ver 10.5).
+
+**Regra crítica — a consulta roda inteiramente em fila (`for...of`), nunca em paralelo.** `handleLimitsQuery` consulta as seguradoras solicitadas uma de cada vez, na ordem recebida, aguardando cada `queryInsurer` terminar antes de iniciar a próxima. Isso evita sobrecarregar qualquer integração — em especial a Onpoint, que agrupa `essor`/`sombrero`/`newe`/`mitsui`/`axa`/`now` no mesmo endpoint e rejeita chamadas concorrentes para o mesmo CNPJ — mas agora vale para todas as 9 seguradoras, não só a família Onpoint. Como consequência, o tempo total de resposta escala linearmente com o número de seguradoras consultadas.
 
 ### 10.3a Tratamento de erro no Worker
 
@@ -1106,6 +1108,7 @@ Em caso de `401`, o token é invalidado e a consulta refeita uma vez com login n
 | NEWE Seguros S.A. | `d53bda2d-0710-4bff-b5be-51f2ab377362` |
 | Mitsui Sumitomo Seguros S.A. | `ff4a046b-d047-4bec-9253-1e3bc83c2df1` |
 | AXA Seguros S.A. | `555b5249-1f74-4681-9f49-5958ad720cfb` (rota própria) |
+| Now Seguros S.A. | `992f6760-66d8-4501-b0ca-1c716da9b7b7` |
 
 ## 11. Dependências Externas
 

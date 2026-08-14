@@ -5,7 +5,7 @@ const CORS_HEADERS = {
 };
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
-const WORKER_VERSION = '2026-08-13.2';
+const WORKER_VERSION = '2026-08-14.1';
 const PRIMARY_DEEPSEEK_MODEL = 'deepseek-chat';
 const FALLBACK_DEEPSEEK_MODEL = 'deepseek-chat';
 const JOB_TTL_SECONDS = 60 * 60 * 6;
@@ -47,17 +47,19 @@ const INSURER_LABELS = {
   newe: 'NEWE Seguros',
   mitsui: 'Mitsui Sumitomo Seguros',
   axa: 'AXA Seguros',
+  now: 'Now Seguros',
   fator: 'Fator Seguradora',
 };
 const ALL_INSURER_KEYS = Object.keys(INSURER_LABELS);
 // Seguradoras que passam pelo endpoint compartilhado da Onpoint (dispatch em queryInsurer)
-const ONPOINT_FAMILY = ['essor', 'sombrero', 'newe', 'mitsui', 'axa'];
+const ONPOINT_FAMILY = ['essor', 'sombrero', 'newe', 'mitsui', 'axa', 'now'];
 const ONPOINT_INSURERS = {
   essor: { name: 'Essor Seguros S.A.', id: '406fecd8-bfd7-4cba-a9bd-87efcfd38288', axaRoute: false },
   sombrero: { name: 'SOMBRERO SEGUROS S/A', id: '7e3b3e1a-e0db-4067-876f-350f73a38acd', axaRoute: false },
   newe: { name: 'NEWE Seguros S.A.', id: 'd53bda2d-0710-4bff-b5be-51f2ab377362', axaRoute: false },
   mitsui: { name: 'Mitsui Sumitomo Seguros S.A.', id: 'ff4a046b-d047-4bec-9253-1e3bc83c2df1', axaRoute: false },
   axa: { name: 'AXA Seguros S.A.', id: '555b5249-1f74-4681-9f49-5958ad720cfb', axaRoute: true },
+  now: { name: 'Now Seguros S.A.', id: '992f6760-66d8-4501-b0ca-1c716da9b7b7', axaRoute: false },
 };
 const LIMITS_TOKEN_TTL_SECONDS = 60 * 25;
 
@@ -1256,7 +1258,7 @@ async function handleLimitsQuery(request, env) {
 
   // Fila sequencial: uma seguradora por vez (nunca em paralelo).
   // Evita sobrecarregar integracoes como a Onpoint, que agrupa varias
-  // seguradoras (essor/sombrero/newe/mitsui/axa) no mesmo endpoint e
+  // seguradoras (essor/sombrero/newe/mitsui/axa/now) no mesmo endpoint e
   // rejeita chamadas concorrentes para o mesmo CNPJ.
   for (const key of requested) {
     resultados.push(await queryInsurer(env, cnpj, key));
@@ -1522,13 +1524,13 @@ function matchJuntoRateEntry(ratesList, sub, index) {
   return ratesList[index] ?? ratesList[0];
 }
 
-// -- Onpoint (Essor / Sombrero / NEWE / Mitsui) e AXA --
+// -- Onpoint (Essor / Sombrero / NEWE / Mitsui / Now) e AXA --
 
 const ONPOINT_IN_PROGRESS_RETRY_MS = 1500;
 const ONPOINT_IN_PROGRESS_MAX_ATTEMPTS = 3;
 
 // Lock distribuido por CNPJ entre requisicoes concorrentes ────────────────────
-// A Onpoint trata QUALQUER combinacao de essor/sombrero/newe/mitsui/axa para o
+// A Onpoint trata QUALQUER combinacao de essor/sombrero/newe/mitsui/axa/now para o
 // mesmo CNPJ como uma unica fila por tomador: duas requisicoes /v1/limits/query
 // concorrentes para o mesmo CNPJ (duas abas, dois usuarios, duplo clique) fazem a
 // Onpoint rejeitar a segunda com "Ja existe uma consulta para este CNPJ", mesmo

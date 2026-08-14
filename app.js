@@ -4487,11 +4487,12 @@ const LIM_LOGO_MAP = {
   newe: 'assets/Newe-logo.png',
   mitsui: 'assets/Mitisui-logo.png',
   axa: 'assets/axa-logo.png',
+  now: 'assets/now-logo.png',
   fator: 'assets/fator.png',
 };
 
 // Todas as seguradoras integradas são consultadas por padrão — sem seleção manual.
-const LIM_ALL_SEGURADORAS = ['jns', 'junto', 'essor', 'sombrero', 'newe', 'mitsui', 'axa', 'fator'];
+const LIM_ALL_SEGURADORAS = ['jns', 'junto', 'essor', 'sombrero', 'newe', 'mitsui', 'axa', 'now', 'fator'];
 const LIM_LABELS = {
   jns: 'JNS Seguros',
   junto: 'Junto Seguros',
@@ -4500,6 +4501,7 @@ const LIM_LABELS = {
   newe: 'NEWE Seguros',
   mitsui: 'Mitsui Sumitomo',
   axa: 'AXA Seguros',
+  now: 'Now Seguros',
   fator: 'Fator Seguradora',
 };
 
@@ -4621,7 +4623,7 @@ function normalizeLimiteResultado(r) {
   if (key === 'jns') return normalizeLimiteJns(r.dados);
   if (key === 'junto') return normalizeLimiteJunto(r.dados);
   if (key === 'fator') return normalizeLimiteFator(r.dados);
-  if (['essor', 'sombrero', 'newe', 'mitsui', 'axa'].includes(key)) return normalizeLimiteOnpoint(r.dados);
+  if (['essor', 'sombrero', 'newe', 'mitsui', 'axa', 'now'].includes(key)) return normalizeLimiteOnpoint(r.dados);
   return { statusKey: 'erro', modalidades: [], mensagem: 'Seguradora desconhecida.' };
 }
 
