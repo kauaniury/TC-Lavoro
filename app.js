@@ -4600,15 +4600,18 @@ function classifyErrorMessage(message) {
   // bloqueio que apenas cita "corretora" (ex.: "bloqueado para esta corretora") não é
   // o mesmo aviso de negócio de tomador nomeado com outro corretor.
   if (t.includes('nomead') && (t.includes('corretor') || t.includes('broker'))) return 'nomeado';
+  // Junto: "Corretor não possui permissão para visualizar o Tomador." — mesma família
+  // de "nomeado com outro corretor" (o tomador já pertence a outro corretor de registro
+  // na seguradora), só que sem a palavra "nomeado" nessa formulação específica.
+  if (t.includes('corretor') && t.includes('permiss')) return 'nomeado';
   if (t.includes('tempo limite') || t.includes('timeout') || t.includes('respond')) return 'sem_resposta';
   if (['motor de crédito', 'motor de credito', 'problema ao rodar', 'instável', 'instavel', 'indisponív', 'indisponiv']
     .some(kw => t.includes(kw))) return 'instavel';
-  // "Risco negado por questões técnicas" (JNS): apesar de "negado", o próprio texto
-  // atribui a causa a uma falha tecnica do motor da seguradora, nao a uma decisao de
-  // credito real — mesma familia de "motor de credito", nao deveria acender o badge
-  // vermelho de erro tecnico do nosso lado. Exige as duas partes juntas ("negado" +
-  // "tecnic[a/o]") para nao capturar um "negado" generico de negocio.
-  if (t.includes('negado') && (t.includes('técnic') || t.includes('tecnic'))) return 'instavel';
+  // "Risco negado por questões técnicas" (JNS): é decisão de negócio (risco negado),
+  // não instabilidade passageira do motor — o "por questões técnicas" aqui é o jargão
+  // da própria JNS para negativa de crédito, não um convite a tentar de novo. Badge
+  // neutro "Sem limite", não âmbar "Instável" nem vermelho "Erro".
+  if (t.includes('negado') && (t.includes('técnic') || t.includes('tecnic'))) return 'sem_limite';
   if (t.includes('bloquead')) return 'bloqueado';
   return 'erro';
 }

@@ -1,6 +1,6 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.40  
+> Versao: 2.42  
 > Atualizado em: 2026-08-14
 
 ## 1. Visão Geral
@@ -1009,6 +1009,7 @@ Consulta em tempo real (sem upload de arquivo) do limite disponível para um CNP
 - `deepseek.js`: `consultarLimitesSeguradoras(cnpj, seguradoras)` — `POST` para `${DEEPSEEK_WORKER_URL}/v1/limits/query`.
 - `app.js`: `consultarLimitesUI()` valida CNPJ (14 dígitos), chama `consultarLimitesSeguradoras` e renderiza via `renderLimitesResults(data)`.
 - Renderização em **cards por seguradora** (grid `.lim-cards-grid`, `buildLimResultCardHtml`): logo da seguradora (`LIM_LOGO_MAP` → `assets/*.png`, via `limLogoHtml()`), nome, badge de status colorido. Quando há modalidades, botão "Ver limites do tomador" abre um modal (`openLimiteModal` / `closeLimiteModal`); quando não há, o card mostra a mensagem de negócio/erro diretamente (`.lim-card-desc--muted`) em vez de um botão desabilitado.
+- `.lim-cards-grid` usa **3 colunas fixas** no desktop (`repeat(3, minmax(0, 1fr))`, as 9 seguradoras cabem em 3×3) — antes era `auto-fill` responsivo por largura de card. Colapsa para 2 colunas em ≤900px e 1 coluna em ≤560px (mesmo breakpoint do `.lim-console-row`).
 - No modal, os campos `valor` (`fmtBRL`), `taxa` e `segurado` de cada modalidade só são renderizados quando não são `null`/`undefined` — nunca aparece um traço `—` como placeholder de dado ausente. Quando `n.mensagem` existe **e** há modalidades (ex.: Junto sem taxa disponível), a mensagem aparece como nota (`.lim-modal-note`) no topo do corpo do modal.
 - Cabeçalho `.lim-tomador-header` exibe nome e CNPJ do tomador, extraídos do primeiro resultado que os retornar (nem toda seguradora devolve o nome).
 - **Limites zerados nunca aparecem**: `isZeroLimite(valor)` filtra qualquer modalidade cujo valor numérico seja exatamente `0` (valor `null`/`undefined` — ainda sem taxa cotada — continua aparecendo, pois é informativo, não "sem limite"). Se todas as modalidades de uma seguradora forem filtradas, o card cai para `sem_limite`.
@@ -1026,7 +1027,11 @@ Cada seguradora tem um formato de resposta próprio; `normalizeLimiteResultado(r
 
 `LIM_STATUS_CONFIG` mapeia `statusKey` para label e classe de badge: `aprovado` (verde), `bloqueado`/`nomeado`/`sem_resposta`/`instavel` (âmbar), `sem_limite` (cinza neutro), `erro` (vermelho), `aguardando` (neutro, só no placeholder pré-consulta).
 
-`classifyErrorMessage` reconhece, na família "instável" (JNS): `"motor de crédito"`/`"problema ao rodar"` **e** `"negado"` combinado com `"técnic[a/o]"` (ex.: `"Risco negado por questões técnicas."`) — apesar da palavra "negado", o texto atribui a causa a uma falha do motor da própria seguradora, não a uma decisão de crédito real, então não deve acender o badge vermelho de erro técnico (essas mensagens chegam via `r.status !== 'ok'`, HTTP não-2xx do lado da JNS, mas são resposta de negócio/instabilidade, não falha do Worker).
+`classifyErrorMessage` reconhece, além do `"motor de crédito"`/`"problema ao rodar"` (família "instável"):
+- `"negado"` combinado com `"técnic[a/o]"` (JNS, ex.: `"Risco negado por questões técnicas."`) → `sem_limite` (cinza) — é decisão de negócio (risco negado), o "por questões técnicas" é jargão da própria JNS para negativa de crédito, não convite a tentar de novo;
+- `"corretor"` combinado com `"permiss"` (Junto, ex.: `"Corretor não possui permissão para visualizar o Tomador."`) → `nomeado` (âmbar) — mesma família de "nomeado com outro corretor" (tomador já registrado com outro corretor na seguradora), só que sem a palavra "nomeado" nessa formulação específica da Junto.
+
+Essas mensagens chegam via `r.status !== 'ok'` (HTTP não-2xx do lado da seguradora), mas são resposta de negócio, não falha técnica do Worker.
 
 `LIM_SEM_LIMITE_MSG` (constante em `app.js`, valor `"Sem limite liberado ao tomador."`) é a mensagem padrão exibida no card sempre que uma seguradora nega limite por regra de negócio sem uma causa mais específica e acionável (ex.: Fator com `cd_retorno` de status/validade do tomador) — evita expor jargão interno de seguradora na UI.
 
