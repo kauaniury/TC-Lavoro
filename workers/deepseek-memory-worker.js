@@ -1275,6 +1275,7 @@ async function handleLimitsQuery(request, env) {
       status: 'pending',
       message: 'Já existe uma consulta de mercado em andamento para este CNPJ.',
       retryAfterMs: LIMITS_QUERY_RETRY_AFTER_MS,
+      progress: { percent: 5, message: 'Aguardando a consulta em andamento…' },
     }, 202);
   }
 
@@ -1288,6 +1289,7 @@ async function handleLimitsQuery(request, env) {
         status: 'pending',
         message: 'Consulta da Junto em andamento.',
         retryAfterMs: LIMITS_QUERY_RETRY_AFTER_MS,
+        progress: progress.progress,
       }, 202);
     }
 
@@ -1358,7 +1360,10 @@ async function runLimitsQueryStep(env, cnpj, requested) {
       createdAt: new Date().toISOString(),
     };
     await redisSet(env, juntoJobKey(cnpj), job, JUNTO_JOB_TTL_SECONDS);
-    return { completed: false };
+    return {
+      completed: false,
+      progress: { percent: 20, message: 'Consultando modalidades da Junto…' },
+    };
   }
 
   if (job.signature !== signature) {
@@ -1370,7 +1375,14 @@ async function runLimitsQueryStep(env, cnpj, requested) {
   const completed = await runJuntoRateBatch(env, cnpj, job);
   if (!completed) {
     await redisSet(env, juntoJobKey(cnpj), job, JUNTO_JOB_TTL_SECONDS);
-    return { completed: false };
+    const total = Math.max(1, job.modalidades.length);
+    return {
+      completed: false,
+      progress: {
+        percent: Math.min(95, 20 + Math.round((job.cursor / total) * 75)),
+        message: `Consultando Junto: ${job.cursor} de ${job.modalidades.length} modalidades.`,
+      },
+    };
   }
 
   await redisCall(env, ['DEL', juntoJobKey(cnpj)]);

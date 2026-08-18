@@ -1,6 +1,6 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.55
+> Versao: 2.56
 > Atualizado em: 2026-08-18
 
 ## 1. Visão Geral
@@ -1354,6 +1354,13 @@ seguradoras e o cursor. As invocações seguintes executam somente quatro chamad
 `/modalities/{id}/rates` por vez (`JUNTO_RATE_BATCH_SIZE = 4`), persistem o cursor e devolvem
 `202` até terminar. Ao concluir, o Worker monta o resultado da Junto, remove o job e grava o
 cache consolidado. Dessa forma não há uma chamada por modalidade acumulada na mesma execução.
+
+**Progresso visual da consulta.** Todo `202` inclui opcionalmente
+`progress: { percent, message }`. O `consultarLimitesSeguradoras` em `deepseek.js` repassa
+esse estado ao callback da interface; na página de mercado, `setMktProgress` atualiza a barra
+`#mktProgressBar`, o percentual e a mensagem em `#mktLoading`. O percentual começa em 2%,
+vai a 20% após montar o job e avança conforme o cursor das modalidades da Junto, chegando a
+100% somente quando o resultado consolidado é aplicado aos cards.
 
 ### 10.3a Tratamento de erro no Worker
 

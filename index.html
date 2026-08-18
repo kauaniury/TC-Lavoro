@@ -110,7 +110,11 @@
 
       <div class="lim-loading" id="mktLoading" hidden>
         <div class="af-spinner" aria-hidden="true"></div>
-        <p class="af-loading-text">Consultando seguradoras…</p>
+        <p class="af-loading-text" id="mktProgressText">Iniciando consulta…</p>
+        <div class="mkt-progress" role="progressbar" aria-labelledby="mktProgressText" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <div class="mkt-progress-bar" id="mktProgressBar"></div>
+        </div>
+        <p class="mkt-progress-percent" id="mktProgressPercent">0%</p>
       </div>
 
       <div class="mkt-filter-row" role="tablist" aria-label="Filtrar seguradoras exibidas">

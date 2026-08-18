@@ -1230,7 +1230,7 @@ async function analisarDocumentosFinanceiros(arquivos) {
   }
 }
 
-async function consultarLimitesSeguradoras(cnpj, seguradoras) {
+async function consultarLimitesSeguradoras(cnpj, seguradoras, onProgress) {
   const url = DEEPSEEK_WORKER_URL.replace(/\/+$/, '') + '/v1/limits/query';
   const deadline = Date.now() + 6 * 60 * 1000;
   for (;;) {
@@ -1242,6 +1242,7 @@ async function consultarLimitesSeguradoras(cnpj, seguradoras) {
 
     if (resp.status === 202) {
       const pending = await resp.json();
+      if (typeof onProgress === 'function') onProgress(pending.progress || {});
       if (Date.now() >= deadline) {
         throw new Error('A consulta de mercado continua em andamento. Aguarde alguns instantes e tente novamente.');
       }

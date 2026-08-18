@@ -6100,6 +6100,27 @@ details[open] .fl-clausula-chevron { transform: rotate(180deg); }
   padding: var(--space-8) 0;
 }
 
+.mkt-progress {
+  width: min(360px, 100%);
+  height: 8px;
+  overflow: hidden;
+  background: var(--color-surface-muted);
+  border-radius: 999px;
+}
+.mkt-progress-bar {
+  width: 0;
+  height: 100%;
+  background: var(--color-accent);
+  border-radius: inherit;
+  transition: width 0.25s ease;
+}
+.mkt-progress-percent {
+  margin: calc(-1 * var(--space-2)) 0 0;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-accent-ink);
+}
+
 /* Console de consulta de mercado — igual em espírito ao .lim-console, mas com
    dois campos (tomador + CNPJ) e ação lado a lado, refletindo os dois estados
    que a análise carrega (não é só uma busca, é a sessão inteira). */

@@ -3833,6 +3833,18 @@ function hideMktError() {
   if (el) el.classList.remove('show');
 }
 
+function setMktProgress(progress = {}) {
+  const percent = Math.max(0, Math.min(100, Number(progress.percent) || 0));
+  const bar = document.getElementById('mktProgressBar');
+  const text = document.getElementById('mktProgressText');
+  const value = document.getElementById('mktProgressPercent');
+  const track = bar ? bar.parentElement : null;
+  if (bar) bar.style.width = percent + '%';
+  if (text && progress.message) text.textContent = progress.message;
+  if (value) value.textContent = Math.round(percent) + '%';
+  if (track) track.setAttribute('aria-valuenow', String(Math.round(percent)));
+}
+
 // Resultado automático da API (normalizeLimiteResultado, mesma lógica por
 // seguradora da antiga Consulta de Limites) → status do novo modelo de 5.
 function mapNormStatusToMkt(statusKey) {
@@ -3860,10 +3872,12 @@ async function consultarMercadoUI() {
   const btn = document.getElementById('mktBtnConsultar');
   const loading = document.getElementById('mktLoading');
   if (btn) btn.disabled = true;
+  setMktProgress({ percent: 2, message: 'Iniciando consulta de mercado…' });
   if (loading) loading.hidden = false;
 
   try {
-    const data = await consultarLimitesSeguradoras(cnpjDigits, MKT_API_KEYS);
+    const data = await consultarLimitesSeguradoras(cnpjDigits, MKT_API_KEYS, setMktProgress);
+    setMktProgress({ percent: 100, message: 'Consulta concluída.' });
     aplicarResultadosMercado(data);
   } catch (err) {
     showMktError('Erro ao consultar mercado: ' + err.message);
