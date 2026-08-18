@@ -1,6 +1,6 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.52
+> Versao: 2.53
 > Atualizado em: 2026-08-18
 
 ## 1. Visão Geral
@@ -311,10 +311,11 @@ desaparecer/ser coberto em cards estreitos (grade de 3 colunas). Com wrap, a eti
 uma linha própria abaixo do nome quando não cabe ao lado, em vez de disputar espaço na mesma
 linha.
 
-**Largura da consulta:** somente a página de mercado amplia `.tab-upload-inner` para até
-1180px; os demais fluxos preservam a largura de formulário de 680px. Os cards têm maior área
-interna e altura mínima para acomodar logo, nome e status com leitura confortável, mantendo
-três colunas em telas largas, duas em até 900px e uma em até 560px.
+**Largura da consulta:** somente a página de mercado amplia `.upload-section--solo` para até
+1180px; os demais fluxos preservam a largura de formulário de 680px. Assim, a grade exibe
+cards horizontalmente maiores, sem elevar sua altura, e o campo de Tomador recebe uma coluna
+mais larga que a de CNPJ. A grade mantém três colunas em telas largas, duas em até 900px e uma
+em até 560px.
 
 #### 4.4a Logos das seguradoras de portal
 
