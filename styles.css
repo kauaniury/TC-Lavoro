@@ -4751,6 +4751,12 @@ body.pdf-generating.has-comparison .comparison-section {
   width: min(680px, 100%);
 }
 
+/* A consulta de mercado concentra uma grade de seguradoras: ela pode ocupar
+   mais espaço que os formulários individuais dos demais fluxos. */
+.page-mkt .tab-upload-inner {
+  width: min(1180px, 100%);
+}
+
 /* ── "Nova análise" button in hero ── */
 .af-nova-analise-btn {
   display: inline-flex;
@@ -6184,7 +6190,8 @@ details[open] .fl-clausula-chevron { transform: rotate(180deg); }
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  padding: var(--space-4);
+  min-height: 132px;
+  padding: var(--space-5);
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
