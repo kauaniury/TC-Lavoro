@@ -68,6 +68,8 @@ const LIMITS_TOKEN_TTL_SECONDS = 60 * 25;
 const LIMITS_RESULT_CACHE_TTL_SECONDS = 60 * 5;
 const LIMITS_QUERY_RETRY_AFTER_MS = 2500;
 const LIMITS_QUERY_LOCK_TTL_MS = 6 * 60 * 1000;
+const JUNTO_RATE_BATCH_SIZE = 4;
+const JUNTO_JOB_TTL_SECONDS = 60 * 10;
 
 export default {
   async fetch(request, env) {
@@ -1280,20 +1282,20 @@ async function handleLimitsQuery(request, env) {
     const cachedAfterLock = await redisGet(env, cacheKey);
     if (cachedAfterLock) return jsonResponse({ ...cachedAfterLock, cache: 'hit' });
 
-    const resultados = [];
-    // Fila sequencial: uma seguradora por vez (nunca em paralelo).
-    // Evita sobrecarregar integracoes como a Onpoint, que agrupa varias
-    // seguradoras (essor/sombrero/newe/mitsui/axa/now) no mesmo endpoint e
-    // rejeita chamadas concorrentes para o mesmo CNPJ.
-    for (const key of requested) {
-      resultados.push(await queryInsurer(env, cnpj, key));
+    const progress = await runLimitsQueryStep(env, cnpj, requested);
+    if (!progress.completed) {
+      return jsonResponse({
+        status: 'pending',
+        message: 'Consulta da Junto em andamento.',
+        retryAfterMs: LIMITS_QUERY_RETRY_AFTER_MS,
+      }, 202);
     }
 
     const response = {
       version: WORKER_VERSION,
       cnpj,
       consultadoEm: new Date().toISOString(),
-      resultados,
+      resultados: progress.resultados,
       cache: 'miss',
     };
     await redisSet(env, cacheKey, response, LIMITS_RESULT_CACHE_TTL_SECONDS);
@@ -1307,6 +1309,83 @@ async function handleLimitsQuery(request, env) {
       console.error('Falha ao liberar lock da consulta de mercado:', err);
     }
   }
+}
+
+function juntoJobKey(cnpj) {
+  return `limits:junto-job:${cnpj}`;
+}
+
+function requestedSignature(requested) {
+  return [...requested].sort().join(',');
+}
+
+async function runLimitsQueryStep(env, cnpj, requested) {
+  if (!requested.includes('junto')) {
+    const resultados = [];
+    for (const key of requested) resultados.push(await queryInsurer(env, cnpj, key));
+    return { completed: true, resultados };
+  }
+
+  const signature = requestedSignature(requested);
+  let job = await redisGet(env, juntoJobKey(cnpj));
+  if (!job) {
+    const resultados = [];
+    for (const key of requested) {
+      if (key !== 'junto') resultados.push(await queryInsurer(env, cnpj, key));
+    }
+    let modalidades;
+    try {
+      modalidades = await loadJuntoModalities(env, cnpj);
+    } catch (err) {
+      const byKey = new Map(resultados.map(result => [result.seguradora, result]));
+      byKey.set('junto', {
+        seguradora: 'junto',
+        label: INSURER_LABELS.junto,
+        status: 'erro',
+        erro: err.message || 'Erro desconhecido',
+      });
+      return {
+        completed: true,
+        resultados: requested.map(key => byKey.get(key)).filter(Boolean),
+      };
+    }
+    job = {
+      signature,
+      resultados,
+      modalidades,
+      cursor: 0,
+      enriquecidas: [],
+      createdAt: new Date().toISOString(),
+    };
+    await redisSet(env, juntoJobKey(cnpj), job, JUNTO_JOB_TTL_SECONDS);
+    return { completed: false };
+  }
+
+  if (job.signature !== signature) {
+    // O lock geral é por CNPJ. Uma consulta com outra seleção deve aguardar o
+    // navegador concluir o job que já está associado a esse tomador.
+    return { completed: false };
+  }
+
+  const completed = await runJuntoRateBatch(env, cnpj, job);
+  if (!completed) {
+    await redisSet(env, juntoJobKey(cnpj), job, JUNTO_JOB_TTL_SECONDS);
+    return { completed: false };
+  }
+
+  await redisCall(env, ['DEL', juntoJobKey(cnpj)]);
+  const juntoResult = {
+    seguradora: 'junto',
+    label: INSURER_LABELS.junto,
+    status: 'ok',
+    dados: job.enriquecidas,
+  };
+  const byKey = new Map(job.resultados.map(result => [result.seguradora, result]));
+  byKey.set('junto', juntoResult);
+  return {
+    completed: true,
+    resultados: requested.map(key => byKey.get(key)).filter(Boolean),
+  };
 }
 
 function limitsResultCacheKey(cnpj, requested) {
@@ -1584,6 +1663,93 @@ function matchJuntoRateEntry(ratesList, sub, index) {
   }
   if (ratesList.length === 1) return ratesList[0];
   return ratesList[index] ?? ratesList[0];
+}
+
+// Etapa inicial do job da Junto. As taxas por modalidade sao processadas depois
+// por runJuntoRateBatch para cada invocacao permanecer abaixo do limite gratuito.
+async function loadJuntoModalities(env, cnpj) {
+  let token = await getJuntoToken(env);
+  const authHeaders = () => ({ Authorization: `Bearer ${token}`, Accept: '*/*' });
+  const fetchAuthorized = async (path, options = {}) => {
+    let res = await fetchWithTimeout(`${JUNTO_BASE}${path}`, {
+      ...options,
+      headers: { ...authHeaders(), ...(options.headers || {}) },
+    }, LIMITS_FETCH_TIMEOUT_JUNTO_MS);
+    if (res.status === 401) {
+      token = await getJuntoToken(env, true);
+      res = await fetchWithTimeout(`${JUNTO_BASE}${path}`, {
+        ...options,
+        headers: { ...authHeaders(), ...(options.headers || {}) },
+      }, LIMITS_FETCH_TIMEOUT_JUNTO_MS);
+    }
+    return res;
+  };
+
+  let policyholderRes = await fetchAuthorized(`/policyholders/${cnpj}`);
+  let modalitiesRes = await fetchAuthorized(`/policyholders/${cnpj}/modalities`);
+  if (!policyholderRes.ok || !modalitiesRes.ok) {
+    const createRes = await fetchAuthorized('/policyholders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ federalId: cnpj }),
+    });
+    if (!createRes.ok) {
+      const msg = extractErrorMessage(await parseJsonSafe(createRes), `Junto policyholders error ${createRes.status}`);
+      if (!isBenignPolicyholderCreateError(msg)) throw new Error(msg);
+    }
+    await sleep(9000);
+    policyholderRes = await fetchAuthorized(`/policyholders/${cnpj}`);
+    modalitiesRes = await fetchAuthorized(`/policyholders/${cnpj}/modalities`);
+    if (!policyholderRes.ok && !modalitiesRes.ok) {
+      throw new Error('Junto: tomador nao pode ser consultado apos o cadastro (falha tecnica).');
+    }
+  }
+  if (!modalitiesRes.ok) {
+    throw new Error(extractErrorMessage(await parseJsonSafe(modalitiesRes), `Junto modalities error ${modalitiesRes.status}`));
+  }
+  const modalidades = await modalitiesRes.json();
+  return Array.isArray(modalidades) ? modalidades : [];
+}
+
+async function runJuntoRateBatch(env, cnpj, job) {
+  let token = await getJuntoToken(env);
+  const authHeaders = () => ({ Authorization: `Bearer ${token}`, Accept: '*/*' });
+  const fetchAuthorized = async path => {
+    let res = await fetchWithTimeout(`${JUNTO_BASE}${path}`, { headers: authHeaders() }, LIMITS_FETCH_TIMEOUT_JUNTO_MS);
+    if (res.status === 401) {
+      token = await getJuntoToken(env, true);
+      res = await fetchWithTimeout(`${JUNTO_BASE}${path}`, { headers: authHeaders() }, LIMITS_FETCH_TIMEOUT_JUNTO_MS);
+    }
+    return res;
+  };
+
+  const end = Math.min(job.cursor + JUNTO_RATE_BATCH_SIZE, job.modalidades.length);
+  for (let index = job.cursor; index < end; index += 1) {
+    const mod = job.modalidades[index];
+    const subs = Array.isArray(mod.submodalities) && mod.submodalities.length ? mod.submodalities : [{}];
+    if (mod.id === undefined || mod.id === null) {
+      job.enriquecidas.push({ ...mod, submodalities: subs });
+      continue;
+    }
+    try {
+      const ratesRes = await fetchAuthorized(`/policyholders/${cnpj}/modalities/${mod.id}/rates`);
+      if (!ratesRes.ok) {
+        job.enriquecidas.push({ ...mod, submodalities: subs });
+        continue;
+      }
+      const rates = await ratesRes.json();
+      const ratesList = Array.isArray(rates) ? rates : (rates ? [rates] : []);
+      const subsComTaxa = subs.map((sub, idx) => {
+        const entry = matchJuntoRateEntry(ratesList, sub, idx);
+        return entry ? { ...sub, limitAvailable: entry.limitAvailable, rate: entry.rate } : { ...sub };
+      });
+      job.enriquecidas.push({ ...mod, submodalities: subsComTaxa });
+    } catch {
+      job.enriquecidas.push({ ...mod, submodalities: subs });
+    }
+  }
+  job.cursor = end;
+  return job.cursor >= job.modalidades.length;
 }
 
 // -- Onpoint (Essor / Sombrero / NEWE / Mitsui / Now) e AXA --

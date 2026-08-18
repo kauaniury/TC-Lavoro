@@ -1,6 +1,6 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.54
+> Versao: 2.55
 > Atualizado em: 2026-08-18
 
 ## 1. Visão Geral
@@ -1348,12 +1348,19 @@ resultado imediatamente. Sem cache, adquire `limits:query-lock:{cnpj}` com `SET 
 liberado com `EVAL` condicionado ao mesmo token, impedindo uma execução antiga de apagar o lock
 de uma consulta nova. A fila é por CNPJ, para não bloquear tomadores diferentes.
 
+**Junto em etapas (compatível com o limite gratuito).** A primeira invocação monta
+`limits:junto-job:{cnpj}` (TTL de 10 minutos) com as modalidades, os resultados das demais
+seguradoras e o cursor. As invocações seguintes executam somente quatro chamadas
+`/modalities/{id}/rates` por vez (`JUNTO_RATE_BATCH_SIZE = 4`), persistem o cursor e devolvem
+`202` até terminar. Ao concluir, o Worker monta o resultado da Junto, remove o job e grava o
+cache consolidado. Dessa forma não há uma chamada por modalidade acumulada na mesma execução.
+
 ### 10.3a Tratamento de erro no Worker
 
 - `fetchWithTimeout(url, options, timeoutMs)` (padrão 20s, **45s no Onpoint**, **60s na Junto** — `LIMITS_FETCH_TIMEOUT_JUNTO_MS`, ver justificativa abaixo) envolve toda chamada externa com `AbortController`; ao abortar, lança `Error` com mensagem contendo "tempo limite" — o front-end reconhece essa string e classifica como aviso "Sem resposta", nunca como erro técnico vermelho (`classifyErrorMessage` em `app.js`).
 - `parseJsonSafe(response)` faz parse defensivo do corpo de erro (nunca estoura se a seguradora devolver texto puro em 5xx) e `extractErrorMessage(payload, fallback)` extrai a mensagem mais específica possível (`message`, `nm_retorno`, `Errors[]`, `errors{}` no formato ASP.NET, `title`, texto bruto).
 - **Junto — fluxo completo de limites** (`queryJunto`): autentica → `GET /policyholders/{cnpj}` + `GET /policyholders/{cnpj}/modalities` em paralelo → se qualquer uma falhar, tenta `POST /policyholders {federalId}` e aguarda 9000ms (propagação assíncrona documentada da Junto) antes de repetir as duas chamadas; se ainda falharem ambas, erro técnico. Para **cada modalidade** retornada por `/modalities`, busca `GET /policyholders/{cnpj}/modalities/{modalidade.id}/rates` usando **sempre o id de nível superior da modalidade** (nunca o id de uma submodalidade — esse endpoint é por modalidade, não por submodalidade; correção desta versão, antes usava `submodalityId ?? modalityId`). Uma falha pontual nessa chamada para uma modalidade não derruba as outras nem remove a modalidade do resultado (try/catch por modalidade — fica sem `limitAvailable`/`rate`, mas continua na lista). A resposta de `/rates` pode trazer mais de uma entrada (uma por submodalidade); `matchJuntoRateEntry` casa cada entrada com sua submodalidade pelo id (`submodalityId`/`subModalityId`/`id`) e, sem id para casar, cai para a posição ou para a única entrada disponível. Retorna o array de modalidades já enriquecido com `limitAvailable`/`rate` por `submodality`.
-- **Junto — timeout de 60s por chamada** (`LIMITS_FETCH_TIMEOUT_JUNTO_MS`): o fluxo da Junto é o mais longo dos 8 integrados (auth → 2 GETs → eventual cadastro + espera fixa de 9s → repete os 2 GETs → 1 GET de rates por modalidade) e já foi observado excedendo o timeout padrão de 20s nesse caminho, retornando "Sem resposta" ao usuário sem necessidade. Autenticação (`getJuntoToken`) e todas as chamadas de `fetchAuthorized` em `queryJunto` (`/policyholders`, `/modalities`, cadastro, `/rates`) usam esse timeout de 60s. **É por chamada individual, não cumulativo** — a sequência completa (várias chamadas + a espera de 9s) pode, em tese, levar bem mais que 60s no total; nenhum timeout agregado foi introduzido para o fluxo inteiro.
+- **Junto — timeout de 60s por chamada** (`LIMITS_FETCH_TIMEOUT_JUNTO_MS`): autenticação, cadastro, listagem de modalidades e cada `/rates` usam esse timeout individual. Os `/rates` não são acumulados no mesmo request: `runJuntoRateBatch` executa quatro por invocação e o Redis mantém o cursor, portanto a sequência completa pode levar várias invocações sem ultrapassar o limite de subrequests.
 - **Onpoint — retry de "consulta em andamento"** (`queryOnpointRequest`): a mensagem de erro é sempre extraída do corpo primeiro (via `extractErrorMessage`/`Errors[]`) e só depois classificada como retryable (`isOnpointInProgressMessage`) — **independente de a resposta ter vindo com HTTP 200 e `Errors[]` ou com status não-2xx** (a Onpoint foi observada retornando a mesma condição de "consulta em andamento" das duas formas). Havendo match, tenta de novo automaticamente (até 3 tentativas, 1500ms × tentativa); qualquer outro conteúdo de `Errors[]` (bloqueado, sem alçada, nomeado com outro corretor etc.) é erro de negócio, nunca retry, e segue como está para o front-end classificar como aviso. Ver 10.3b para o lock distribuído que precede essas chamadas.
 - Fora do caso específico acima (mensagem retryable da Onpoint), HTTP não-2xx continua sendo sempre erro técnico (`queryInsurer` captura e devolve `{ status: 'erro', erro }`); mensagens de negócio (sem limite, bloqueado, nomeado) chegam com HTTP 200 e são responsabilidade do normalizador de cada seguradora no front-end.
 
@@ -1378,13 +1385,13 @@ Tokens de login (JNS, Junto, Fator) são cacheados no Redis para evitar novo log
 | `limits:token:fator` | `expires_in` da resposta menos 30s de margem |
 | `limits:result:{cnpj}:{seguradoras-ordenadas}` | 5 min — resposta consolidada da consulta de mercado |
 | `limits:query-lock:{cnpj}` | 6 min — fila distribuída da consulta completa por CNPJ |
+| `limits:junto-job:{cnpj}` | 10 min — modalidades, cursor e resultados parciais da Junto |
 | `limits:onpoint-lock:{cnpj}` | 60s (`ONPOINT_LOCK_TTL_MS`) — proteção da família Onpoint, não cache de token; ver 10.3b |
 
 Em caso de `401`, o token é invalidado e a consulta refeita uma vez com login novo.
 
-O `workers/wrangler.toml` declara `[limits] subrequests = 1000`, porque a Junto pode fazer uma
-requisição por modalidade além de Redis e das demais APIs. Esse limite exige conta Workers paga;
-no plano gratuito a Cloudflare mantém o teto de 50 por invocação.
+A configuração de subrequests extra foi removida do `wrangler.toml`: o Worker funciona no teto
+gratuito ao processar as taxas da Junto em lotes persistidos no Redis.
 
 ### 10.5 Onpoint — IDs estáticos de seguradora
 
