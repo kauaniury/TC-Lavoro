@@ -3007,6 +3007,47 @@ async function salvarTomadorAtual() {
   }
 }
 
+function setMktSaveStatus(message, variant = '') {
+  const statusEl = document.getElementById('mktSaveStatus');
+  if (!statusEl) return;
+  statusEl.textContent = message || '';
+  statusEl.className = 'mkt-save-status' + (variant ? ' mkt-save-status--' + variant : '');
+}
+
+// Salva a grade atual diretamente da consulta de mercado, sem exigir que o
+// usuário gere o dashboard antes. Usa o mesmo histórico D1 de Tomadores salvos.
+async function salvarConsultaMercado() {
+  hideMktError();
+  const btn = document.getElementById('mktBtnSalvar');
+  const data = buildMktParsedData();
+  if (!data) {
+    setMktSaveStatus('Consulte ou preencha ao menos uma seguradora antes de salvar.', 'err');
+    return;
+  }
+
+  const cnpjDigits = onlyDigits(data.cnpj || '');
+  if (cnpjDigits.length !== 14) {
+    setMktSaveStatus('Informe um CNPJ válido antes de salvar.', 'err');
+    return;
+  }
+
+  if (btn) btn.disabled = true;
+  setMktSaveStatus('Salvando…');
+  try {
+    const resp = await salvarTcAnalise({
+      cnpj: cnpjDigits,
+      tomador: data.tomador || null,
+      origem: 'manual',
+      rows: data.rows,
+    });
+    setMktSaveStatus('Consulta salva com sucesso (#' + resp.id + ').', 'ok');
+  } catch (err) {
+    setMktSaveStatus('Erro ao salvar: ' + err.message, 'err');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 // ── Tomadores salvos (buscar / abrir / remover histórico por CNPJ ou nome)
 
 function tomadoresSalvosShowError(msg) {
