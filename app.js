@@ -409,7 +409,7 @@ function buildModalIndex(aprovadas) {
     };
 
     // Use ONLY the consolidated modalidades array â€" these have the per-modality values from LIMITE column.
-    // Do NOT use seg.limite (CAPACIDADE TOTAL) as it represents the sum, not a single modality value.
+    // `seg.limite` é a maior modalidade da seguradora, não uma modalidade específica.
     if (seg.modalidades && seg.modalidades.length > 0) {
       seg.modalidades.forEach(m => addEntry(m.label, m.value, m.taxa));
     } else if (seg.modalidade && seg.valorModal > 0) {
@@ -3362,7 +3362,7 @@ function renderMktCardsGridSkeleton() {
         '<div class="mkt-card-editform" id="mktEditForm-' + seg.key + '">' +
           '<div class="tc-form-group">' +
             '<label class="tc-label" for="mktCap-' + seg.key + '">Capacidade Total</label>' +
-            '<input type="text" class="tc-input" id="mktCap-' + seg.key + '" placeholder="R$ 0,00" onfocus="this.select()" onblur="fmtTcMoney(this)">' +
+            '<input type="text" class="tc-input" id="mktCap-' + seg.key + '" placeholder="R$ 0,00" readonly aria-readonly="true" title="Calculada pelo maior limite entre as modalidades">' +
           '</div>' +
           '<div class="tc-modalidades-section">' +
             '<div class="tc-modalidades-header"><span class="tc-modalidades-title">Modalidades</span></div>' +
@@ -3399,13 +3399,14 @@ function populateMktCard(key, data) {
   const isAprovado = data.status === 'aprovado';
 
   if (statusEl) { statusEl.value = data.status || ''; statusEl.dataset.status = data.status || ''; }
-  if (capEl) capEl.value = isAprovado ? (data.capTotal || '') : '';
+  if (capEl) capEl.value = '';
 
   if (modalList) {
     modalList.innerHTML = '';
     _mktModalCounters[key] = 0;
     if (isAprovado && data.modalidades) data.modalidades.forEach(m => addMktModalidadeWithData(key, m));
   }
+  syncMktCardCapacidade(key);
 
   if (_mktFocusedKey === key) closeMktCardFocus();
   if (body) body.hidden = true;
@@ -3670,6 +3671,7 @@ const MKT_EYE_SVG = '<svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><pa
 
 function addMktModalidade(key) {
   addMktModalidadeWithData(key, {});
+  syncMktCardCapacidade(key);
 }
 
 function addMktModalidadeWithData(key, data) {
@@ -3694,6 +3696,8 @@ function addMktModalidadeWithData(key, data) {
 function removeMktModalidade(rowKey) {
   const el = document.getElementById('mktModal-' + rowKey);
   if (el) el.remove();
+  const key = rowKey.replace(/-\d+$/, '');
+  syncMktCardCapacidade(key);
 }
 
 // ── "Outras seguradoras (importado)" — só aparece ao reabrir um tomador salvo
@@ -3888,7 +3892,7 @@ function aplicarResultadosMercado(data) {
       limite: (m.valor !== null && m.valor !== undefined && m.valor > 0) ? fmtBRL(m.valor) : '',
       taxa: (m.taxa !== null && m.taxa !== undefined && m.taxa !== '') ? formatTcTaxaPercent(m.taxa) : '',
     }));
-    const capTotal = modalidades.reduce((s, m) => s + (parseNum(m.limite) || 0), 0);
+    const capTotal = maiorLimiteModalidade(modalidades);
 
     populateMktCard(entry.key, {
       status: mapNormStatusToMkt(norm.statusKey),
@@ -3913,7 +3917,11 @@ function aplicarResultadosMercado(data) {
 renderMktCardsGridSkeleton();
 const mktGridEl = document.getElementById('mktCardsGrid');
 if (mktGridEl) {
-  mktGridEl.addEventListener('input', markMktCardManual);
+  mktGridEl.addEventListener('input', e => {
+    markMktCardManual(e);
+    const card = e.target.closest('.mkt-card');
+    if (card) syncMktCardCapacidade(card.dataset.key);
+  });
   mktGridEl.addEventListener('change', markMktCardManual);
   mktGridEl.addEventListener('click', e => {
     if (e.target.closest('.tc-btn-add-modal, .tc-btn-icon')) markMktCardManual(e);
@@ -3923,6 +3931,32 @@ initMktTabs();
 
 function onlyDigits(value) {
   return String(value || '').replace(/\D/g, '');
+}
+
+// A capacidade de uma seguradora é o maior limite dentre suas modalidades.
+// O total de mercado é calculado depois, somando essa capacidade por seguradora.
+function maiorLimiteModalidade(modalidades) {
+  return (modalidades || []).reduce((maior, modalidade) => {
+    const valor = parseNum(modalidade && (modalidade.value ?? modalidade.limite));
+    return Math.max(maior, valor || 0);
+  }, 0);
+}
+
+function syncMktCardCapacidade(key) {
+  const capEl = document.getElementById('mktCap-' + key);
+  const statusEl = document.getElementById('mktStatus-' + key);
+  const modalList = document.getElementById('mktModalList-' + key);
+  if (!capEl) return;
+  if (!statusEl || statusEl.value !== 'aprovado') {
+    capEl.value = '';
+    return;
+  }
+  const modalidades = Array.from(modalList ? modalList.querySelectorAll('.tc-modal-row') : []).map(row => {
+    const limiteEl = row.querySelector('.tc-input--limite');
+    return { limite: limiteEl ? limiteEl.value : '' };
+  });
+  const maior = maiorLimiteModalidade(modalidades);
+  capEl.value = maior > 0 ? fmtBRL(maior) : '';
 }
 
 function formatTcCnpj(value) {
@@ -3997,9 +4031,8 @@ function buildMktParsedData() {
     if (!status) return;
 
     const isAprovado = status === 'aprovado';
-    const capEl = document.getElementById('mktCap-' + key);
-    const limite = isAprovado && capEl ? parseNum(capEl.value) : 0;
     const modalidades = isAprovado ? lerModalidades(document.getElementById('mktModalList-' + key)) : [];
+    const limite = isAprovado ? maiorLimiteModalidade(modalidades) : 0;
 
     rows.push({
       seguradora: cfg.label,
@@ -4023,9 +4056,8 @@ function buildMktParsedData() {
     if (!seguradora || !status) return;
 
     const isAprovado = status === 'aprovado';
-    const capEl = document.getElementById('mktExtraCap-' + id);
-    const limite = isAprovado && capEl ? parseNum(capEl.value) : 0;
     const modalidades = isAprovado ? lerModalidades(document.getElementById('mktExtraModalList-' + id)) : [];
+    const limite = isAprovado ? maiorLimiteModalidade(modalidades) : 0;
 
     rows.push({
       seguradora,

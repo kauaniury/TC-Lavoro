@@ -1,6 +1,6 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.50
+> Versao: 2.51
 > Atualizado em: 2026-08-18
 
 ## 1. Visão Geral
@@ -262,7 +262,7 @@ Todo card (dos 35, com ou sem API) é editável. Campos por card:
 | Logo | `.mkt-card-logo` | exibido para as 18 seguradoras de portal; cards sem logo mantêm somente o nome |
 | Seguradora | `.mkt-card-nome` | nome comercial fixo, não editável |
 | Status | `select#mktStatus-{key}` | 5 opções (ver abaixo) |
-| Capacidade Total | `input#mktCap-{key}` | só existe/é lida quando status = Aprovado |
+| Capacidade Total | `input#mktCap-{key}` | quando Aprovado, representa sempre o maior limite entre as modalidades; o total de mercado soma esse valor uma vez por seguradora |
 | Modalidades | `#mktModalList-{key}` | lista de `{label, limite, taxa}` — só quando Aprovado; `+ Adicionar modalidade` / remover por linha, mesmo componente `.tc-modal-row` do antigo formulário manual |
 
 **5 status** (`MKT_STATUS_CONFIG`), substituem os 4 antigos (`aprovado`/`declinado`/
@@ -324,7 +324,8 @@ Quando o usuário seleciona **Aprovado** no `<select>` de um card, `onMktStatusC
 `openMktCardFocus(key)`: o próprio nó do card (não uma cópia) ganha a classe
 `.mkt-card--focused` (`position: fixed`, centralizado, `z-index` acima de um backdrop com
 `backdrop-filter: blur`), e o restante da página fica visualmente desfocado atrás
-(`#mktFocusBackdrop`, `body.mkt-focus-active` trava o scroll de fundo). O formulário
+(`#mktFocusBackdrop`, `body.mkt-focus-active` trava o scroll de fundo). O card em foco usa
+até 680px (respeitando 94vw) para manter nomes de modalidades, valores e taxas legíveis. O formulário
 (Capacidade Total + Modalidades) só existe visualmente dentro desse estado — por isso é o
 mesmo elemento reposicionado via CSS, nunca um modal separado com dado duplicado.
 
@@ -432,6 +433,10 @@ extras no `rows[]` final com `seguradoraKey: null`.
 `buildMktParsedData()` (substitui `buildManualParsedData()`) lê a grade viva da aba ativa (35
 cards + extras) para montar esse objeto — mesmo padrão de "ler o DOM no momento de gerar", só
 que sobre a grade fixa em vez de blocos dinâmicos.
+
+**Capacidade Total:** `maiorLimiteModalidade()` define `rows[].limite` como o maior limite
+informado entre as modalidades daquela seguradora. O dashboard, a tabela PNG e o XLSX somam
+`rows[].limite` entre seguradoras aprovadas, sem somar modalidades da mesma seguradora.
 
 **Leitura compatível de snapshots antigos** (ao reabrir, ver 4.8): o antigo status `bloqueado`
 (e qualquer valor desconhecido) é mapeado para `declinado` — `mapLegacyRowStatus(status)`.

@@ -6420,7 +6420,7 @@ body.mkt-focus-active { overflow: hidden; }
   left: 50%;
   transform: translate(-50%, -50%);
   z-index: var(--z-modal);
-  width: min(460px, 92vw);
+  width: min(680px, 94vw);
   max-height: 86vh;
   overflow-y: auto;
   box-shadow: var(--shadow-lg);
@@ -6452,7 +6452,7 @@ body.mkt-focus-active { overflow: hidden; }
 .mkt-card-focus-done:hover { background: var(--color-primary-hover); }
 
 @media (max-width: 560px) {
-  .mkt-card--focused { width: 94vw; }
+  .mkt-card--focused { width: 96vw; }
 }
 
 /* "Outras seguradoras (importado)" — só aparece ao reabrir um tomador salvo
