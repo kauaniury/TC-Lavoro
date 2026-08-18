@@ -3863,12 +3863,30 @@ function mapNormStatusToMkt(statusKey) {
 // APIs como AXA e JNS devolvem muitas submodalidades com a mesma condição.
 // No card automático, uma linha por categoria + limite + taxa é suficiente;
 // entradas manuais nunca passam por esta condensação.
+function categoriaModalidadeMercado(label) {
+  const original = String(label || '').trim();
+  const categoriaOriginal = (original.split(/\s+[—-]\s+/)[0] || original).trim();
+  const normalizada = categoriaOriginal
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLocaleUpperCase('pt-BR');
+
+  if (normalizada.startsWith('TRADICIONAL')) return 'Tradicional';
+  if (normalizada.startsWith('JUDICIAL')) return 'Judiciais';
+
+  // Nomes comerciais que a JNS retorna sem o prefixo de categoria. São
+  // coberturas usuais do grupo Tradicional, inclusive as extensões trabalhistas.
+  if (/^(LICITANTE|CONCORRENTE|CONSTRUTOR(?:\s*\+\s*TRAB\s*E\s*PREV)?|FORNECEDOR(?:\s*\+\s*TRAB\s*E\s*PREV)?|PRESTADOR(?:\s+DE\s+SERVICOS?)?|EXECUTANTE(?:\s+(?:CONSTRUTOR|FORNECEDOR|PRESTADOR(?:\s+DE\s+SERVICOS?)?))?)$/.test(normalizada)) {
+    return 'Tradicional';
+  }
+  return categoriaOriginal || original;
+}
+
 function condensarModalidadesMercado(modalidades) {
   const exibidas = [];
   const vistas = new Set();
   (modalidades || []).forEach(modalidade => {
     const labelOriginal = String(modalidade.label || '').trim();
-    const categoria = (labelOriginal.split(/\s+[—-]\s+/)[0] || labelOriginal).trim();
+    const categoria = categoriaModalidadeMercado(labelOriginal);
     const limite = (modalidade.valor !== null && modalidade.valor !== undefined && modalidade.valor > 0)
       ? fmtBRL(modalidade.valor) : '';
     const taxa = (modalidade.taxa !== null && modalidade.taxa !== undefined && modalidade.taxa !== '')
