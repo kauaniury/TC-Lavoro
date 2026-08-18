@@ -1,6 +1,6 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.59
+> Versao: 2.60
 > Atualizado em: 2026-08-18
 
 ## 1. Visão Geral
@@ -238,9 +238,13 @@ O console no topo da página (`#mktTomadorInput`, `#mktCnpjInput`, botão "Consu
    Para normalizar retornos sem prefixo de JNS, Junto e Fator, `categoriaModalidadeMercado`
    reconhece Licitante/Concorrente, Construtor, Fornecedor, Prestador de Serviços, Executante,
    Adiantamento, Manutenção, Retenção, Garantia de Pagamento, Compra e Venda, Finep,
-   Performance e variações trabalhistas/previdenciárias como **Tradicional**. Judicial e
-   Arbitral viram **Judiciais**. A deduplicação só ocorre quando categoria, limite e taxa
-   coincidirem.
+   Performance como **Tradicional**. Judicial, Arbitral e Recursal viram **Judiciais**;
+   Trabalhista/Previdenciária também vira Judicial quando não for extensão explícita de uma
+   cobertura contratual (Prestador, Fornecedor, Construtor ou Executante). Quando o texto da
+   modalidade/submodalidade trouxer Público ou Privado, o rótulo preserva o setor, por exemplo
+   **Tradicional Público** e **Tradicional Privado**. A Fator combina `NomeGrupoSubLimite` com
+   campos de submodalidade compatíveis antes da classificação. A deduplicação só ocorre quando
+   categoria, limite e taxa coincidirem.
 3. Para cada resultado, `normalizeLimiteResultado(r)` — **100% reaproveitada da antiga
    Consulta de Limites**, junto com os 4 normalizadores por seguradora
    (`normalizeLimiteJns`/`normalizeLimiteJunto`/`normalizeLimiteOnpoint`/

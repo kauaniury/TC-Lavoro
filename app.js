@@ -3869,15 +3869,23 @@ function categoriaModalidadeMercado(label) {
   const normalizada = categoriaOriginal
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .toLocaleUpperCase('pt-BR');
+  const completa = original
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLocaleUpperCase('pt-BR');
+  const setor = /\bPUBLIC[OA]\b|SETOR\s+PUBLICO/.test(completa)
+    ? ' Público'
+    : (/\bPRIVAD[OA]\b|SETOR\s+PRIVADO/.test(completa) ? ' Privado' : '');
 
-  if (/JUDICIAL|ARBITRAL/.test(normalizada)) return 'Judiciais';
+  if (/JUDICIAL|ARBITRAL|RECURSAL/.test(completa)) return 'Judiciais';
 
   // JNS, Junto e Fator nem sempre devolvem o grupo comercial no texto da
   // modalidade. Estes nomes compõem o portfólio de Garantia Tradicional;
   // só serão agrupados se limite e taxa também forem idênticos.
-  if (/TRADICIONAL|LICIT|CONCORREN|CONSTRUTOR|FORNECEDOR|PRESTADOR|EXECUTANTE|ADIANTAMENTO|MANUTENCAO|RETENCAO|GARANTIA\s+DE\s+PAGAMENTO|COMPRA\s+E\s+VENDA|FINEP|PERFORMANCE|TRABALH|PREVIDENC/.test(normalizada)) {
-    return 'Tradicional';
+  if (/TRADICIONAL|LICIT|CONCORREN|CONSTRUTOR|FORNECEDOR|PREST(?:ADOR)?|EXECUTANTE|ADIANTAMENTO|MANUTENCAO|RETENCAO|GARANTIA\s+DE\s+PAGAMENTO|COMPRA\s+E\s+VENDA|FINEP|PERFORMANCE/.test(completa)) {
+    return 'Tradicional' + setor;
   }
+  // Trabalhista sem vínculo com uma cobertura contratual é garantia judicial.
+  if (/TRABALH|PREVIDENC/.test(completa)) return 'Judiciais';
   return categoriaOriginal || original;
 }
 
@@ -5011,6 +5019,22 @@ function normalizeLimiteOnpoint(d) {
   return { statusKey: 'erro', modalidades: [], mensagem: 'Resposta inesperada da seguradora.' };
 }
 
+function labelModalidadeFator(linha) {
+  const grupo = String(linha.NomeGrupoSubLimite || '').trim();
+  // A API da Fator pode enviar a classificação pública/privada na
+  // submodalidade, com nomes de campo diferentes entre versões.
+  const camposSubmodalidade = [
+    'NomeSubLimite', 'NomeSubModalidade', 'NomeSubmodalidade', 'NomeModalidade',
+    'DescricaoSubLimite', 'DescricaoSubModalidade', 'DescricaoModalidade',
+    'TipoSubLimite', 'TipoModalidade', 'Setor', 'Segmento', 'PublicoPrivado',
+  ];
+  const detalhes = [...new Set(camposSubmodalidade
+    .map(campo => String(linha[campo] || '').trim())
+    .filter(Boolean)
+    .filter(valor => valor.toLocaleUpperCase('pt-BR') !== grupo.toLocaleUpperCase('pt-BR')))];
+  return [grupo, ...detalhes].filter(Boolean).join(' — ');
+}
+
 function normalizeLimiteFator(d) {
   if (!d) return { statusKey: 'erro', modalidades: [], mensagem: 'Resposta inesperada da seguradora.' };
 
@@ -5030,7 +5054,7 @@ function normalizeLimiteFator(d) {
   const linhas = Array.isArray(d.DadosTomador) ? d.DadosTomador : [];
   const modalidades = linhas
     .map(l => ({
-      label: String(l.NomeGrupoSubLimite || '').trim(),
+      label: labelModalidadeFator(l),
       valor: l.ValorLimiteDisponivel ?? l.ValorLimiteTotalSemCCG ?? l.ValorLimiteTotal,
       taxa: l.ValorTaxa,
     }))
