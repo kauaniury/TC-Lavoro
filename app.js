@@ -3876,6 +3876,14 @@ function categoriaModalidadeMercado(label) {
     ? ' Público'
     : (/\bPRIVAD[OA]\b|SETOR\s+PRIVADO/.test(completa) ? ' Privado' : '');
 
+  // Quando a API entrega grupo e submodalidade, o grupo tem precedência:
+  // "Estruturadas — Executante Concessionário" não é Tradicional apenas por
+  // conter a palavra Executante.
+  if (/JUDICIAL|ARBITRAL|RECURSAL/.test(normalizada)) return 'Judiciais';
+  if (/ESTRUTURAD/.test(normalizada)) return 'Estruturadas' + setor;
+  if (/FINANCEIR/.test(normalizada)) return 'Financeira' + setor;
+  if (/TRADICIONAL/.test(normalizada)) return 'Tradicional' + setor;
+
   if (/JUDICIAL|ARBITRAL|RECURSAL/.test(completa)) return 'Judiciais';
 
   // JNS, Junto e Fator nem sempre devolvem o grupo comercial no texto da
@@ -4988,7 +4996,9 @@ function normalizeLimiteOnpoint(d) {
     if (item.CanSetupAProposal && Array.isArray(item.LimitsAndRates)) {
       const modalidades = item.LimitsAndRates.filter(Boolean)
         .map(m => ({
-          label: [m.ModalityGroupName, m.ModalityName].filter(Boolean).join(' — '),
+          // BranchName é o setor Público/Privado devolvido pela Onpoint e
+          // precisa participar do rótulo para não fundir capacidades distintas.
+          label: [m.ModalityGroupName, m.BranchName, m.ModalityName].filter(Boolean).join(' — '),
           segurado: m.BranchName || null,
           valor: m.AvailableLimit,
           taxa: m.Tax,

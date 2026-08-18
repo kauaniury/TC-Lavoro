@@ -1,6 +1,6 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.60
+> Versao: 2.61
 > Atualizado em: 2026-08-18
 
 ## 1. Visão Geral
@@ -245,6 +245,10 @@ O console no topo da página (`#mktTomadorInput`, `#mktCnpjInput`, botão "Consu
    **Tradicional Público** e **Tradicional Privado**. A Fator combina `NomeGrupoSubLimite` com
    campos de submodalidade compatíveis antes da classificação. A deduplicação só ocorre quando
    categoria, limite e taxa coincidirem.
+   Nas seguradoras Onpoint, o `BranchName` da API participa do rótulo para distinguir
+   **Tradicional Público** de **Tradicional Privado**. O grupo da API tem precedência sobre o
+   nome da submodalidade: Estruturadas (mesmo quando a submodalidade contém “Executante”) e
+   Financeira não são classificadas como Tradicional; Recursais é classificada como Judicial.
 3. Para cada resultado, `normalizeLimiteResultado(r)` — **100% reaproveitada da antiga
    Consulta de Limites**, junto com os 4 normalizadores por seguradora
    (`normalizeLimiteJns`/`normalizeLimiteJunto`/`normalizeLimiteOnpoint`/
