@@ -48,6 +48,35 @@ const MKT_SEGURADORAS = [
 const MKT_SEGURADORAS_BY_KEY = Object.fromEntries(MKT_SEGURADORAS.map(s => [s.key, s]));
 const MKT_API_KEYS = MKT_SEGURADORAS.filter(s => s.apiKey).map(s => s.apiKey);
 
+// Logos das seguradoras de portal. Cards sem entrada no mapa mostram apenas
+// o nome; o fallback local evita ícone quebrado caso algum ativo não carregue.
+const MKT_LOGO_MAP = {
+  akad: 'assets/akad-logo.png',
+  alm: 'assets/alm-logo.png',
+  avla: 'assets/avla-logo.png',
+  axa: 'assets/axa-logo.png',
+  berkley: 'assets/berkley-logo.png',
+  daycoval: 'assets/daycoval-logo.jpg',
+  essor: 'assets/essor-logo.png',
+  ezze: 'assets/ezze-logo.png',
+  fairfax: 'assets/fairfax-logo.png',
+  fator: 'assets/fator.png',
+  jns: 'assets/jns-logo.png',
+  junto: 'assets/junto-logo.png',
+  mitsui: 'assets/Mitisui-logo.png',
+  newe: 'assets/Newe-logo.png',
+  now: 'assets/now-logo.png',
+  pottencial: 'assets/pottencial-logo.jpg',
+  sombrero: 'assets/Sombrero-logo.png',
+  tokio: 'assets/tokio-logo.jpg',
+};
+
+function mktLogoHtml(key) {
+  const src = MKT_LOGO_MAP[key];
+  if (!src) return '';
+  return '<img src="' + esc(src) + '" alt="" class="mkt-card-logo" onerror="this.style.display=\'none\'">';
+}
+
 const MKT_STATUS_CONFIG = {
   aprovado:        { label: 'Aprovado',                     badge: 'badge-aprovado' },
   concorrente:     { label: 'Concorrente',                  badge: 'badge-concorrente' },
@@ -3306,6 +3335,7 @@ function renderMktCardsGridSkeleton() {
     '<div class="mkt-card" id="mktCard-' + seg.key + '" data-key="' + seg.key + '" data-portal="' + (seg.portal ? '1' : '0') + '" data-origem="manual">' +
         '<div class="mkt-card-head">' +
         '<div class="mkt-card-brand">' +
+          mktLogoHtml(seg.key) +
           '<p class="mkt-card-nome">' + esc(seg.label) + '</p>' +
         '</div>' +
         '<span class="mkt-card-origem-tag" id="mktOrigem-' + seg.key + '" hidden></span>' +

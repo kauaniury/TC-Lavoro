@@ -1,6 +1,6 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.49
+> Versao: 2.50
 > Atualizado em: 2026-08-18
 
 ## 1. Visão Geral
@@ -259,7 +259,8 @@ Todo card (dos 35, com ou sem API) é editável. Campos por card:
 
 | Campo | Elemento | Regra |
 |---|---|---|
-| Seguradora | `.mkt-card-nome` | nome comercial fixo, exibido sem logo nesta fase |
+| Logo | `.mkt-card-logo` | exibido para as 18 seguradoras de portal; cards sem logo mantêm somente o nome |
+| Seguradora | `.mkt-card-nome` | nome comercial fixo, não editável |
 | Status | `select#mktStatus-{key}` | 5 opções (ver abaixo) |
 | Capacidade Total | `input#mktCap-{key}` | só existe/é lida quando status = Aprovado |
 | Modalidades | `#mktModalList-{key}` | lista de `{label, limite, taxa}` — só quando Aprovado; `+ Adicionar modalidade` / remover por linha, mesmo componente `.tc-modal-row` do antigo formulário manual |
@@ -310,7 +311,14 @@ desaparecer/ser coberto em cards estreitos (grade de 3 colunas). Com wrap, a eti
 uma linha própria abaixo do nome quando não cabe ao lado, em vez de disputar espaço na mesma
 linha.
 
-#### 4.4a Card "em foco" — status Aprovado abre o formulário por cima da grade
+#### 4.4a Logos das seguradoras de portal
+
+`MKT_LOGO_MAP` (`app.js`) associa as 18 seguradoras de portal aos arquivos locais em
+`assets/`. `mktLogoHtml(key)` gera o `<img>` somente quando existe uma entrada no mapa; cards
+sem logo continuam apresentando o nome comercial sem imagem. O fallback `onerror` apenas oculta
+a imagem que falhar ao carregar, sem fazer requisições externas.
+
+#### 4.4b Card "em foco" — status Aprovado abre o formulário por cima da grade
 
 Quando o usuário seleciona **Aprovado** no `<select>` de um card, `onMktStatusChange` chama
 `openMktCardFocus(key)`: o próprio nó do card (não uma cópia) ganha a classe
@@ -337,24 +345,24 @@ mesmo elemento reposicionado via CSS, nunca um modal separado com dado duplicado
   (`updateMktCardViewButton`), mesmo para cards que vêm `aprovado` da API. Abrir o foco
   automaticamente para cada seguradora aprovada retornada pela consulta empilharia vários
   cards em foco de uma vez; o usuário abre manualmente pelo olho quando quiser revisar.
-- **O foco tem dois modos** (`_mktFocusedMode`, `'edit' | 'info'` — ver 4.4b): `openMktCardFocus`
+- **O foco tem dois modos** (`_mktFocusedMode`, `'edit' | 'info'` — ver 4.4c): `openMktCardFocus`
   (olho) abre `'edit'` (`#mktBody-{key}`); `openMktCardInfo` (botão "!") abre `'info'`
   (`#mktInfo-{key}`). Só um card fica em foco por vez, em qualquer modo; `closeMktCardFocus()`
   fecha o que estiver aberto e atualiza tanto o olho quanto o "!" ao sair.
 
-#### 4.4b Botão "!" — ver o retorno bruto da consulta sem deixá-lo exposto
+#### 4.4c Botão "!" — ver o retorno bruto da consulta sem deixá-lo exposto
 
 Quando uma seguradora com API devolve uma mensagem de negócio (motivo de "sem limite", erro,
 aviso — o mesmo `mensagem` que os normalizadores da seção 10.1a já produzem), o card mostra um
 botão circular **"!"** (`.mkt-card-info-btn`, ao lado do olho na `.mkt-card-status-row`,
 âmbar) em vez de expor o texto direto no card. Clicar chama `openMktCardInfo(key)`, que abre o
-mesmo tratamento "em foco" do 4.4a (card para frente, fundo desfocado) mostrando só a
+mesmo tratamento "em foco" do 4.4b (card para frente, fundo desfocado) mostrando só a
 mensagem (`#mktInfo-{key}`: rótulo "Retorno da consulta" + texto + botão "Fechar").
 `updateMktCardInfoButton(key)` liga/desliga o botão conforme `#mktInfoText-{key}` (preenchido
 por `populateMktCard`/`saveMktTabState`) tem texto ou não — igual ao olho, nada aparece no
 card enquanto não há mensagem, e nada é exposto por padrão quando há.
 
-#### 4.4c Apresentação — API mostra resultado, não formulário de digitação
+#### 4.4d Apresentação — API mostra resultado, não formulário de digitação
 
 Um card com `origem: 'auto'` (dado que veio de verdade da API e ainda não foi editado) abre o
 foco (via olho) numa **apresentação somente-leitura** (`.mkt-card-readonly`,
