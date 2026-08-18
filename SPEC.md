@@ -1,6 +1,6 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.62
+> Versao: 2.63
 > Atualizado em: 2026-08-18
 
 ## 1. Visão Geral
@@ -1449,7 +1449,7 @@ gratuito ao processar as taxas da Junto em lotes persistidos no Redis.
 - Para ativar memória Redis de fato em produção, é necessário publicar `workers/deepseek-memory-worker.js` no mesmo domínio do Worker atual ou atualizar `DEEPSEEK_WORKER_URL`.
 - Se o Worker novo ainda não estiver publicado, o front-end usa fallback automático para o endpoint legado `/`.
 - Para a consulta de mercado (seção 4), publicar o Worker atualizado (`/v1/limits/query`) e configurar todos os secrets listados na seção 10.3, incluindo `ONPOINT_BROKER_CNPJ` e `FATOR_CORRETOR_ID`.
-- CORS do Worker hoje libera `Access-Control-Allow-Origin: '*'` para todos os endpoints. Como a consulta de mercado expõe dados de crédito mais sensíveis que o proxy de IA, considerar restringir a origem ao domínio de produção do front-end.
+- CORS do Worker libera `GET`, `POST`, `DELETE` e `OPTIONS`; incluir `DELETE` é obrigatório para o navegador encaminhar a remoção de snapshots em `/v1/tc/analises/:id` ao D1. A origem continua `*` por enquanto; como a consulta de mercado expõe dados de crédito mais sensíveis que o proxy de IA, considerar restringi-la ao domínio de produção do front-end.
 
 ## 13. Persistência — Histórico de T&C (Cloudflare D1)
 
