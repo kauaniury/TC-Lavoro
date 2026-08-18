@@ -1,6 +1,6 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.56
+> Versao: 2.57
 > Atualizado em: 2026-08-18
 
 ## 1. Visão Geral
@@ -231,7 +231,11 @@ O console no topo da página (`#mktTomadorInput`, `#mktCnpjInput`, botão "Consu
 
 1. Valida CNPJ (14 dígitos) e chama `consultarLimitesSeguradoras(cnpj, MKT_API_KEYS)`
    (`deepseek.js`, inalterada) — mesmo endpoint `POST /v1/limits/query` de sempre (seção 10).
-2. Para cada resultado, `normalizeLimiteResultado(r)` — **100% reaproveitada da antiga
+2. Antes de preencher um card automático, `condensarModalidadesMercado` mantém apenas uma
+   linha para cada combinação de categoria (parte anterior a `—`), limite e taxa iguais. Assim,
+   por exemplo, várias submodalidades `TRADICIONAL — ...` com R$ 5.000.000,00 e 0,43% aparecem
+   como uma única modalidade **Tradicional**. Linhas manuais não são condensadas.
+3. Para cada resultado, `normalizeLimiteResultado(r)` — **100% reaproveitada da antiga
    Consulta de Limites**, junto com os 4 normalizadores por seguradora
    (`normalizeLimiteJns`/`normalizeLimiteJunto`/`normalizeLimiteOnpoint`/
    `normalizeLimiteFator`) e `classifyErrorMessage` — nada dessa lógica fina de leitura de

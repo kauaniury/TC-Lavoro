@@ -3860,6 +3860,30 @@ function mapNormStatusToMkt(statusKey) {
   return map[statusKey] || 'erro_portal';
 }
 
+// APIs como AXA e JNS devolvem muitas submodalidades com a mesma condição.
+// No card automático, uma linha por categoria + limite + taxa é suficiente;
+// entradas manuais nunca passam por esta condensação.
+function condensarModalidadesMercado(modalidades) {
+  const exibidas = [];
+  const vistas = new Set();
+  (modalidades || []).forEach(modalidade => {
+    const labelOriginal = String(modalidade.label || '').trim();
+    const categoria = (labelOriginal.split(/\s+[—-]\s+/)[0] || labelOriginal).trim();
+    const limite = (modalidade.valor !== null && modalidade.valor !== undefined && modalidade.valor > 0)
+      ? fmtBRL(modalidade.valor) : '';
+    const taxa = (modalidade.taxa !== null && modalidade.taxa !== undefined && modalidade.taxa !== '')
+      ? formatTcTaxaPercent(modalidade.taxa) : '';
+    // Sem valor e sem taxa não há condição comum comprovável: preserva a linha.
+    const chave = limite || taxa
+      ? [categoria.toLocaleUpperCase('pt-BR'), limite, taxa].join('|')
+      : null;
+    if (chave && vistas.has(chave)) return;
+    if (chave) vistas.add(chave);
+    exibidas.push({ label: categoria || labelOriginal, limite, taxa });
+  });
+  return exibidas;
+}
+
 async function consultarMercadoUI() {
   hideMktError();
   const cnpjInput = document.getElementById('mktCnpjInput');
@@ -3901,11 +3925,7 @@ function aplicarResultadosMercado(data) {
     const norm = normalizeLimiteResultado(r);
     if (norm.nomeTomador && !tomadorSugerido) tomadorSugerido = norm.nomeTomador;
 
-    const modalidades = (norm.modalidades || []).map(m => ({
-      label: m.label || '',
-      limite: (m.valor !== null && m.valor !== undefined && m.valor > 0) ? fmtBRL(m.valor) : '',
-      taxa: (m.taxa !== null && m.taxa !== undefined && m.taxa !== '') ? formatTcTaxaPercent(m.taxa) : '',
-    }));
+    const modalidades = condensarModalidadesMercado(norm.modalidades);
     const capTotal = maiorLimiteModalidade(modalidades);
 
     populateMktCard(entry.key, {
