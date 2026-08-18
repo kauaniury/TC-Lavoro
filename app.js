@@ -3870,12 +3870,12 @@ function categoriaModalidadeMercado(label) {
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .toLocaleUpperCase('pt-BR');
 
-  if (normalizada.startsWith('TRADICIONAL')) return 'Tradicional';
-  if (normalizada.startsWith('JUDICIAL')) return 'Judiciais';
+  if (/JUDICIAL|ARBITRAL/.test(normalizada)) return 'Judiciais';
 
-  // Nomes comerciais que a JNS retorna sem o prefixo de categoria. São
-  // coberturas usuais do grupo Tradicional, inclusive as extensões trabalhistas.
-  if (/^(LICITANTE|CONCORRENTE|CONSTRUTOR(?:\s*\+\s*TRAB\s*E\s*PREV)?|FORNECEDOR(?:\s*\+\s*TRAB\s*E\s*PREV)?|PRESTADOR(?:\s+DE\s+SERVICOS?)?|EXECUTANTE(?:\s+(?:CONSTRUTOR|FORNECEDOR|PRESTADOR(?:\s+DE\s+SERVICOS?)?))?)$/.test(normalizada)) {
+  // JNS, Junto e Fator nem sempre devolvem o grupo comercial no texto da
+  // modalidade. Estes nomes compõem o portfólio de Garantia Tradicional;
+  // só serão agrupados se limite e taxa também forem idênticos.
+  if (/TRADICIONAL|LICIT|CONCORREN|CONSTRUTOR|FORNECEDOR|PRESTADOR|EXECUTANTE|ADIANTAMENTO|MANUTENCAO|RETENCAO|GARANTIA\s+DE\s+PAGAMENTO|COMPRA\s+E\s+VENDA|FINEP|PERFORMANCE|TRABALH|PREVIDENC/.test(normalizada)) {
     return 'Tradicional';
   }
   return categoriaOriginal || original;

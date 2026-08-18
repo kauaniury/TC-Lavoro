@@ -1,6 +1,6 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.58
+> Versao: 2.59
 > Atualizado em: 2026-08-18
 
 ## 1. Visão Geral
@@ -235,10 +235,12 @@ O console no topo da página (`#mktTomadorInput`, `#mktCnpjInput`, botão "Consu
    linha para cada combinação de categoria (parte anterior a `—`), limite e taxa iguais. Assim,
    por exemplo, várias submodalidades `TRADICIONAL — ...` com R$ 5.000.000,00 e 0,43% aparecem
    como uma única modalidade **Tradicional**. Linhas manuais não são condensadas.
-   Para normalizar retornos sem prefixo da JNS, `categoriaModalidadeMercado` reconhece
-   Licitante/Concorrente, Construtor, Fornecedor, Prestador de Serviços, Executante e as
-   variações `+ Trab e Prev` como **Tradicional**; itens iniciados por Judicial viram
-   **Judiciais**. A deduplicação só ocorre quando categoria, limite e taxa coincidirem.
+   Para normalizar retornos sem prefixo de JNS, Junto e Fator, `categoriaModalidadeMercado`
+   reconhece Licitante/Concorrente, Construtor, Fornecedor, Prestador de Serviços, Executante,
+   Adiantamento, Manutenção, Retenção, Garantia de Pagamento, Compra e Venda, Finep,
+   Performance e variações trabalhistas/previdenciárias como **Tradicional**. Judicial e
+   Arbitral viram **Judiciais**. A deduplicação só ocorre quando categoria, limite e taxa
+   coincidirem.
 3. Para cada resultado, `normalizeLimiteResultado(r)` — **100% reaproveitada da antiga
    Consulta de Limites**, junto com os 4 normalizadores por seguradora
    (`normalizeLimiteJns`/`normalizeLimiteJunto`/`normalizeLimiteOnpoint`/
