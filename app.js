@@ -1,20 +1,70 @@
-﻿// â"€â"€ State
+﻿// ── State
 let chartBarInst, chartDoughnutInst;
 let parsedData = null;
-// 'upload' | 'manual' — qual método gerou o parsedData atual; usado ao salvar
-// no histórico (D1) e para destacar o sub-item certo na sidebar.
-let _tcOrigemAtual = 'upload';
-let _tcCounter = 0;
-let _tcModalCounters = {};
-const TC_SEGURADORAS = [
-  'AKAD','ALLIANZ','AUSTRAL','AVLA','AXA','BERKLEY','BTG','CESCE','CHUBB',
-  'DAYCOVAL','ESSOR','EZZE','FAIRFAX','FATOR','HDI','JNS','JUNTO','KOVR',
-  'LIBERTY','MITISUI','NEWE','POTTENCIAL','SOMBRERO','SOMPO',
-  'SWISS RE','THINKSEG','TOKIO','ZURICH',
+
+// ── Consulta de Mercado por CNPJ — catálogo fixo de seguradoras (substitui a
+// antiga Consulta de Limites + o formulário manual de T&C por nome livre).
+// `key` é a chave estável usada por toda a UI e em `rows[].seguradoraKey`;
+// `apiKey` é a chave interna já usada pela integração (Worker,
+// normalizeLimite*) quando a seguradora tem consulta automática; `portal`
+// marca as seguradoras da lista "com portal" (aba 1).
+const MKT_SEGURADORAS = [
+  { key: 'akad', label: 'AKAD', apiKey: null, portal: true },
+  { key: 'allianz', label: 'ALLIANZ', apiKey: null, portal: false },
+  { key: 'alm', label: 'ALM', apiKey: null, portal: true },
+  { key: 'austral', label: 'AUSTRAL', apiKey: null, portal: false },
+  { key: 'avla', label: 'AVLA', apiKey: null, portal: true },
+  { key: 'axa', label: 'AXA', apiKey: 'axa', portal: true },
+  { key: 'berkley', label: 'BERKLEY', apiKey: null, portal: true },
+  { key: 'btg', label: 'BTG', apiKey: null, portal: false },
+  { key: 'cesce', label: 'CESCE', apiKey: null, portal: false },
+  { key: 'chubb', label: 'CHUBB', apiKey: null, portal: false },
+  { key: 'darwin', label: 'DARWIN', apiKey: null, portal: false },
+  { key: 'daycoval', label: 'DAYCOVAL', apiKey: null, portal: true },
+  { key: 'essor', label: 'ESSOR', apiKey: 'essor', portal: true },
+  { key: 'ezze', label: 'EZZE', apiKey: null, portal: true },
+  { key: 'fairfax', label: 'FAIRFAX', apiKey: null, portal: true },
+  { key: 'fairway', label: 'FAIRWAY', apiKey: null, portal: false },
+  { key: 'fator', label: 'FATOR', apiKey: 'fator', portal: true },
+  { key: 'finanguard', label: 'FINANGUARD', apiKey: null, portal: false },
+  { key: 'hdi', label: 'HDI', apiKey: null, portal: false },
+  { key: 'jns', label: 'JNS', apiKey: 'jns', portal: true },
+  { key: 'junto', label: 'JUNTO', apiKey: 'junto', portal: true },
+  { key: 'kovr', label: 'KOVR', apiKey: null, portal: false },
+  { key: 'liberty', label: 'LIBERTY', apiKey: null, portal: false },
+  { key: 'mapfre', label: 'MAPFRE', apiKey: null, portal: false },
+  { key: 'mitsui', label: 'MITISUI', apiKey: 'mitsui', portal: true },
+  { key: 'newe', label: 'NEWE', apiKey: 'newe', portal: true },
+  { key: 'now', label: 'NOW SEGUROS', apiKey: 'now', portal: true },
+  { key: 'pottencial', label: 'POTTENCIAL', apiKey: null, portal: true },
+  { key: 'sombrero', label: 'SOMBRERO', apiKey: 'sombrero', portal: true },
+  { key: 'sompo', label: 'SOMPO', apiKey: null, portal: false },
+  { key: 'sudaseg', label: 'SUDASEG', apiKey: null, portal: false },
+  { key: 'swissre', label: 'SWISS RE', apiKey: null, portal: false },
+  { key: 'thinkseg', label: 'THINKSEG', apiKey: null, portal: false },
+  { key: 'tokio', label: 'TOKIO', apiKey: null, portal: true },
+  { key: 'zurich', label: 'ZURICH', apiKey: null, portal: false },
 ];
-let _tcTabs = [];
-let _tcActiveTabId = null;
-let _tcTabCounter = 0;
+const MKT_SEGURADORAS_BY_KEY = Object.fromEntries(MKT_SEGURADORAS.map(s => [s.key, s]));
+const MKT_API_KEYS = MKT_SEGURADORAS.filter(s => s.apiKey).map(s => s.apiKey);
+
+const MKT_STATUS_CONFIG = {
+  aprovado:        { label: 'Aprovado',                     badge: 'badge-aprovado' },
+  concorrente:     { label: 'Concorrente',                  badge: 'badge-concorrente' },
+  declinado:       { label: 'Declinada',                     badge: 'badge-declinado' },
+  erro_portal:     { label: 'Erro no portal',                badge: 'badge-erro-portal' },
+  enviar_balancos: { label: 'Enviar balanços para análise',  badge: 'badge-enviar-balancos' },
+};
+
+// Abas de tomador — cada uma é uma sessão independente (CNPJ, tomador, estado
+// dos 35 cards). Trocar de aba repopula os MESMOS nós fixos da grade a partir
+// do estado salvo daquela aba (ver rebuildMktGrid/saveMktTabState).
+let _mktTabs = [];
+let _mktActiveTabId = null;
+let _mktTabCounter = 0;
+// 'portais' | 'todas' — filtro de exibição da grade (não é por aba de tomador,
+// é uma preferência global de qual subconjunto de cards mostrar).
+let _mktFiltro = 'portais';
 
 // â"€â"€ Sidebar mobile (drawer off-canvas — hover/focus-within não existe em touch)
 function openMobileSidebar() {
@@ -35,7 +85,7 @@ function toggleMobileSidebar() {
 }
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') closeMobileSidebar();
+  if (e.key === 'Escape') { closeMobileSidebar(); closeMktCardFocus(); }
 });
 
 // â"€â"€ Tab switching
@@ -60,6 +110,7 @@ function syncDownloadTopVisibility() {
 
 function switchTab(tab) {
   closeMobileSidebar();
+  closeMktCardFocus();
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-' + tab).classList.add('active');
   syncDownloadTopVisibility();
@@ -70,7 +121,6 @@ function switchTab(tab) {
     if (isActive) t.setAttribute('aria-current', 'page');
     else t.removeAttribute('aria-current');
   });
-  if (tab === 'consulta-limites') renderLimitesPlaceholders();
   requestAnimationFrame(syncAiChatStickyOffset);
 }
 
@@ -91,229 +141,6 @@ function syncAiChatStickyOffset() {
 }
 
 window.addEventListener('resize', syncAiChatStickyOffset);
-
-// â"€â"€ Drag & drop
-const dz = document.getElementById('dropZone');
-dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over', 'drop-zone--over'); });
-dz.addEventListener('dragleave', () => dz.classList.remove('drag-over', 'drop-zone--over'));
-dz.addEventListener('drop', e => {
-  e.preventDefault(); dz.classList.remove('drag-over', 'drop-zone--over');
-  const f = e.dataTransfer.files[0];
-  if (f) handleFile(f);
-});
-dz.addEventListener('keydown', e => {
-  if (e.key === 'Enter' || e.key === ' ') {
-    e.preventDefault();
-    document.getElementById('fileInput').click();
-  }
-});
-
-// â"€â"€ Handle file selection
-function handleFile(file) {
-  if (!file) return;
-  const allowed = ['.xlsx', '.xls'];
-  const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
-  if (!allowed.includes(ext)) { showError('Formato inválido. Use arquivos .xlsx ou .xls.'); return; }
-
-  document.getElementById('fileName').textContent = file.name;
-  document.getElementById('fileSize').textContent = (file.size / 1024).toFixed(1) + ' KB';
-  document.getElementById('fileSelected').classList.add('show');
-  document.getElementById('dropZone').classList.add('drop-zone--file-selected');
-  hideError();
-
-  const reader = new FileReader();
-  reader.onload = e => {
-    try {
-      const wb = XLSX.read(e.target.result, { type: 'array' });
-      parsedData = parseWorkbook(wb);
-      _tcOrigemAtual = 'upload';
-      if (!parsedData || parsedData.rows.length === 0) {
-        showError('Nenhum dado válido encontrado. Verifique se a planilha possui colunas "Seguradora" e "Status".');
-        document.getElementById('btnGenerate').disabled = true;
-      } else {
-        document.getElementById('btnGenerate').disabled = false;
-      }
-    } catch(err) {
-      showError('Erro ao ler o arquivo: ' + err.message);
-    }
-  };
-  reader.readAsArrayBuffer(file);
-}
-
-// â"€â"€ Parse workbook â€" handles the T&C Garantia specific format
-// Structure: header row contains SEGURADORAS / CAPACIDADE TOTAL / MODALIDADE / LIMITE / TAXA / OBSERVAÃ‡ÃƒO
-// Status is in OBSERVAÃ‡ÃƒO column. Sub-rows (no seguradora name) = additional modalidades for previous insurer.
-// Tomador is in row with label "TOMADOR"
-function parseWorkbook(wb) {
-  const ws = wb.Sheets[wb.SheetNames[0]];
-
-  // Read as array of arrays to handle merged cells and irregular layout
-  const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: true });
-
-  if (!raw.length) return null;
-
-  // â"€â"€ Extract tomador / CNPJ from early rows
-  let tomador = null;
-  let cnpj = null;
-  for (let i = 0; i < Math.min(raw.length, 10); i++) {
-    const row = raw[i];
-    for (let j = 0; j < row.length; j++) {
-      const rawCell = String(row[j] || '').trim();
-      const cell = rawCell.toUpperCase();
-      if (cell === 'TOMADOR' && row[j+1]) tomador = String(row[j+1]).trim();
-      if (!cnpj && cell.includes('CNPJ') && row[j+1]) cnpj = String(row[j+1]).trim();
-      if (!cnpj) {
-        const match = rawCell.match(/\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}/);
-        if (match) cnpj = match[0];
-      }
-    }
-    if (tomador && cnpj) break;
-  }
-
-  // â"€â"€ Find header row (contains "SEGURADORAS" or "SEGURADORA")
-  let headerRowIdx = -1;
-  let colIdxSeg = -1, colIdxCapTotal = -1, colIdxModal = -1, colIdxLimite = -1;
-  let colIdxTaxa = -1, colIdxObs = -1, colIdxVenc = -1;
-
-  for (let i = 0; i < raw.length; i++) {
-    const row = raw[i];
-    const rowStr = row.map(c => String(c || '').trim().toUpperCase());
-    // Look for the header marker
-    const segIdx = rowStr.findIndex(c => c === 'SEGURADORAS' || c === 'SEGURADORA');
-    if (segIdx !== -1) {
-      headerRowIdx = i;
-      colIdxSeg      = segIdx;
-      colIdxCapTotal = rowStr.findIndex(c => c.includes('CAPACIDADE') || c.includes('CAP'));
-      colIdxModal    = rowStr.findIndex(c => c.includes('MODAL'));
-      colIdxLimite   = rowStr.findIndex(c => c === 'LIMITE' || c === 'LIMITE TOTAL');
-      colIdxTaxa     = rowStr.findIndex(c => c === 'TAXA');
-      colIdxObs      = rowStr.findIndex(c => c.includes('OBSERV') || c.includes('OBS'));
-      colIdxVenc     = rowStr.findIndex(c => c.includes('VENCIMENTO') || c.includes('VALIDADE') || c.includes('VIGÊNCIA') || c.includes('VIGENCIA'));
-      break;
-    }
-  }
-
-  // Fallback: try flexible column detection via sheet_to_json
-  if (headerRowIdx === -1) {
-    const jsonRows = XLSX.utils.sheet_to_json(ws, { defval: '' });
-    if (!jsonRows.length) return null;
-    const keys = Object.keys(jsonRows[0]);
-    const findKey = (...terms) => keys.find(k => terms.some(t => k.toLowerCase().includes(t.toLowerCase()))) || null;
-    const colSeg    = findKey('seguradora','seguradoras','seguro','companhia');
-    const colStatus = findKey('status','observ','obs','situac');
-    const colLimite = findKey('capacidade total','limite total','total','limite');
-    const colModal  = findKey('modalidade','modal');
-    const colValMod = findKey('limite','valor');
-    if (!colSeg || !colStatus) return null;
-    const rows = jsonRows
-      .filter(r => r[colSeg] && String(r[colSeg]).trim())
-      .map(r => ({
-        seguradora: String(r[colSeg]).trim(),
-        status: normalizeStatus(String(r[colStatus] || '')),
-        limite: parseNum(colLimite ? r[colLimite] : 0),
-        modalidade: colModal ? String(r[colModal]||'').trim() : '',
-        valorModal: colValMod ? parseNum(r[colValMod]) : 0,
-      }))
-      .filter(r => r.seguradora && r.status !== 'vazio');
-    return { rows, tomador, cnpj };
-  }
-
-  // â"€â"€ Parse data rows
-  const rows = [];
-  let currentSeg = null;
-  let currentStatus = 'vazio';
-  let currentLimite = 0;
-
-  for (let i = headerRowIdx + 1; i < raw.length; i++) {
-    const row = raw[i];
-    if (!row || row.every(c => c === null || c === '')) continue;
-
-    const cellSeg = colIdxSeg >= 0 ? String(row[colIdxSeg] || '').trim() : '';
-    const cellCap = colIdxCapTotal >= 0 ? row[colIdxCapTotal] : null;
-    const cellModal = colIdxModal >= 0 ? String(row[colIdxModal] || '').trim() : '';
-    const cellLimite = colIdxLimite >= 0 ? row[colIdxLimite] : null;
-    const cellObs  = colIdxObs >= 0 ? String(row[colIdxObs] || '').trim() : '';
-    const cellTaxa = colIdxTaxa >= 0 ? (row[colIdxTaxa] !== null && String(row[colIdxTaxa]).trim() !== '' ? row[colIdxTaxa] : null) : null; // preserve original type
-    const cellVenc = colIdxVenc >= 0 ? (row[colIdxVenc] !== null && String(row[colIdxVenc]).trim() !== '' ? String(row[colIdxVenc]).trim() : null) : null;
-
-    // Skip total/sum rows
-    if (cellSeg.toUpperCase() === 'TOTAL') continue;
-
-    if (cellSeg) {
-      // New seguradora row
-      currentSeg = cellSeg;
-      currentLimite = parseNum(cellCap);
-      currentStatus = normalizeStatus(cellObs);
-
-      // Only add if has a status (skip empty-status rows like ALLIANZ with no data)
-      if (currentStatus !== 'vazio') {
-        rows.push({
-          seguradora: currentSeg,
-          status: currentStatus,
-          limite: currentLimite,
-          modalidade: cellModal,
-          valorModal: parseNum(cellLimite),
-          taxa: cellTaxa,
-          venc: cellVenc,
-        });
-      }
-    } else if (currentSeg && cellModal && currentStatus === 'aprovado') {
-      rows.push({
-        seguradora: currentSeg,
-        status: '_modalidade',
-        limite: 0,
-        modalidade: cellModal,
-        valorModal: parseNum(cellLimite),
-        taxa: cellTaxa,
-        venc: null,
-      });
-    }
-  }
-
-  // â"€â"€ Build final list: consolidate modalidades under each seguradora
-  const consolidated = [];
-  const seen = {};
-
-  rows.forEach(r => {
-    if (r.status === '_modalidade') {
-      // Sub-row: attach to parent's modalidades array
-      const parent = consolidated.find(c => c.seguradora === r.seguradora);
-      if (parent && r.modalidade && r.valorModal > 0) {
-        if (!parent.modalidades) parent.modalidades = [];
-        // Avoid pushing if same label already exists (defensive dedup)
-        const exists = parent.modalidades.some(m => m.label.toUpperCase().trim() === r.modalidade.toUpperCase().trim());
-        if (!exists) {
-          parent.modalidades.push({ label: r.modalidade, value: r.valorModal, taxa: r.taxa });
-        }
-      }
-      return;
-    }
-    if (seen[r.seguradora]) return;
-    seen[r.seguradora] = true;
-
-    const entry = { ...r, modalidades: [] };
-    // Push the main-row modalidade as the first entry of modalidades array
-    if (r.modalidade && r.valorModal > 0) {
-      entry.modalidades.push({ label: r.modalidade, value: r.valorModal, taxa: r.taxa });
-    }
-    entry.venc = r.venc || null;
-    consolidated.push(entry);
-  });
-
-  if (!consolidated.length) return null;
-  return { rows: consolidated, tomador, cnpj };
-}
-
-function normalizeStatus(raw) {
-  const s = String(raw || '').trim().toLowerCase();
-  if (!s) return 'vazio';
-  if (s.includes('aprov')) return 'aprovado';
-  if (s.includes('declin')) return 'declinado';
-  if (s.includes('bloque')) return 'bloqueado';
-  if (s.includes('concorr') || s.includes('nomeado') || s.includes('nomeada') || s.includes('nomeac')) return 'concorrente';
-  if (s.includes('cobrei') || s.includes('aguard') || s.includes('solicit') || s.includes('enviado') || s.includes('demanda') || s.includes('erro')) return 'vazio';
-  return 'vazio';
-}
 
 function parseNum(val) {
   if (val === null || val === undefined || val === '') return 0;
@@ -348,14 +175,16 @@ function generateDashboard() {
   generateButton.disabled = true;
   const { rows, tomador, cnpj } = parsedData;
 
-  // Sort: approved > concorrente > declined > other
-  const order = { aprovado: 0, concorrente: 1, bloqueado: 2, declinado: 3, outro: 4 };
-  rows.sort((a, b) => order[a.status] - order[b.status] || b.limite - a.limite);
+  // Sort: aprovado > concorrente > enviar_balancos > erro_portal > declinado
+  const order = { aprovado: 0, concorrente: 1, enviar_balancos: 2, erro_portal: 3, declinado: 4 };
+  rows.sort((a, b) => (order[a.status] ?? 5) - (order[b.status] ?? 5) || b.limite - a.limite);
 
-  const aprovadas  = rows.filter(r => r.status === 'aprovado');
-  const declinadas = rows.filter(r => r.status === 'declinado');
-  const concorr    = rows.filter(r => r.status === 'concorrente');
-  const bloqueadas = rows.filter(r => r.status === 'bloqueado');
+  const aprovadas    = rows.filter(r => r.status === 'aprovado');
+  const declinadas   = rows.filter(r => r.status === 'declinado');
+  const concorr      = rows.filter(r => r.status === 'concorrente');
+  const erroPortal   = rows.filter(r => r.status === 'erro_portal');
+  const enviarBalanc = rows.filter(r => r.status === 'enviar_balancos');
+  const semRetorno   = erroPortal.length + enviarBalanc.length;
 
   const totalAprov = aprovadas.reduce((s, r) => s + r.limite, 0);
   const maxLimite  = aprovadas.length ? Math.max(...aprovadas.map(r => r.limite)) : 0;
@@ -373,8 +202,8 @@ function generateDashboard() {
   // KPIs
   document.getElementById('kAprov').textContent = aprovadas.length;
   document.getElementById('kDecl').textContent = declinadas.length;
-  document.getElementById('kDecl').parentElement.querySelector('.kpi-sub').textContent = 
-    bloqueadas.length > 0 ? `sem disponibilidade · ${bloqueadas.length} bloqueada${bloqueadas.length > 1 ? 's' : ''}` : 'sem disponibilidade';
+  document.getElementById('kDecl').parentElement.querySelector('.kpi-sub').textContent =
+    semRetorno > 0 ? `sem disponibilidade · ${semRetorno} sem retorno conclusivo` : 'sem disponibilidade';
   document.getElementById('kConc').textContent = concorr.length;
   document.getElementById('kSum').textContent = totalAprov >= 1e6 ? 'R$ ' + (totalAprov/1e6).toFixed(0) + 'MM' : fmtBRL(totalAprov);
   document.getElementById('kSumFull').textContent = fmtBRL(totalAprov);
@@ -460,9 +289,9 @@ function generateDashboard() {
 
   // Doughnut
   if (chartDoughnutInst) chartDoughnutInst.destroy();
-  const dGroups = [aprovadas, concorr, bloqueadas, declinadas];
-  const dAllLabels = ['Aprovado','Nomeada por outro corretor','Bloqueado','Declinado'];
-  const dAllColors = ['#16a34a','#b45309','#6a7d90','#dc2626'];
+  const dGroups = [aprovadas, concorr, enviarBalanc, erroPortal, declinadas];
+  const dAllLabels = ['Aprovado','Concorrente','Enviar balanços para análise','Erro no portal','Declinada'];
+  const dAllColors = ['#16a34a','#b45309','#0a6c9c','#7c3aed','#dc2626'];
   const dData = dGroups.map(g=>g.length).filter((_,i)=>dGroups[i].length>0);
   const dLabels = dAllLabels.filter((_,i)=>dGroups[i].length>0);
   const dColors = dAllColors.filter((_,i)=>dGroups[i].length>0);
@@ -487,7 +316,7 @@ function generateDashboard() {
   generateButton.disabled = false;
   switchTab('dashboard');
   abrirTcSidebarGroup();
-  updateTcSubNav(_tcOrigemAtual);
+  updateTcSubNav(_mktFiltro);
   resetTcSaveStatus();
 }
 
@@ -780,26 +609,14 @@ function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 function statusLabel(status) {
-  if (status === 'aprovado') return 'Aprovado';
-  if (status === 'declinado') return 'Declinado';
-  if (status === 'concorrente') return 'Nomeada por outro corretor';
-  if (status === 'bloqueado') return 'Bloqueado';
-  return status || 'Outros';
+  const cfg = MKT_STATUS_CONFIG[status];
+  return cfg ? cfg.label : (status || 'Outros');
 }
 function badgeHTML(status) {
-  if (status === 'aprovado')    return '<span class="badge badge-aprovado">Aprovado</span>';
-  if (status === 'declinado')   return '<span class="badge badge-declinado">Declinado</span>';
-  if (status === 'concorrente') return '<span class="badge badge-concorrente">Nomeada por outro corretor</span>';
-  if (status === 'bloqueado')   return '<span class="badge badge-bloqueado">Bloqueado</span>';
-  return '<span class="badge badge-bloqueado">'+esc(status)+'</span>';
+  const cfg = MKT_STATUS_CONFIG[status];
+  if (cfg) return '<span class="badge ' + cfg.badge + '">' + esc(cfg.label) + '</span>';
+  return '<span class="badge badge-erro-portal">' + esc(status) + '</span>';
 }
-function showError(msg) {
-  document.getElementById('errorText').textContent = msg;
-  document.getElementById('errorMsg').classList.add('show');
-  document.getElementById('dropZone').classList.remove('drop-zone--file-selected');
-}
-function hideError() { document.getElementById('errorMsg').classList.remove('show'); }
-
 // ── Seguro Garantia & Fiança Locatícia State
 let garantiaFiles = [];
 let fiancaFiles = [];
@@ -3070,26 +2887,22 @@ Chart.defaults.color = '#46586b';
 let financialFiles = [];
 const MAX_FINANCIAL_FILES = 6;
 
-// T&C Formulario Manual
-// A alternância visual (tcBtnUpload/tcBtnManual) saiu do index.html — quem
-// chama switchTcMode() agora são os sub-itens da sidebar (abrirTcModo()), que
-// já cuidam do próprio estado ativo via updateTcSubNav().
-function switchTcMode(mode) {
-  const uploadCard = document.getElementById('tcUploadCard');
-  const manualCard = document.getElementById('tcManualCard');
-
-  if (mode === 'upload') {
-    uploadCard.hidden = false;
-    manualCard.hidden = true;
-  } else {
-    uploadCard.hidden = true;
-    manualCard.hidden = false;
-    if (_tcTabs.length === 0) initTcTabs();
-  }
-  updateTcSubNav(mode);
+// ── Consulta de Mercado por CNPJ (T&C) — grade única de 35 cards + filtro
+// "portais"/"todas" (não são páginas separadas, ver SPEC 1.1z/4). As duas
+// sub-abas só alternam essa classe de filtro; quem muda de sessão é a barra
+// de abas de tomador (mktTabBar), abaixo.
+function switchMktFiltro(modo) {
+  const grid = document.getElementById('mktCardsGrid');
+  if (grid) grid.classList.toggle('mkt-grid--todas', modo === 'todas');
+  const btnPortais = document.getElementById('mktFilterPortaisBtn');
+  const btnTodas = document.getElementById('mktFilterTodasBtn');
+  if (btnPortais) { btnPortais.classList.toggle('mkt-filter-btn--active', modo === 'portais'); btnPortais.setAttribute('aria-selected', String(modo === 'portais')); }
+  if (btnTodas) { btnTodas.classList.toggle('mkt-filter-btn--active', modo === 'todas'); btnTodas.setAttribute('aria-selected', String(modo === 'todas')); }
+  _mktFiltro = modo;
+  updateTcSubNav(modo);
 }
 
-// â"€â"€ T&C â€" sidebar em "pasta" (Importar planilha / Preencher manualmente / TCs salvos)
+// ── T&C — sidebar em "pasta" (Seguradoras portais / Todas as seguradoras / Tomadores salvos)
 
 function toggleTcSidebarGroup() {
   const group = document.getElementById('tcSidebarGroup');
@@ -3104,7 +2917,7 @@ function abrirTcSidebarGroup() {
 }
 
 function updateTcSubNav(activeKey) {
-  const map = { upload: 'tab-tc-planilha', manual: 'tab-tc-manual', salvos: 'tab-tc-salvos' };
+  const map = { portais: 'tab-mkt-portais', todas: 'tab-mkt-todas', salvos: 'tab-tomadores-salvos' };
   Object.values(map).forEach(id => {
     const el = document.getElementById(id);
     if (el) el.classList.remove('sidebar-subitem--active');
@@ -3113,19 +2926,19 @@ function updateTcSubNav(activeKey) {
   if (activeEl) activeEl.classList.add('sidebar-subitem--active');
 }
 
-function abrirTcModo(mode) {
-  switchTab('upload');
-  switchTcMode(mode);
+function abrirMktModo(modo) {
+  switchTab('mkt');
+  switchMktFiltro(modo);
   abrirTcSidebarGroup();
 }
 
-function abrirTcSalvosPage() {
-  switchTab('tc-salvos');
+function abrirTomadoresSalvosPage() {
+  switchTab('tomadores-salvos');
   abrirTcSidebarGroup();
   updateTcSubNav('salvos');
 }
 
-// â"€â"€ T&C â€" salvar tomador atual no histórico (D1)
+// ── T&C — salvar tomador atual no histórico (D1)
 
 function resetTcSaveStatus() {
   const statusEl = document.getElementById('tcSaveStatus');
@@ -3139,7 +2952,7 @@ async function salvarTomadorAtual() {
 
   const cnpjDigits = onlyDigits(parsedData.cnpj || '');
   if (cnpjDigits.length !== 14) {
-    statusEl.textContent = 'Informe um CNPJ válido (planilha ou formulário) antes de salvar.';
+    statusEl.textContent = 'Informe um CNPJ válido antes de salvar.';
     statusEl.className = 'tc-save-status tc-save-status--err';
     return;
   }
@@ -3152,7 +2965,7 @@ async function salvarTomadorAtual() {
     const resp = await salvarTcAnalise({
       cnpj: cnpjDigits,
       tomador: parsedData.tomador || null,
-      origem: _tcOrigemAtual === 'manual' ? 'manual' : 'upload',
+      origem: 'manual',
       rows: parsedData.rows,
     });
     statusEl.textContent = 'Salvo com sucesso (#' + resp.id + ').';
@@ -3165,36 +2978,36 @@ async function salvarTomadorAtual() {
   }
 }
 
-// â"€â"€ T&C â€" página "TCs salvos" (buscar / abrir / remover histórico por CNPJ)
+// ── Tomadores salvos (buscar / abrir / remover histórico por CNPJ ou nome)
 
-function tcSalvosShowError(msg) {
-  const el = document.getElementById('tcSalvosErrorMsg');
-  const txt = document.getElementById('tcSalvosErrorText');
+function tomadoresSalvosShowError(msg) {
+  const el = document.getElementById('tomadoresSalvosErrorMsg');
+  const txt = document.getElementById('tomadoresSalvosErrorText');
   if (el && txt) { txt.textContent = msg; el.classList.add('show'); }
 }
 
-function tcSalvosHideError() {
-  const el = document.getElementById('tcSalvosErrorMsg');
+function tomadoresSalvosHideError() {
+  const el = document.getElementById('tomadoresSalvosErrorMsg');
   if (el) el.classList.remove('show');
 }
 
-async function buscarTcSalvos() {
-  tcSalvosHideError();
-  const raw = document.getElementById('tcSalvosQueryInput').value.trim();
+async function buscarTomadoresSalvos() {
+  tomadoresSalvosHideError();
+  const raw = document.getElementById('tomadoresSalvosQueryInput').value.trim();
   const cnpjDigits = onlyDigits(raw);
   // Se o texto digitado tem 14 dígitos, trata como CNPJ (busca exata); senão,
   // trata o texto como nome do tomador (busca parcial, sem diferenciar maiúsculas).
   const isCnpj = cnpjDigits.length === 14;
 
   if (!raw) {
-    tcSalvosShowError('Informe um CNPJ ou o nome do tomador.');
+    tomadoresSalvosShowError('Informe um CNPJ ou o nome do tomador.');
     return;
   }
 
-  const loading = document.getElementById('tcSalvosLoading');
-  const empty = document.getElementById('tcSalvosEmpty');
-  const results = document.getElementById('tcSalvosResults');
-  const btn = document.getElementById('tcSalvosBtnBuscar');
+  const loading = document.getElementById('tomadoresSalvosLoading');
+  const empty = document.getElementById('tomadoresSalvosEmpty');
+  const results = document.getElementById('tomadoresSalvosResults');
+  const btn = document.getElementById('tomadoresSalvosBtnBuscar');
 
   loading.hidden = false;
   empty.hidden = true;
@@ -3205,9 +3018,9 @@ async function buscarTcSalvos() {
     const data = isCnpj
       ? await listarTcAnalises({ cnpj: cnpjDigits })
       : await listarTcAnalises({ nome: raw });
-    renderTcSalvosResultados(data.analises || []);
+    renderTomadoresSalvosResultados(data.analises || []);
   } catch (err) {
-    tcSalvosShowError('Erro ao buscar histórico: ' + err.message);
+    tomadoresSalvosShowError('Erro ao buscar histórico: ' + err.message);
     empty.hidden = false;
   } finally {
     loading.hidden = true;
@@ -3215,16 +3028,16 @@ async function buscarTcSalvos() {
   }
 }
 
-function renderTcSalvosResultados(lista) {
-  const empty = document.getElementById('tcSalvosEmpty');
-  const results = document.getElementById('tcSalvosResults');
+function renderTomadoresSalvosResultados(lista) {
+  const empty = document.getElementById('tomadoresSalvosEmpty');
+  const results = document.getElementById('tomadoresSalvosResults');
 
   if (!lista.length) {
     empty.hidden = false;
     const title = empty.querySelector('.empty-state-title');
     const text = empty.querySelector('.empty-state-text');
     if (title) title.textContent = 'Nenhuma análise salva';
-    if (text) text.textContent = 'Nenhum T&C encontrado para essa busca.';
+    if (text) text.textContent = 'Nenhum tomador encontrado para essa busca.';
     results.innerHTML = '';
     return;
   }
@@ -3241,368 +3054,842 @@ function renderTcSalvosResultados(lista) {
     return '<article class="tc-salvo-card">' +
       '<div class="tc-salvo-card-top">' +
         '<p class="tc-salvo-nome">' + esc(item.tomador || 'Tomador sem nome') + '</p>' +
-        '<span class="tc-salvo-origem ' + (isManual ? 'tc-salvo-origem--manual' : 'tc-salvo-origem--upload') + '">' + (isManual ? 'Manual' : 'Planilha') + '</span>' +
+        '<span class="tc-salvo-origem ' + (isManual ? 'tc-salvo-origem--manual' : 'tc-salvo-origem--upload') + '">' + (isManual ? 'Consulta de mercado' : 'Planilha (legado)') + '</span>' +
       '</div>' +
       '<p class="tc-salvo-cnpj">' + esc(formatTcCnpj(item.cnpj || '')) + '</p>' +
       '<p class="tc-salvo-data">Salvo em ' + esc(dataStr) + '</p>' +
       '<div class="tc-salvo-actions">' +
-        '<button type="button" class="tc-salvo-btn-abrir" onclick="abrirTcSalvo(' + Number(item.id) + ')">Abrir</button>' +
-        '<button type="button" class="tc-salvo-btn-remover" onclick="removerTcSalvo(' + Number(item.id) + ')" aria-label="Remover análise salva">Remover</button>' +
+        '<button type="button" class="tc-salvo-btn-abrir" onclick="abrirTomadorSalvo(' + Number(item.id) + ')">Abrir</button>' +
+        '<button type="button" class="tc-salvo-btn-remover" onclick="removerTomadorSalvo(' + Number(item.id) + ')" aria-label="Remover análise salva">Remover</button>' +
       '</div>' +
     '</article>';
   }).join('');
 }
 
-async function abrirTcSalvo(id) {
-  tcSalvosHideError();
+// Reabrir SEMPRE cria uma nova aba de tomador pré-preenchida (nunca sobrescreve
+// a aba ativa) e navega para a grade em modo "todas" — garante que qualquer
+// seguradora restaurada apareça, mesmo que não seja de portal.
+async function abrirTomadorSalvo(id) {
+  tomadoresSalvosHideError();
   try {
     const data = await buscarTcAnalise(id);
-    parsedData = { rows: data.rows, tomador: data.tomador, cnpj: data.cnpj };
-    _tcOrigemAtual = data.origem === 'manual' ? 'manual' : 'upload';
-    generateDashboard();
+    saveMktTabState(_mktActiveTabId);
+
+    const cards = blankMktCards();
+    const extras = [];
+    (data.rows || []).forEach(row => {
+      const key = row.seguradoraKey && MKT_SEGURADORAS_BY_KEY[row.seguradoraKey]
+        ? row.seguradoraKey
+        : matchMktKeyByLabel(row.seguradora);
+      const status = mapLegacyRowStatus(row.status);
+      if (!status) return;
+      const modalidades = (row.modalidades || []).map(m => ({
+        label: m.label || '',
+        limite: (m.value !== null && m.value !== undefined && m.value > 0) ? fmtBRL(m.value) : '',
+        taxa: (m.taxa !== null && m.taxa !== undefined && m.taxa !== '') ? formatTcTaxaPercent(m.taxa) : '',
+      }));
+      const cardData = {
+        status,
+        capTotal: (row.limite > 0) ? fmtBRL(row.limite) : '',
+        modalidades,
+        origem: row.origem === 'auto' ? 'auto' : 'manual',
+        mensagem: '',
+      };
+      if (key) cards[key] = cardData;
+      else extras.push({ seguradora: row.seguradora || '', status: cardData.status, capTotal: cardData.capTotal, modalidades: cardData.modalidades });
+    });
+
+    const tabId = ++_mktTabCounter;
+    _mktTabs.push({
+      id: tabId,
+      label: data.tomador || ('Tomador ' + (_mktTabs.length + 1)),
+      tomador: data.tomador || '',
+      cnpj: data.cnpj ? formatTcCnpj(data.cnpj) : '',
+      tomadorUserEdited: true,
+      cards,
+      extras,
+    });
+    _mktActiveTabId = tabId;
+    renderMktTabBar();
+    rebuildMktGrid(tabId);
+
+    switchTab('mkt');
+    switchMktFiltro('todas');
+    abrirTcSidebarGroup();
   } catch (err) {
-    tcSalvosShowError('Erro ao abrir análise: ' + err.message);
+    tomadoresSalvosShowError('Erro ao abrir análise: ' + err.message);
   }
 }
 
-async function removerTcSalvo(id) {
+async function removerTomadorSalvo(id) {
   if (!confirm('Remover esta análise salva? Essa ação não pode ser desfeita.')) return;
-  tcSalvosHideError();
+  tomadoresSalvosHideError();
   try {
     await apagarTcAnalise(id);
-    buscarTcSalvos();
+    buscarTomadoresSalvos();
   } catch (err) {
-    tcSalvosShowError('Erro ao remover: ' + err.message);
+    tomadoresSalvosShowError('Erro ao remover: ' + err.message);
   }
 }
 
-function initTcTabs() {
-  _tcTabs = [];
-  _tcTabCounter = 0;
-  const tabId = ++_tcTabCounter;
-  _tcTabs.push({
-    id: tabId,
-    label: 'Tomador 1',
-    tomador: '',
-    cnpj: '',
-    insurers: TC_SEGURADORAS.map(seg => ({ seguradora: seg, status: '', capTotal: '', venc: '', statusCcg: '', modalidades: [] })),
+// ── Consulta de Mercado — grade fixa de 35 cards (ver MKT_SEGURADORAS) + abas
+// de tomador. Cada aba de tomador é uma sessão independente; trocar de aba
+// repopula os MESMOS 35 nós de DOM a partir do estado salvo daquela aba —
+// nunca recria os cards (ver decisão de arquitetura na SPEC 1.1z/4).
+let _mktModalCounters = {};
+let _mktExtraCounter = 0;
+// Chave do card atualmente "em foco" (formulário de Aprovado OU painel de
+// retorno da API, aberto por cima da grade com o fundo desfocado) — null
+// quando nenhum está em foco. _mktFocusedMode diz qual painel: 'edit'
+// (capacidade/modalidades) ou 'info' (retorno da API, só leitura).
+let _mktFocusedKey = null;
+let _mktFocusedMode = null;
+
+function blankMktCards() {
+  const cards = {};
+  MKT_SEGURADORAS.forEach(seg => {
+    cards[seg.key] = { status: '', capTotal: '', modalidades: [], origem: 'manual', mensagem: '' };
   });
-  _tcActiveTabId = tabId;
-  renderTcTabBar();
-  rebuildTcForm(tabId);
+  return cards;
 }
 
-function renderTcTabBar() {
-  const bar = document.getElementById('tcTabBar');
+function initMktTabs() {
+  _mktTabs = [];
+  _mktTabCounter = 0;
+  const tabId = ++_mktTabCounter;
+  _mktTabs.push({ id: tabId, label: 'Tomador 1', tomador: '', cnpj: '', tomadorUserEdited: false, cards: blankMktCards(), extras: [] });
+  _mktActiveTabId = tabId;
+  renderMktTabBar();
+  rebuildMktGrid(tabId);
+}
+
+function renderMktTabBar() {
+  const bar = document.getElementById('mktTabBar');
   if (!bar) return;
-  bar.innerHTML = _tcTabs.map(tab =>
-    '<button type="button" class="tc-tab-btn' + (tab.id === _tcActiveTabId ? ' tc-tab-btn--active' : '') +
-    '" id="tcTabBtn-' + tab.id + '" onclick="switchTcTab(' + tab.id + ')">' +
+  bar.innerHTML = _mktTabs.map(tab =>
+    '<button type="button" class="tc-tab-btn' + (tab.id === _mktActiveTabId ? ' tc-tab-btn--active' : '') +
+    '" id="mktTabBtn-' + tab.id + '" onclick="switchMktTab(' + tab.id + ')">' +
     '<span class="tc-tab-label">' + esc(tab.label) + '</span>' +
-    (_tcTabs.length > 1 ? '<span class="tc-tab-close" onclick="removeTcTab(event,' + tab.id + ')" title="Fechar aba" aria-label="Fechar aba">&times;</span>' : '') +
+    (_mktTabs.length > 1 ? '<span class="tc-tab-close" onclick="removeMktTab(event,' + tab.id + ')" title="Fechar aba" aria-label="Fechar aba">&times;</span>' : '') +
     '</button>'
   ).join('') +
-  '<button type="button" class="tc-tab-add" onclick="addTcTab()" title="Nova aba" aria-label="Nova aba">+</button>';
+  '<button type="button" class="tc-tab-add" onclick="addMktTab()" title="Nova aba" aria-label="Nova aba">+</button>';
 }
 
-function saveTcTabState(tabId) {
-  const tab = _tcTabs.find(t => t.id === tabId);
+// Lê o DOM vivo da grade (35 cards + extras) para dentro do objeto da aba —
+// chamada ao trocar de aba/tomador, nunca ao gerar dashboard/exportar (esses
+// leem o DOM diretamente via buildMktParsedData).
+function saveMktTabState(tabId) {
+  closeMktCardFocus();
+  const tab = _mktTabs.find(t => t.id === tabId);
   if (!tab) return;
-  tab.tomador = (document.getElementById('tcTomador') || {}).value || '';
-  tab.cnpj = (document.getElementById('tcCnpj') || {}).value || '';
-  const idx = _tcTabs.indexOf(tab);
+  tab.tomador = (document.getElementById('mktTomadorInput') || {}).value || '';
+  tab.cnpj = (document.getElementById('mktCnpjInput') || {}).value || '';
+  const idx = _mktTabs.indexOf(tab);
   tab.label = tab.tomador || ('Tomador ' + (idx + 1));
-  tab.insurers = [];
-  document.querySelectorAll('#tcInsurerList .tc-insurer-block').forEach(block => {
-    const id = block.id.replace('tcInsurer-', '');
-    const segEl   = document.getElementById('tcSeg-' + id);
-    const statusEl = document.getElementById('tcStatus-' + id);
-    const capEl   = document.getElementById('tcCapTotal-' + id);
-    const vencEl  = document.getElementById('tcVenc-' + id);
-    const ccgEl   = document.getElementById('tcStatusCcg-' + id);
+
+  const cards = {};
+  document.querySelectorAll('#mktCardsGrid .mkt-card').forEach(card => {
+    const key = card.dataset.key;
+    const statusEl = document.getElementById('mktStatus-' + key);
+    const capEl = document.getElementById('mktCap-' + key);
     const modalidades = [];
-    const modalList = document.getElementById('tcModalList-' + id);
+    const modalList = document.getElementById('mktModalList-' + key);
     if (modalList) {
       modalList.querySelectorAll('.tc-modal-row').forEach(row => {
         const inputs = row.querySelectorAll('.tc-input');
         modalidades.push({
-          label:  inputs[0] ? inputs[0].value : '',
+          label: inputs[0] ? inputs[0].value : '',
           limite: inputs[1] ? inputs[1].value : '',
-          taxa:   inputs[2] ? inputs[2].value : '',
+          taxa: inputs[2] ? inputs[2].value : '',
         });
       });
     }
-    tab.insurers.push({
-      seguradora: segEl   ? segEl.value   : '',
-      status:     statusEl ? statusEl.value : '',
-      capTotal:   capEl   ? capEl.value   : '',
-      venc:       vencEl  ? vencEl.value  : '',
-      statusCcg:  ccgEl   ? ccgEl.value   : '',
+    cards[key] = {
+      status: statusEl ? statusEl.value : '',
+      capTotal: capEl ? capEl.value : '',
+      modalidades,
+      origem: card.dataset.origem === 'auto' ? 'auto' : 'manual',
+      mensagem: (document.getElementById('mktInfoText-' + key) || {}).textContent || '',
+    };
+  });
+  tab.cards = cards;
+
+  const extras = [];
+  document.querySelectorAll('#mktLegacyExtraList .mkt-extra-block').forEach(block => {
+    const id = block.dataset.id;
+    const segEl = document.getElementById('mktExtraSeg-' + id);
+    const statusEl = document.getElementById('mktExtraStatus-' + id);
+    const capEl = document.getElementById('mktExtraCap-' + id);
+    const modalidades = [];
+    const modalList = document.getElementById('mktExtraModalList-' + id);
+    if (modalList) {
+      modalList.querySelectorAll('.tc-modal-row').forEach(row => {
+        const inputs = row.querySelectorAll('.tc-input');
+        modalidades.push({ label: inputs[0] ? inputs[0].value : '', limite: inputs[1] ? inputs[1].value : '', taxa: inputs[2] ? inputs[2].value : '' });
+      });
+    }
+    extras.push({
+      seguradora: segEl ? segEl.value : '',
+      status: statusEl ? statusEl.value : '',
+      capTotal: capEl ? capEl.value : '',
       modalidades,
     });
   });
+  tab.extras = extras;
 }
 
-function rebuildTcForm(tabId) {
-  const tab = _tcTabs.find(t => t.id === tabId);
+function rebuildMktGrid(tabId) {
+  const tab = _mktTabs.find(t => t.id === tabId);
   if (!tab) return;
-  const tomadorEl = document.getElementById('tcTomador');
-  const cnpjEl   = document.getElementById('tcCnpj');
+  const tomadorEl = document.getElementById('mktTomadorInput');
+  const cnpjEl = document.getElementById('mktCnpjInput');
   if (tomadorEl) tomadorEl.value = tab.tomador || '';
-  if (cnpjEl)   cnpjEl.value   = tab.cnpj   || '';
-  const list = document.getElementById('tcInsurerList');
-  if (!list) return;
-  list.innerHTML = '';
-  _tcCounter = 0;
-  _tcModalCounters = {};
-  if (tab.insurers.length === 0) { addTcInsurer(); return; }
-  tab.insurers.forEach(ins => addTcInsurerWithData(ins));
-  updateTcInsurerNums();
+  if (cnpjEl) cnpjEl.value = tab.cnpj || '';
+  MKT_SEGURADORAS.forEach(seg => populateMktCard(seg.key, tab.cards[seg.key]));
+  rebuildMktExtras(tab.extras || []);
+  hideMktError();
 }
 
-function addTcInsurerWithData(data) {
-  const id = ++_tcCounter;
-  _tcModalCounters[id] = 0;
-  const list = document.getElementById('tcInsurerList');
-  const n = list.children.length + 1;
-  const isAprovado = data.status === 'aprovado';
-  const div = document.createElement('div');
-  div.className = 'tc-insurer-block' + (isAprovado ? ' tc-insurer--approved' : '');
-  div.id = 'tcInsurer-' + id;
-  div.innerHTML =
-    '<div class="tc-insurer-head">' +
-      '<div class="tc-insurer-num">' + n + '</div>' +
-      '<div class="tc-head-seg">' +
-        '<input type="text" class="tc-input" id="tcSeg-' + id + '" list="tcSegList" placeholder="Seguradora" autocomplete="off" value="' + esc(data.seguradora || '') + '">' +
-      '</div>' +
-      '<div class="tc-head-status">' +
-        '<select class="tc-select" id="tcStatus-' + id + '" onchange="onTcStatusChange(this,' + id + ')">' +
-          '<option value="">Status</option>' +
-          '<option value="aprovado"'   + (data.status === 'aprovado'   ? ' selected' : '') + '>Aprovado</option>' +
-          '<option value="declinado"'  + (data.status === 'declinado'  ? ' selected' : '') + '>Declinado</option>' +
-          '<option value="concorrente"' + (data.status === 'concorrente' ? ' selected' : '') + '>Concorrente</option>' +
-          '<option value="bloqueado"'  + (data.status === 'bloqueado'  ? ' selected' : '') + '>Bloqueado</option>' +
-        '</select>' +
-      '</div>' +
-      '<button type="button" class="tc-btn-icon" onclick="removeTcInsurer(' + id + ')" title="Remover seguradora" aria-label="Remover seguradora">' +
-        '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M2 2l10 10M12 2L2 12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>' +
-      '</button>' +
-    '</div>' +
-    '<div class="tc-insurer-body" id="tcBody-' + id + '"' + (isAprovado ? '' : ' hidden') + '>' +
-      '<div class="tc-body-meta">' +
-        '<div class="tc-form-group">' +
-          '<label class="tc-label" for="tcCapTotal-' + id + '">Capacidade Total</label>' +
-          '<input type="text" class="tc-input" id="tcCapTotal-' + id + '" placeholder="R$ 0,00" onfocus="this.select()" onblur="fmtTcMoney(this)" value="' + esc(data.capTotal || '') + '">' +
-        '</div>' +
-        '<div class="tc-form-group">' +
-          '<label class="tc-label" for="tcVenc-' + id + '">Vencimento (opcional)</label>' +
-          '<input type="text" class="tc-input" id="tcVenc-' + id + '" placeholder="DD/MM/AAAA" inputmode="numeric" maxlength="10" oninput="fmtTcDate(this)" value="' + esc(data.venc || '') + '">' +
-        '</div>' +
-        '<div class="tc-form-group">' +
-          '<label class="tc-label" for="tcStatusCcg-' + id + '">Status CCG</label>' +
-          '<input type="text" class="tc-input" id="tcStatusCcg-' + id + '" placeholder="Status CCG" autocomplete="off" value="' + esc(data.statusCcg || '') + '">' +
-        '</div>' +
-      '</div>' +
-      '<div class="tc-modalidades-section">' +
-        '<div class="tc-modalidades-header">' +
-          '<span class="tc-modalidades-title">Modalidades</span>' +
-        '</div>' +
-        '<div class="tc-modal-col-header">' +
-          '<span class="tc-col-label">Modalidade</span>' +
-          '<span class="tc-col-label">Limite</span>' +
-          '<span class="tc-col-label">Taxa</span>' +
-          '<span></span>' +
-        '</div>' +
-        '<div class="tc-modal-list" id="tcModalList-' + id + '"></div>' +
-        '<button type="button" class="tc-btn-add-modal" onclick="addTcModalidade(' + id + ')">+ Adicionar modalidade</button>' +
-      '</div>' +
-    '</div>';
-  list.appendChild(div);
-  if (data.modalidades && data.modalidades.length > 0) {
-    data.modalidades.forEach(m => addTcModalidadeWithData(id, m));
-  } else if (isAprovado) {
-    addTcModalidade(id);
+function switchMktTab(tabId) {
+  if (tabId === _mktActiveTabId) return;
+  saveMktTabState(_mktActiveTabId);
+  _mktActiveTabId = tabId;
+  renderMktTabBar();
+  rebuildMktGrid(tabId);
+}
+
+function addMktTab() {
+  saveMktTabState(_mktActiveTabId);
+  const tabId = ++_mktTabCounter;
+  const n = _mktTabs.length + 1;
+  _mktTabs.push({ id: tabId, label: 'Tomador ' + n, tomador: '', cnpj: '', tomadorUserEdited: false, cards: blankMktCards(), extras: [] });
+  _mktActiveTabId = tabId;
+  renderMktTabBar();
+  rebuildMktGrid(tabId);
+}
+
+function removeMktTab(event, tabId) {
+  event.stopPropagation();
+  if (_mktTabs.length <= 1) return;
+  const idx = _mktTabs.findIndex(t => t.id === tabId);
+  _mktTabs.splice(idx, 1);
+  if (_mktActiveTabId === tabId) {
+    _mktActiveTabId = _mktTabs[Math.max(0, idx - 1)].id;
+    renderMktTabBar();
+    rebuildMktGrid(_mktActiveTabId);
+  } else {
+    renderMktTabBar();
   }
 }
 
-function addTcModalidadeWithData(insurerId, data) {
-  if (_tcModalCounters[insurerId] === undefined) _tcModalCounters[insurerId] = 0;
-  const mid  = ++_tcModalCounters[insurerId];
-  const list = document.getElementById('tcModalList-' + insurerId);
+function updateMktActiveTabLabel() {
+  if (!_mktActiveTabId) return;
+  const tab = _mktTabs.find(t => t.id === _mktActiveTabId);
+  if (!tab) return;
+  tab.tomadorUserEdited = true;
+  const tomadorVal = (document.getElementById('mktTomadorInput') || {}).value || '';
+  const idx = _mktTabs.indexOf(tab);
+  tab.label = tomadorVal || ('Tomador ' + (idx + 1));
+  const labelEl = document.querySelector('#mktTabBtn-' + _mktActiveTabId + ' .tc-tab-label');
+  if (labelEl) labelEl.textContent = tab.label;
+}
+
+// Monta a grade fixa (35 cards) uma única vez — chamada no carregamento da
+// página. Trocar de aba/filtro nunca recria estes nós, só repopula valores
+// (populateMktCard), o que mantém a mesma edição visível nas duas sub-abas
+// "Seguradoras portais" / "Todas as seguradoras".
+function renderMktCardsGridSkeleton() {
+  const grid = document.getElementById('mktCardsGrid');
+  if (!grid) return;
+  grid.innerHTML = MKT_SEGURADORAS.map(seg => (
+    '<div class="mkt-card" id="mktCard-' + seg.key + '" data-key="' + seg.key + '" data-portal="' + (seg.portal ? '1' : '0') + '" data-origem="manual">' +
+        '<div class="mkt-card-head">' +
+        '<div class="mkt-card-brand">' +
+          '<p class="mkt-card-nome">' + esc(seg.label) + '</p>' +
+        '</div>' +
+        '<span class="mkt-card-origem-tag" id="mktOrigem-' + seg.key + '" hidden></span>' +
+      '</div>' +
+      '<div class="mkt-card-status-row">' +
+        '<select class="tc-select mkt-status-select" id="mktStatus-' + seg.key + '" onchange="onMktStatusChange(this,\'' + seg.key + '\')">' +
+          '<option value="">Selecione o status</option>' +
+          '<option value="aprovado">Aprovado</option>' +
+          '<option value="concorrente">Concorrente</option>' +
+          '<option value="declinado">Declinada</option>' +
+          '<option value="erro_portal">Erro no portal</option>' +
+          '<option value="enviar_balancos">Enviar balanços para análise</option>' +
+        '</select>' +
+        '<button type="button" class="mkt-card-icon-btn mkt-card-info-btn" id="mktInfoBtn-' + seg.key + '" onclick="openMktCardInfo(\'' + seg.key + '\')" hidden title="Ver retorno da consulta" aria-label="Ver retorno da consulta">!</button>' +
+        '<button type="button" class="mkt-card-icon-btn mkt-card-view-btn" id="mktViewBtn-' + seg.key + '" onclick="openMktCardFocus(\'' + seg.key + '\')" hidden title="Ver capacidade e modalidades" aria-label="Ver capacidade e modalidades">' + MKT_EYE_SVG + '</button>' +
+      '</div>' +
+      '<div class="mkt-card-info" id="mktInfo-' + seg.key + '" hidden>' +
+        '<p class="mkt-card-info-label">Retorno da consulta</p>' +
+        '<p class="mkt-card-info-text" id="mktInfoText-' + seg.key + '"></p>' +
+        '<button type="button" class="mkt-card-focus-done" onclick="closeMktCardFocus()">Fechar</button>' +
+      '</div>' +
+      '<div class="tc-insurer-body mkt-card-body" id="mktBody-' + seg.key + '" hidden>' +
+        '<div class="mkt-card-readonly" id="mktReadonly-' + seg.key + '" hidden></div>' +
+        '<div class="mkt-card-editform" id="mktEditForm-' + seg.key + '">' +
+          '<div class="tc-form-group">' +
+            '<label class="tc-label" for="mktCap-' + seg.key + '">Capacidade Total</label>' +
+            '<input type="text" class="tc-input" id="mktCap-' + seg.key + '" placeholder="R$ 0,00" onfocus="this.select()" onblur="fmtTcMoney(this)">' +
+          '</div>' +
+          '<div class="tc-modalidades-section">' +
+            '<div class="tc-modalidades-header"><span class="tc-modalidades-title">Modalidades</span></div>' +
+            '<div class="tc-modal-col-header">' +
+              '<span class="tc-col-label">Modalidade</span><span class="tc-col-label">Limite</span><span class="tc-col-label">Taxa</span><span></span>' +
+            '</div>' +
+            '<div class="tc-modal-list" id="mktModalList-' + seg.key + '"></div>' +
+            '<button type="button" class="tc-btn-add-modal" onclick="addMktModalidade(\'' + seg.key + '\')">+ Adicionar modalidade</button>' +
+          '</div>' +
+        '</div>' +
+        '<button type="button" class="mkt-card-focus-done" onclick="closeMktCardFocus()">Concluir</button>' +
+      '</div>' +
+    '</div>'
+  )).join('');
+}
+
+// Preenche um card a partir de {status, capTotal, modalidades, origem, mensagem}
+// — usado pelo preenchimento automático (API), pela troca de aba de tomador e
+// pela reabertura de um tomador salvo. Só seta `.value`/`.textContent`, nunca
+// dispara input/change — por isso nunca marca o card como editado
+// manualmente. Nunca abre o foco sozinho (ver 4.4 do SPEC) — só a seleção
+// manual do status abre; aqui o card só liga os botões de "ver detalhes".
+function populateMktCard(key, data) {
+  data = data || {};
+  const card = document.getElementById('mktCard-' + key);
+  if (!card) return;
+  const seg = MKT_SEGURADORAS_BY_KEY[key];
+  const statusEl = document.getElementById('mktStatus-' + key);
+  const capEl = document.getElementById('mktCap-' + key);
+  const body = document.getElementById('mktBody-' + key);
+  const modalList = document.getElementById('mktModalList-' + key);
+  const infoTextEl = document.getElementById('mktInfoText-' + key);
+  const origemEl = document.getElementById('mktOrigem-' + key);
+  const isAprovado = data.status === 'aprovado';
+
+  if (statusEl) { statusEl.value = data.status || ''; statusEl.dataset.status = data.status || ''; }
+  if (capEl) capEl.value = isAprovado ? (data.capTotal || '') : '';
+
+  if (modalList) {
+    modalList.innerHTML = '';
+    _mktModalCounters[key] = 0;
+    if (isAprovado && data.modalidades) data.modalidades.forEach(m => addMktModalidadeWithData(key, m));
+  }
+
+  if (_mktFocusedKey === key) closeMktCardFocus();
+  if (body) body.hidden = true;
+  updateMktCardViewButton(key);
+
+  card.dataset.origem = data.origem === 'auto' ? 'auto' : 'manual';
+  if (origemEl) {
+    if (data.origem === 'auto') {
+      origemEl.hidden = false;
+      origemEl.textContent = 'Consultado automaticamente';
+      origemEl.className = 'mkt-card-origem-tag mkt-card-origem-tag--auto';
+    } else if (data.status && !(seg && seg.apiKey)) {
+      // Seguradoras com API nunca mostram "Preenchimento manual" — só
+      // "Consultado automaticamente" (quando de fato veio da consulta) ou
+      // nenhuma etiqueta. A tag "manual" só faz sentido para quem NUNCA tem
+      // consulta automática (ver 4.4).
+      origemEl.hidden = false;
+      origemEl.textContent = 'Preenchimento manual';
+      origemEl.className = 'mkt-card-origem-tag mkt-card-origem-tag--manual';
+    } else {
+      origemEl.hidden = true;
+    }
+  }
+  if (infoTextEl) infoTextEl.textContent = data.mensagem || '';
+  updateMktCardInfoButton(key);
+}
+
+// Qualquer edição genuína do usuário num card (nunca disparada por
+// populateMktCard, que só seta `.value`) vira `data-origem="manual"" — exceto
+// para seguradoras com API, que nunca mostram essa etiqueta (ver 4.4).
+function markMktCardManual(e) {
+  const card = e.target.closest('.mkt-card');
+  if (!card) return;
+  // Nao guarda por "ja e manual" antes de mexer na tag: todo card NASCE com
+  // data-origem="manual" (placeholder de "nunca veio de API"), entao esse
+  // guard impedia a tag de aparecer na primeira edicao manual de verdade —
+  // so reaparecia depois de um card ir 'auto' e ser editado por cima.
+  card.dataset.origem = 'manual';
+  const key = card.dataset.key;
+  const seg = MKT_SEGURADORAS_BY_KEY[key];
+  if (seg && seg.apiKey) return;
+  const statusEl = document.getElementById('mktStatus-' + key);
+  const origemEl = document.getElementById('mktOrigem-' + key);
+  if (origemEl && statusEl && statusEl.value) {
+    origemEl.hidden = false;
+    origemEl.textContent = 'Preenchimento manual';
+    origemEl.className = 'mkt-card-origem-tag mkt-card-origem-tag--manual';
+  }
+}
+
+// Trocar para "Aprovado" já leva direto para o formulário em foco (é o único
+// status com dado a preencher); qualquer outro status fecha o foco se este
+// card estiver aberto e volta a mostrar só o select + botões (ver 4.4b/4.4c).
+function onMktStatusChange(select, key) {
+  select.dataset.status = select.value;
+  updateMktCardViewButton(key);
+  if (select.value === 'aprovado') {
+    openMktCardFocus(key, { forceForm: true });
+  } else {
+    if (_mktFocusedKey === key && _mktFocusedMode === 'edit') closeMktCardFocus();
+    const body = document.getElementById('mktBody-' + key);
+    if (body) body.hidden = true;
+  }
+}
+
+// Botão de "olho" ao lado do select — único jeito de ver/editar a capacidade e
+// as modalidades de um card Aprovado fora do foco. Não mostra nada inline no
+// card (nem valor mascarado): clicar abre direto o formulário em foco (4.4b).
+// Isso mantém o tamanho do card idêntico em qualquer status — nada cresce.
+function updateMktCardViewButton(key) {
+  const btn = document.getElementById('mktViewBtn-' + key);
+  if (!btn) return;
+  const statusEl = document.getElementById('mktStatus-' + key);
+  btn.hidden = !(statusEl && statusEl.value === 'aprovado');
+}
+
+// Botão "!" — só aparece quando a seguradora devolveu alguma mensagem (motivo
+// de negócio, erro, aviso). Mesma lógica do olhinho: nada fica exposto no
+// próprio card, só o botão liga/desliga (ver 4.4c).
+function updateMktCardInfoButton(key) {
+  const btn = document.getElementById('mktInfoBtn-' + key);
+  const textEl = document.getElementById('mktInfoText-' + key);
+  if (!btn) return;
+  btn.hidden = !(textEl && textEl.textContent.trim());
+}
+
+// ── Card "em foco" — Aprovado abre o formulário (modo 'edit') e o botão "!"
+// abre o retorno da API (modo 'info') por cima da grade, com o resto da
+// página desfocado atrás (mkt-focus-backdrop), em vez de expandir a linha
+// inteira da grade. Continua sendo o MESMO nó de DOM do card (só
+// reposicionado via CSS), então nenhum dado precisa ser copiado para
+// dentro/fora de um modal separado. Só um card fica em foco por vez.
+// Card vindo de API (origem 'auto') e ainda não editado abre em apresentação
+// somente-leitura, profissional (mesma linguagem visual da antiga página de
+// Consulta de Limites) — não em cima do formulário de digitação, que é para
+// preenchimento manual. Um card 'manual' (ou um 'auto' que o usuário já
+// escolheu editar) vai direto pro formulário. Ver 4.4d.
+function openMktCardFocus(key, opts) {
+  opts = opts || {};
+  // Só decide a view (readonly x form) num open "de verdade" — se o card já
+  // estava aberto em modo edit e o usuário clicar no olho de novo, isso NÃO
+  // pode jogar de volta pra readonly e descartar a troca manual pra "Editar
+  // valores" que ele já tinha feito.
+  const alreadyOpenInEdit = _mktFocusedKey === key && _mktFocusedMode === 'edit';
+  _openMktCardFocusMode(key, 'edit');
+  if (alreadyOpenInEdit) return;
+
+  const card = document.getElementById('mktCard-' + key);
+  // `forceForm`: quem mudou o select pra Aprovado agora mesmo (onMktStatusChange)
+  // já está fazendo uma edição manual — vai direto pro formulário, nunca pra
+  // apresentação somente-leitura (que é só para abrir via olho, sem alterar nada).
+  const isAuto = !opts.forceForm && card && card.dataset.origem === 'auto';
+  setMktCardFocusView(key, isAuto ? 'readonly' : 'form');
+  if (!isAuto) {
+    const capEl = document.getElementById('mktCap-' + key);
+    if (capEl) capEl.focus();
+  }
+}
+
+function setMktCardFocusView(key, view) {
+  const readonly = document.getElementById('mktReadonly-' + key);
+  const editform = document.getElementById('mktEditForm-' + key);
+  if (view === 'readonly') {
+    renderMktCardReadonly(key);
+    if (readonly) readonly.hidden = false;
+    if (editform) editform.hidden = true;
+  } else {
+    if (readonly) readonly.hidden = true;
+    if (editform) editform.hidden = false;
+  }
+}
+
+// Chamado pelo botão "Editar valores" da apresentação somente-leitura — troca
+// para o formulário de digitação sem fechar o foco. Só passa a virar
+// `origem: 'manual'` se o usuário de fato alterar algum campo (markMktCardManual),
+// não só por ter entrado no modo de edição.
+function switchMktCardToEditForm(key) {
+  setMktCardFocusView(key, 'form');
+  const capEl = document.getElementById('mktCap-' + key);
+  if (capEl) capEl.focus();
+}
+
+// Monta a apresentação somente-leitura (capacidade + modalidades) a partir
+// dos MESMOS inputs do formulário — nunca duplica o dado, só projeta pra uma
+// leitura mais limpa. Via DOM/textContent, nunca innerHTML com dado dinâmico.
+function renderMktCardReadonly(key) {
+  const container = document.getElementById('mktReadonly-' + key);
+  if (!container) return;
+  container.innerHTML = '';
+
+  const capEl = document.getElementById('mktCap-' + key);
+  const capValue = capEl && capEl.value.trim() ? capEl.value.trim() : '';
+  if (capValue) {
+    const capBlock = document.createElement('div');
+    capBlock.className = 'mkt-readonly-cap';
+    const label = document.createElement('p');
+    label.className = 'mkt-readonly-label';
+    label.textContent = 'Capacidade Total';
+    const value = document.createElement('p');
+    value.className = 'mkt-readonly-cap-value';
+    value.textContent = capValue;
+    capBlock.appendChild(label);
+    capBlock.appendChild(value);
+    container.appendChild(capBlock);
+  }
+
+  const modalList = document.getElementById('mktModalList-' + key);
+  const rows = modalList ? Array.from(modalList.querySelectorAll('.tc-modal-row')) : [];
+  const validRows = rows.filter(row => {
+    const inputs = row.querySelectorAll('.tc-input');
+    return (inputs[0] && inputs[0].value.trim()) || (inputs[1] && inputs[1].value.trim());
+  });
+
+  if (validRows.length) {
+    const modsLabel = document.createElement('p');
+    modsLabel.className = 'mkt-readonly-label';
+    modsLabel.textContent = 'Modalidades';
+    container.appendChild(modsLabel);
+
+    const grid = document.createElement('div');
+    grid.className = 'mkt-readonly-mods';
+    validRows.forEach(row => {
+      const inputs = row.querySelectorAll('.tc-input');
+      const label = inputs[0] ? inputs[0].value.trim() : '';
+      const val = inputs[1] ? inputs[1].value.trim() : '';
+      const taxa = inputs[2] ? inputs[2].value.trim() : '';
+
+      const item = document.createElement('div');
+      item.className = 'mkt-readonly-mod-item';
+      if (label) {
+        const l = document.createElement('p');
+        l.className = 'mkt-readonly-mod-label';
+        l.textContent = label;
+        item.appendChild(l);
+      }
+      if (val) {
+        const v = document.createElement('p');
+        v.className = 'mkt-readonly-mod-value';
+        v.textContent = val;
+        item.appendChild(v);
+      }
+      if (taxa) {
+        const t = document.createElement('p');
+        t.className = 'mkt-readonly-mod-taxa';
+        t.textContent = 'Taxa: ' + taxa;
+        item.appendChild(t);
+      }
+      grid.appendChild(item);
+    });
+    container.appendChild(grid);
+  }
+
+  const editBtn = document.createElement('button');
+  editBtn.type = 'button';
+  editBtn.className = 'mkt-card-edit-toggle';
+  editBtn.textContent = 'Editar valores';
+  editBtn.onclick = () => switchMktCardToEditForm(key);
+  container.appendChild(editBtn);
+}
+
+function openMktCardInfo(key) {
+  _openMktCardFocusMode(key, 'info');
+}
+
+function _openMktCardFocusMode(key, mode) {
+  if (_mktFocusedKey === key && _mktFocusedMode === mode) return;
+  if (_mktFocusedKey) closeMktCardFocus();
+  const card = document.getElementById('mktCard-' + key);
+  const panel = document.getElementById((mode === 'edit' ? 'mktBody-' : 'mktInfo-') + key);
+  if (!card || !panel) return;
+
+  panel.hidden = false;
+  card.classList.add('mkt-card--focused');
+  document.body.classList.add('mkt-focus-active');
+  const backdrop = document.getElementById('mktFocusBackdrop');
+  if (backdrop) backdrop.hidden = false;
+  _mktFocusedKey = key;
+  _mktFocusedMode = mode;
+}
+
+function closeMktCardFocus() {
+  if (!_mktFocusedKey) return;
+  const key = _mktFocusedKey;
+  const mode = _mktFocusedMode;
+  const card = document.getElementById('mktCard-' + key);
+  const panel = document.getElementById((mode === 'edit' ? 'mktBody-' : 'mktInfo-') + key);
+  if (card) card.classList.remove('mkt-card--focused');
+  if (panel) panel.hidden = true;
+  document.body.classList.remove('mkt-focus-active');
+  const backdrop = document.getElementById('mktFocusBackdrop');
+  if (backdrop) backdrop.hidden = true;
+  _mktFocusedKey = null;
+  _mktFocusedMode = null;
+  updateMktCardViewButton(key);
+  updateMktCardInfoButton(key);
+}
+
+// Ícone estático (olho) do botão "ver detalhes" — string fixa sem nenhum dado
+// dinâmico, mesmo padrão de SVG inline já usado nos botões de remover
+// modalidade/seguradora deste arquivo.
+const MKT_EYE_SVG = '<svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M1.5 10S4.5 4 10 4s8.5 6 8.5 6-3 6-8.5 6-8.5-6-8.5-6z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="10" cy="10" r="2.25" stroke="currentColor" stroke-width="1.5"/></svg>';
+
+function addMktModalidade(key) {
+  addMktModalidadeWithData(key, {});
+}
+
+function addMktModalidadeWithData(key, data) {
+  data = data || {};
+  if (_mktModalCounters[key] === undefined) _mktModalCounters[key] = 0;
+  const mid = ++_mktModalCounters[key];
+  const list = document.getElementById('mktModalList-' + key);
   if (!list) return;
   const row = document.createElement('div');
   row.className = 'tc-modal-row';
-  row.id = 'tcModal-' + insurerId + '-' + mid;
+  row.id = 'mktModal-' + key + '-' + mid;
   row.innerHTML =
     '<input type="text" class="tc-input tc-input--modal" placeholder="Ex: Judicial Trabalhista" autocomplete="off" value="' + esc(data.label || '') + '">' +
     '<input type="text" class="tc-input tc-input--limite" placeholder="R$ 0,00" onfocus="this.select()" onblur="fmtTcMoney(this)" value="' + esc(data.limite || '') + '">' +
     '<input type="text" class="tc-input tc-input--taxa" placeholder="0,00%" onfocus="this.select()" onblur="fmtTcTaxa(this)" value="' + esc(data.taxa || '') + '">' +
-    '<button type="button" class="tc-btn-icon" onclick="removeTcModalidade(\'' + insurerId + '-' + mid + '\')" title="Remover modalidade" aria-label="Remover modalidade">' +
+    '<button type="button" class="tc-btn-icon" onclick="removeMktModalidade(\'' + key + '-' + mid + '\')" title="Remover modalidade" aria-label="Remover modalidade">' +
       '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M1.5 1.5l9 9M10.5 1.5l-9 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>' +
     '</button>';
   list.appendChild(row);
 }
 
-function switchTcTab(tabId) {
-  if (tabId === _tcActiveTabId) return;
-  saveTcTabState(_tcActiveTabId);
-  _tcActiveTabId = tabId;
-  renderTcTabBar();
-  rebuildTcForm(tabId);
+function removeMktModalidade(rowKey) {
+  const el = document.getElementById('mktModal-' + rowKey);
+  if (el) el.remove();
 }
 
-function addTcTab() {
-  saveTcTabState(_tcActiveTabId);
-  const tabId = ++_tcTabCounter;
-  const n = _tcTabs.length + 1;
-  _tcTabs.push({
-    id: tabId,
-    label: 'Tomador ' + n,
-    tomador: '',
-    cnpj: '',
-    insurers: TC_SEGURADORAS.map(seg => ({ seguradora: seg, status: '', capTotal: '', venc: '', statusCcg: '', modalidades: [] })),
-  });
-  _tcActiveTabId = tabId;
-  renderTcTabBar();
-  rebuildTcForm(tabId);
+// ── "Outras seguradoras (importado)" — só aparece ao reabrir um tomador salvo
+// cujo nome de seguradora não bate com o catálogo fixo (ver matchMktKeyByLabel).
+// Não há como criar uma entrada aqui a partir de hoje — é só leitura compatível
+// de snapshots antigos, para nenhum dado histórico ser perdido.
+function rebuildMktExtras(extras) {
+  const wrap = document.getElementById('mktLegacyExtra');
+  const list = document.getElementById('mktLegacyExtraList');
+  if (!wrap || !list) return;
+  list.innerHTML = '';
+  _mktExtraCounter = 0;
+  (extras || []).forEach(ex => addMktExtraWithData(ex));
+  wrap.hidden = (extras || []).length === 0;
 }
 
-function removeTcTab(event, tabId) {
-  event.stopPropagation();
-  if (_tcTabs.length <= 1) return;
-  const idx = _tcTabs.findIndex(t => t.id === tabId);
-  _tcTabs.splice(idx, 1);
-  if (_tcActiveTabId === tabId) {
-    _tcActiveTabId = _tcTabs[Math.max(0, idx - 1)].id;
-    renderTcTabBar();
-    rebuildTcForm(_tcActiveTabId);
-  } else {
-    renderTcTabBar();
-  }
-}
-
-function updateTcActiveTabLabel() {
-  if (!_tcActiveTabId) return;
-  const tab = _tcTabs.find(t => t.id === _tcActiveTabId);
-  if (!tab) return;
-  const tomadorVal = (document.getElementById('tcTomador') || {}).value || '';
-  const idx = _tcTabs.indexOf(tab);
-  tab.label = tomadorVal || ('Tomador ' + (idx + 1));
-  const labelEl = document.querySelector('#tcTabBtn-' + _tcActiveTabId + ' .tc-tab-label');
-  if (labelEl) labelEl.textContent = tab.label;
-}
-
-function addTcInsurer() {
-  const id   = ++_tcCounter;
-  _tcModalCounters[id] = 0;
-  const list = document.getElementById('tcInsurerList');
-  const n    = list.children.length + 1;
-
+function addMktExtraWithData(data) {
+  data = data || {};
+  const id = ++_mktExtraCounter;
+  const list = document.getElementById('mktLegacyExtraList');
+  if (!list) return;
+  const isAprovado = data.status === 'aprovado';
   const div = document.createElement('div');
-  div.className = 'tc-insurer-block';
-  div.id = 'tcInsurer-' + id;
+  div.className = 'tc-insurer-block mkt-extra-block';
+  div.id = 'mktExtra-' + id;
+  div.dataset.id = String(id);
   div.innerHTML =
     '<div class="tc-insurer-head">' +
-      '<div class="tc-insurer-num">' + n + '</div>' +
-      '<div class="tc-head-seg">' +
-        '<input type="text" class="tc-input" id="tcSeg-' + id + '" list="tcSegList" placeholder="Seguradora" autocomplete="off">' +
-      '</div>' +
-      '<div class="tc-head-status">' +
-        '<select class="tc-select" id="tcStatus-' + id + '" onchange="onTcStatusChange(this,' + id + ')">' +
-          '<option value="">Status</option>' +
-          '<option value="aprovado">Aprovado</option>' +
-          '<option value="declinado">Declinado</option>' +
-          '<option value="concorrente">Concorrente</option>' +
-          '<option value="bloqueado">Bloqueado</option>' +
-        '</select>' +
-      '</div>' +
-      '<button type="button" class="tc-btn-icon" onclick="removeTcInsurer(' + id + ')" title="Remover seguradora" aria-label="Remover seguradora">' +
+      '<div class="tc-head-seg"><input type="text" class="tc-input" id="mktExtraSeg-' + id + '" placeholder="Nome da seguradora" autocomplete="off" value="' + esc(data.seguradora || '') + '"></div>' +
+      '<div class="tc-head-status"><select class="tc-select" id="mktExtraStatus-' + id + '" onchange="onMktExtraStatusChange(this,' + id + ')">' +
+        '<option value="">Selecione o status</option>' +
+        '<option value="aprovado"' + (data.status === 'aprovado' ? ' selected' : '') + '>Aprovado</option>' +
+        '<option value="concorrente"' + (data.status === 'concorrente' ? ' selected' : '') + '>Concorrente</option>' +
+        '<option value="declinado"' + (data.status === 'declinado' ? ' selected' : '') + '>Declinada</option>' +
+        '<option value="erro_portal"' + (data.status === 'erro_portal' ? ' selected' : '') + '>Erro no portal</option>' +
+        '<option value="enviar_balancos"' + (data.status === 'enviar_balancos' ? ' selected' : '') + '>Enviar balanços para análise</option>' +
+      '</select></div>' +
+      '<button type="button" class="tc-btn-icon" onclick="removeMktExtra(' + id + ')" title="Remover" aria-label="Remover seguradora">' +
         '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M2 2l10 10M12 2L2 12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>' +
       '</button>' +
     '</div>' +
-    '<div class="tc-insurer-body" id="tcBody-' + id + '" hidden>' +
-      '<div class="tc-body-meta">' +
-        '<div class="tc-form-group">' +
-          '<label class="tc-label" for="tcCapTotal-' + id + '">Capacidade Total</label>' +
-          '<input type="text" class="tc-input" id="tcCapTotal-' + id + '" placeholder="R$ 0,00" onfocus="this.select()" onblur="fmtTcMoney(this)">' +
-        '</div>' +
-        '<div class="tc-form-group">' +
-          '<label class="tc-label" for="tcVenc-' + id + '">Vencimento (opcional)</label>' +
-          '<input type="text" class="tc-input" id="tcVenc-' + id + '" placeholder="DD/MM/AAAA" inputmode="numeric" maxlength="10" oninput="fmtTcDate(this)">' +
-        '</div>' +
-        '<div class="tc-form-group">' +
-          '<label class="tc-label" for="tcStatusCcg-' + id + '">Status CCG</label>' +
-          '<input type="text" class="tc-input" id="tcStatusCcg-' + id + '" placeholder="Status CCG" autocomplete="off">' +
-        '</div>' +
+    '<div class="tc-insurer-body" id="mktExtraBody-' + id + '"' + (isAprovado ? '' : ' hidden') + '>' +
+      '<div class="tc-form-group">' +
+        '<label class="tc-label" for="mktExtraCap-' + id + '">Capacidade Total</label>' +
+        '<input type="text" class="tc-input" id="mktExtraCap-' + id + '" placeholder="R$ 0,00" onfocus="this.select()" onblur="fmtTcMoney(this)" value="' + esc(data.capTotal || '') + '">' +
       '</div>' +
       '<div class="tc-modalidades-section">' +
-        '<div class="tc-modalidades-header">' +
-          '<span class="tc-modalidades-title">Modalidades</span>' +
-        '</div>' +
-        '<div class="tc-modal-col-header">' +
-          '<span class="tc-col-label">Modalidade</span>' +
-          '<span class="tc-col-label">Limite</span>' +
-          '<span class="tc-col-label">Taxa</span>' +
-          '<span></span>' +
-        '</div>' +
-        '<div class="tc-modal-list" id="tcModalList-' + id + '"></div>' +
-        '<button type="button" class="tc-btn-add-modal" onclick="addTcModalidade(' + id + ')">' +
-          '+ Adicionar modalidade' +
-        '</button>' +
+        '<div class="tc-modal-col-header"><span class="tc-col-label">Modalidade</span><span class="tc-col-label">Limite</span><span class="tc-col-label">Taxa</span><span></span></div>' +
+        '<div class="tc-modal-list" id="mktExtraModalList-' + id + '"></div>' +
+        '<button type="button" class="tc-btn-add-modal" onclick="addMktExtraModalidade(' + id + ')">+ Adicionar modalidade</button>' +
       '</div>' +
     '</div>';
-
   list.appendChild(div);
-  addTcModalidade(id);
-  updateTcInsurerNums();
+  (data.modalidades || []).forEach(m => addMktExtraModalidadeWithData(id, m));
 }
 
-function removeTcInsurer(id) {
-  const el = document.getElementById('tcInsurer-' + id);
-  if (el) el.remove();
-  delete _tcModalCounters[id];
-  updateTcInsurerNums();
+function onMktExtraStatusChange(select, id) {
+  const body = document.getElementById('mktExtraBody-' + id);
+  if (body) body.hidden = select.value !== 'aprovado';
 }
 
-function updateTcInsurerNums() {
-  document.querySelectorAll('#tcInsurerList .tc-insurer-num').forEach((el, i) => {
-    el.textContent = i + 1;
-  });
+function addMktExtraModalidade(id) {
+  addMktExtraModalidadeWithData(id, {});
 }
 
-function onTcStatusChange(select, id) {
-  const body  = document.getElementById('tcBody-' + id);
-  const block = document.getElementById('tcInsurer-' + id);
-  const isAprovado = select.value === 'aprovado';
-  body.hidden = !isAprovado;
-  block.classList.toggle('tc-insurer--approved', isAprovado);
-  const ccg = document.getElementById('tcStatusCcg-' + id);
-  if (!isAprovado && ccg) ccg.value = '';
-}
-
-function addTcModalidade(insurerId) {
-  if (_tcModalCounters[insurerId] === undefined) _tcModalCounters[insurerId] = 0;
-  const mid  = ++_tcModalCounters[insurerId];
-  const list = document.getElementById('tcModalList-' + insurerId);
+function addMktExtraModalidadeWithData(id, data) {
+  data = data || {};
+  const counterKey = 'extra' + id;
+  if (_mktModalCounters[counterKey] === undefined) _mktModalCounters[counterKey] = 0;
+  const mid = ++_mktModalCounters[counterKey];
+  const list = document.getElementById('mktExtraModalList-' + id);
   if (!list) return;
-
   const row = document.createElement('div');
   row.className = 'tc-modal-row';
-  row.id = 'tcModal-' + insurerId + '-' + mid;
+  row.id = 'mktExtraModal-' + id + '-' + mid;
   row.innerHTML =
-    '<input type="text" class="tc-input tc-input--modal" placeholder="Ex: Judicial Trabalhista" autocomplete="off">' +
-    '<input type="text" class="tc-input tc-input--limite" placeholder="R$ 0,00" onfocus="this.select()" onblur="fmtTcMoney(this)">' +
-    '<input type="text" class="tc-input tc-input--taxa" placeholder="0,00%" onfocus="this.select()" onblur="fmtTcTaxa(this)">' +
-    '<button type="button" class="tc-btn-icon" onclick="removeTcModalidade(\'' + insurerId + '-' + mid + '\')" title="Remover modalidade" aria-label="Remover modalidade">' +
+    '<input type="text" class="tc-input tc-input--modal" placeholder="Ex: Judicial Trabalhista" autocomplete="off" value="' + esc(data.label || '') + '">' +
+    '<input type="text" class="tc-input tc-input--limite" placeholder="R$ 0,00" onfocus="this.select()" onblur="fmtTcMoney(this)" value="' + esc(data.limite || '') + '">' +
+    '<input type="text" class="tc-input tc-input--taxa" placeholder="0,00%" onfocus="this.select()" onblur="fmtTcTaxa(this)" value="' + esc(data.taxa || '') + '">' +
+    '<button type="button" class="tc-btn-icon" onclick="removeMktExtraModalidade(\'' + id + '-' + mid + '\')" title="Remover modalidade" aria-label="Remover modalidade">' +
       '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M1.5 1.5l9 9M10.5 1.5l-9 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>' +
     '</button>';
   list.appendChild(row);
 }
 
-function removeTcModalidade(key) {
-  const el = document.getElementById('tcModal-' + key);
+function removeMktExtraModalidade(rowKey) {
+  const el = document.getElementById('mktExtraModal-' + rowKey);
   if (el) el.remove();
 }
+
+function removeMktExtra(id) {
+  const el = document.getElementById('mktExtra-' + id);
+  if (el) el.remove();
+  const wrap = document.getElementById('mktLegacyExtra');
+  const list = document.getElementById('mktLegacyExtraList');
+  if (wrap && list) wrap.hidden = list.children.length === 0;
+}
+
+// Casa o nome livre de uma linha antiga (`row.seguradora`) contra o catálogo
+// fixo, ignorando acentuação/caixa — usado só ao reabrir tomadores salvos.
+function normalizeSegLabel(s) {
+  const semAcento = String(s || '').trim().toUpperCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
+  return semAcento;
+}
+
+function matchMktKeyByLabel(label) {
+  const norm = normalizeSegLabel(label);
+  if (!norm) return null;
+  const found = MKT_SEGURADORAS.find(s => normalizeSegLabel(s.label) === norm);
+  return found ? found.key : null;
+}
+
+// Snapshot antigo (pré-migração) trazia só 4 status: aprovado/declinado/
+// concorrente/bloqueado. "bloqueado" não tem equivalente exato no novo modelo
+// de 5 status — vira "declinado" (mais próximo semanticamente de uma decisão
+// de negócio de bloqueio). Qualquer valor desconhecido também cai em
+// "declinado", nunca descarta a linha.
+function mapLegacyRowStatus(status) {
+  if (MKT_STATUS_CONFIG[status]) return status;
+  if (!status) return '';
+  return 'declinado';
+}
+
+function showMktError(msg) {
+  const el = document.getElementById('mktErrorMsg');
+  const txt = document.getElementById('mktErrorText');
+  if (txt) txt.textContent = msg;
+  if (el) el.classList.add('show');
+}
+
+function hideMktError() {
+  const el = document.getElementById('mktErrorMsg');
+  if (el) el.classList.remove('show');
+}
+
+// Resultado automático da API (normalizeLimiteResultado, mesma lógica por
+// seguradora da antiga Consulta de Limites) → status do novo modelo de 5.
+function mapNormStatusToMkt(statusKey) {
+  const map = {
+    aprovado: 'aprovado',
+    nomeado: 'concorrente',
+    sem_limite: 'declinado',
+    bloqueado: 'declinado',
+    sem_resposta: 'erro_portal',
+    instavel: 'erro_portal',
+    erro: 'erro_portal',
+  };
+  return map[statusKey] || 'erro_portal';
+}
+
+async function consultarMercadoUI() {
+  hideMktError();
+  const cnpjInput = document.getElementById('mktCnpjInput');
+  const cnpjDigits = onlyDigits(cnpjInput.value);
+  if (cnpjDigits.length !== 14) {
+    showMktError('Informe um CNPJ válido com 14 dígitos.');
+    return;
+  }
+
+  const btn = document.getElementById('mktBtnConsultar');
+  const loading = document.getElementById('mktLoading');
+  if (btn) btn.disabled = true;
+  if (loading) loading.hidden = false;
+
+  try {
+    const data = await consultarLimitesSeguradoras(cnpjDigits, MKT_API_KEYS);
+    aplicarResultadosMercado(data);
+  } catch (err) {
+    showMktError('Erro ao consultar mercado: ' + err.message);
+  } finally {
+    if (btn) btn.disabled = false;
+    if (loading) loading.hidden = true;
+  }
+}
+
+// Aplica os resultados das 9 seguradoras com API sobre os cards correspondentes
+// — 100% reaproveitado de normalizeLimiteResultado (e normalizadores por
+// seguradora) já existentes, só muda o mapeamento final de status e o destino
+// (card em vez de página própria).
+function aplicarResultadosMercado(data) {
+  const resultados = (data && data.resultados) || [];
+  let tomadorSugerido = null;
+
+  resultados.forEach(r => {
+    const entry = MKT_SEGURADORAS.find(s => s.apiKey === r.seguradora);
+    if (!entry) return;
+    const norm = normalizeLimiteResultado(r);
+    if (norm.nomeTomador && !tomadorSugerido) tomadorSugerido = norm.nomeTomador;
+
+    const modalidades = (norm.modalidades || []).map(m => ({
+      label: m.label || '',
+      limite: (m.valor !== null && m.valor !== undefined && m.valor > 0) ? fmtBRL(m.valor) : '',
+      taxa: (m.taxa !== null && m.taxa !== undefined && m.taxa !== '') ? formatTcTaxaPercent(m.taxa) : '',
+    }));
+    const capTotal = modalidades.reduce((s, m) => s + (parseNum(m.limite) || 0), 0);
+
+    populateMktCard(entry.key, {
+      status: mapNormStatusToMkt(norm.statusKey),
+      capTotal: capTotal > 0 ? fmtBRL(capTotal) : '',
+      modalidades,
+      origem: 'auto',
+      mensagem: norm.mensagem || '',
+    });
+  });
+
+  // Sugestão de tomador vinda da API não apaga uma edição manual já feita.
+  const tomadorInput = document.getElementById('mktTomadorInput');
+  const tab = _mktTabs.find(t => t.id === _mktActiveTabId);
+  if (tomadorSugerido && tomadorInput && !(tab && tab.tomadorUserEdited)) {
+    tomadorInput.value = tomadorSugerido;
+  }
+}
+
+// Monta a grade fixa uma única vez e liga a primeira aba de tomador — mesmo
+// padrão de inicialização imediata que o restante do arquivo já usa (ex.: os
+// listeners de drag&drop dos outros fluxos, abaixo).
+renderMktCardsGridSkeleton();
+const mktGridEl = document.getElementById('mktCardsGrid');
+if (mktGridEl) {
+  mktGridEl.addEventListener('input', markMktCardManual);
+  mktGridEl.addEventListener('change', markMktCardManual);
+  mktGridEl.addEventListener('click', e => {
+    if (e.target.closest('.tc-btn-add-modal, .tc-btn-icon')) markMktCardManual(e);
+  });
+}
+initMktTabs();
 
 function onlyDigits(value) {
   return String(value || '').replace(/\D/g, '');
@@ -3619,13 +3906,6 @@ function formatTcCnpj(value) {
 
 function fmtTcCnpj(el) {
   el.value = formatTcCnpj(el.value);
-}
-
-function fmtTcDate(el) {
-  const digits = onlyDigits(el.value).slice(0, 8);
-  el.value = digits
-    .replace(/^(\d{2})(\d)/, '$1/$2')
-    .replace(/^(\d{2})\/(\d{2})(\d)/, '$1/$2/$3');
 }
 
 function fmtTcMoney(el) {
@@ -3655,65 +3935,78 @@ function fmtTcTaxa(el) {
   el.value = formatted || '';
 }
 
-function showManualError(msg) {
-  const el  = document.getElementById('errorMsgManual');
-  const txt = document.getElementById('errorTextManual');
-  if (txt) txt.textContent = msg;
-  if (el)  el.classList.add('show');
-}
+// Lê a grade viva (35 cards da aba ativa + extras) → {rows, tomador, cnpj}.
+// Substitui buildManualParsedData: em vez de percorrer blocos adicionados
+// dinamicamente por nome, percorre os cards fixos do catálogo.
+function buildMktParsedData() {
+  const tomador = (document.getElementById('mktTomadorInput') || {}).value.trim() || null;
+  const cnpjRaw = (document.getElementById('mktCnpjInput') || {}).value.trim();
+  const cnpj = cnpjRaw ? formatTcCnpj(cnpjRaw) : null;
+  const rows = [];
 
-function hideManualError() {
-  const el = document.getElementById('errorMsgManual');
-  if (el) el.classList.remove('show');
-}
+  function lerModalidades(modalListEl) {
+    const modalidades = [];
+    if (modalListEl) {
+      modalListEl.querySelectorAll('.tc-modal-row').forEach(row => {
+        const inputs = row.querySelectorAll('.tc-input');
+        const label = inputs[0] ? inputs[0].value.trim() : '';
+        const val = inputs[1] ? parseNum(inputs[1].value) : 0;
+        const taxa = inputs[2] ? formatTcTaxaPercent(inputs[2].value) : null;
+        if (label) modalidades.push({ label, value: val, taxa: taxa || null });
+      });
+    }
+    return modalidades;
+  }
 
-function buildManualParsedData() {
-  const tomador = document.getElementById('tcTomador').value.trim() || null;
-  const cnpjRaw = document.getElementById('tcCnpj').value.trim();
-  const cnpj    = cnpjRaw ? formatTcCnpj(cnpjRaw) : null;
-  const rows    = [];
-
-  document.querySelectorAll('#tcInsurerList .tc-insurer-block').forEach(block => {
-    const id       = block.id.replace('tcInsurer-', '');
-    const segInput = document.getElementById('tcSeg-' + id);
-    const statusEl = document.getElementById('tcStatus-' + id);
-    const ccgEl    = document.getElementById('tcStatusCcg-' + id);
-    const capEl    = document.getElementById('tcCapTotal-' + id);
-    const vencEl   = document.getElementById('tcVenc-' + id);
-
-    const seguradora = segInput ? segInput.value.trim() : '';
-    const status     = statusEl ? statusEl.value : '';
-    if (!seguradora || !status) return;
+  document.querySelectorAll('#mktCardsGrid .mkt-card').forEach(card => {
+    const key = card.dataset.key;
+    const cfg = MKT_SEGURADORAS_BY_KEY[key];
+    if (!cfg) return;
+    const statusEl = document.getElementById('mktStatus-' + key);
+    const status = statusEl ? statusEl.value : '';
+    if (!status) return;
 
     const isAprovado = status === 'aprovado';
-    const limite     = (isAprovado && capEl) ? parseNum(capEl.value) : 0;
-    const venc       = (isAprovado && vencEl && vencEl.value.trim()) ? vencEl.value.trim() : null;
-    const statusCcg  = isAprovado && ccgEl && ccgEl.value.trim() ? ccgEl.value.trim() : null;
-
-    const modalidades = [];
-    if (isAprovado) {
-      const modalList = document.getElementById('tcModalList-' + id);
-      if (modalList) {
-        modalList.querySelectorAll('.tc-modal-row').forEach(row => {
-          const inputs = row.querySelectorAll('.tc-input');
-          const label  = inputs[0] ? inputs[0].value.trim() : '';
-          const val    = inputs[1] ? parseNum(inputs[1].value) : 0;
-          const taxa   = inputs[2] ? formatTcTaxaPercent(inputs[2].value) : null;
-          if (label) modalidades.push({ label, value: val, taxa: taxa || null });
-        });
-      }
-    }
+    const capEl = document.getElementById('mktCap-' + key);
+    const limite = isAprovado && capEl ? parseNum(capEl.value) : 0;
+    const modalidades = isAprovado ? lerModalidades(document.getElementById('mktModalList-' + key)) : [];
 
     rows.push({
-      seguradora,
+      seguradora: cfg.label,
+      seguradoraKey: key,
       status,
-      statusCcg,
       limite,
       modalidade: modalidades.length > 0 ? modalidades[0].label : '',
       valorModal: modalidades.length > 0 ? modalidades[0].value : 0,
       taxa: modalidades.length > 0 ? modalidades[0].taxa : null,
-      venc,
       modalidades,
+      origem: card.dataset.origem === 'auto' ? 'auto' : 'manual',
+    });
+  });
+
+  document.querySelectorAll('#mktLegacyExtraList .mkt-extra-block').forEach(block => {
+    const id = block.dataset.id;
+    const segEl = document.getElementById('mktExtraSeg-' + id);
+    const statusEl = document.getElementById('mktExtraStatus-' + id);
+    const seguradora = segEl ? segEl.value.trim() : '';
+    const status = statusEl ? statusEl.value : '';
+    if (!seguradora || !status) return;
+
+    const isAprovado = status === 'aprovado';
+    const capEl = document.getElementById('mktExtraCap-' + id);
+    const limite = isAprovado && capEl ? parseNum(capEl.value) : 0;
+    const modalidades = isAprovado ? lerModalidades(document.getElementById('mktExtraModalList-' + id)) : [];
+
+    rows.push({
+      seguradora,
+      seguradoraKey: null,
+      status,
+      limite,
+      modalidade: modalidades.length > 0 ? modalidades[0].label : '',
+      valorModal: modalidades.length > 0 ? modalidades[0].value : 0,
+      taxa: modalidades.length > 0 ? modalidades[0].taxa : null,
+      modalidades,
+      origem: 'manual',
     });
   });
 
@@ -3722,20 +4015,19 @@ function buildManualParsedData() {
 }
 
 function generateDashboardFromForm() {
-  hideManualError();
-  const data = buildManualParsedData();
+  hideMktError();
+  const data = buildMktParsedData();
   if (!data) {
-    showManualError('Adicione ao menos uma seguradora com nome e status preenchidos.');
+    showMktError('Adicione ao menos uma seguradora com status preenchido antes de gerar o dashboard.');
     return;
   }
   parsedData = data;
-  _tcOrigemAtual = 'manual';
   generateDashboard();
 }
 
 function tcStatusText(status) {
-  const labels = { aprovado: 'Aprovado', declinado: 'Declinado', concorrente: 'Concorrente', bloqueado: 'Bloqueado' };
-  return labels[status] || status || '-';
+  const cfg = MKT_STATUS_CONFIG[status];
+  return cfg ? cfg.label : (status || '-');
 }
 
 function tcEmpty(value) {
@@ -3745,17 +4037,17 @@ function tcEmpty(value) {
 function buildTcEmailTableHtml(data) {
   const rows = [...(data.rows || [])].sort((a, b) => (a.seguradora || '').localeCompare(b.seguradora || '', 'pt-BR'));
 
-  const aprovadas   = rows.filter(r => r.status === 'aprovado');
-  const declinadas  = rows.filter(r => r.status === 'declinado');
-  const concorr     = rows.filter(r => r.status === 'concorrente');
-  const bloqueadas  = rows.filter(r => r.status === 'bloqueado');
+  const aprovadas    = rows.filter(r => r.status === 'aprovado');
+  const declinadas   = rows.filter(r => r.status === 'declinado');
+  const concorr      = rows.filter(r => r.status === 'concorrente');
+  const semRetorno   = rows.filter(r => r.status === 'erro_portal' || r.status === 'enviar_balancos');
   const totalAprov  = aprovadas.reduce((s, r) => s + (r.limite || 0), 0);
   const maxLimite   = aprovadas.length ? Math.max(...aprovadas.map(r => r.limite || 0)) : 0;
   const maxSeg      = aprovadas.filter(r => (r.limite || 0) === maxLimite).map(r => r.seguradora).join(' · ');
   const totalCapStr = totalAprov >= 1e6 ? 'R$ ' + (totalAprov / 1e6).toFixed(0) + 'MM' : fmtBRL(totalAprov);
   const maxCapStr   = maxLimite  >= 1e6 ? 'R$ ' + (maxLimite  / 1e6).toFixed(0) + 'MM' : fmtBRL(maxLimite);
-  const declSub     = bloqueadas.length > 0
-    ? 'sem disponibilidade · ' + bloqueadas.length + ' bloqueada' + (bloqueadas.length > 1 ? 's' : '')
+  const declSub     = semRetorno.length > 0
+    ? 'sem disponibilidade · ' + semRetorno.length + ' sem retorno conclusivo'
     : 'sem disponibilidade';
 
   const tableRows = [];
@@ -3776,13 +4068,11 @@ function buildTcEmailTableHtml(data) {
           '<td class="tc-email-text">' + esc(m ? tcEmpty(m.label) : '-') + '</td>' +
           '<td class="tc-email-money">' + (m && m.value > 0 ? fmtBRL(m.value) : '-') + '</td>' +
           '<td class="tc-email-rate">' + esc(m && m.taxa ? m.taxa : '-') + '</td>' +
-          (first ? '<td class="tc-email-text tc-email-status-ccg-cell"' + rs + vmid + '>' + esc(tcEmpty(r.statusCcg)) + '</td>' : '') +
-          (first ? '<td class="tc-email-date"' + rs + vmid + '>' + esc(tcEmpty(r.venc)) + '</td>' : '') +
           (first ? '<td' + rs + vmid + '><span class="tc-email-status tc-email-status--' + esc(r.status) + '">' + esc(tcStatusText(r.status)) + '</span></td>' : '') +
         '</tr>'
       );
     });
-    tableRows.push('<tr class="tc-email-group-div"><td colspan="8"></td></tr>');
+    tableRows.push('<tr class="tc-email-group-div"><td colspan="6"></td></tr>');
   });
 
   const now = new Date();
@@ -3818,9 +4108,7 @@ function buildTcEmailTableHtml(data) {
         '<th>Capacidade Total</th>' +
         '<th>Modalidades</th>' +
         '<th>Limites por Modalidade</th>' +
-        '<th>Taxa por Modalidade</th>' +
-        '<th class="tc-email-status-ccg-head">Status CCG</th>' +
-        '<th>Vencimentos</th>' +
+        '<th>Taxas por Modalidade</th>' +
         '<th>Status</th>' +
       '</tr></thead>' +
       '<tbody>' + tableRows.join('') + '</tbody>' +
@@ -3838,10 +4126,10 @@ function _tcKpi(label, value, sub, type) {
 }
 
 async function renderTcEmailTable() {
-  hideManualError();
-  const data = buildManualParsedData();
+  hideMktError();
+  const data = buildMktParsedData();
   if (!data) {
-    showManualError('Preencha ao menos uma seguradora antes de gerar a tabela.');
+    showMktError('Preencha ao menos uma seguradora antes de gerar a tabela.');
     return;
   }
 
@@ -3860,7 +4148,7 @@ async function downloadTcEmailTableImage() {
     return;
   }
   if (typeof html2canvas !== 'function') {
-    showManualError('Nao foi possivel gerar a imagem. Biblioteca html2canvas indisponivel.');
+    showMktError('Nao foi possivel gerar a imagem. Biblioteca html2canvas indisponivel.');
     return;
   }
 
@@ -3872,10 +4160,10 @@ async function downloadTcEmailTableImage() {
 }
 
 function exportTcEmailTableXlsx() {
-  hideManualError();
-  const data = buildManualParsedData();
-  if (!data) { showManualError('Preencha ao menos uma seguradora antes de exportar.'); return; }
-  if (typeof XLSX === 'undefined') { showManualError('Biblioteca XLSX indisponível.'); return; }
+  hideMktError();
+  const data = buildMktParsedData();
+  if (!data) { showMktError('Preencha ao menos uma seguradora antes de exportar.'); return; }
+  if (typeof XLSX === 'undefined') { showMktError('Biblioteca XLSX indisponível.'); return; }
 
   const rows = [...(data.rows || [])].sort((a, b) =>
     (a.seguradora || '').localeCompare(b.seguradora || '', 'pt-BR')
@@ -3888,10 +4176,11 @@ function exportTcEmailTableXlsx() {
     mutedText:  '6B7280',
     thin:       'E5E7EB',
     med:        'D1D5DB',
-    aprovado:   { bg: 'DCFCE7', fg: '16A34A' },
-    declinado:  { bg: 'FEE2E2', fg: 'DC2626' },
-    concorrente:{ bg: 'FEF3C7', fg: 'B45309' },
-    bloqueado:  { bg: 'EEEAD6', fg: '6B7280' },
+    aprovado:        { bg: 'DCFCE7', fg: '16A34A' },
+    declinado:       { bg: 'FEE2E2', fg: 'DC2626' },
+    concorrente:     { bg: 'FEF3C7', fg: 'B45309' },
+    erro_portal:     { bg: 'EDE9FE', fg: '7C3AED' },
+    enviar_balancos: { bg: 'D8F2FD', fg: '0A6C9C' },
   };
   function sc(status) { return CL[status] || { bg: 'F3F4F6', fg: CL.darkText }; }
 
@@ -3918,27 +4207,27 @@ function exportTcEmailTableXlsx() {
   for (let c = 1; c <= 3; c++) setCell(R, c, '', blankHdr);
   mg(R, 0, R, 3);
   setCell(R, 4, 'Tomador: ' + (data.tomador || '-'), { font: { bold: true, sz: 9, color: { rgb: CL.darkText } }, fill: hdrFill, alignment: { horizontal: 'right', vertical: 'center' } });
-  for (let c = 5; c <= 7; c++) setCell(R, c, '', blankHdr);
-  mg(R, 4, R, 7);
+  setCell(R, 5, '', blankHdr);
+  mg(R, 4, R, 5);
   R++;
 
   setCell(R, 0, rows.length + ' seguradora' + (rows.length === 1 ? '' : 's'), { font: { sz: 9, color: { rgb: CL.mutedText } }, fill: hdrFill, alignment: { horizontal: 'left', vertical: 'center' } });
   for (let c = 1; c <= 3; c++) setCell(R, c, '', blankHdr);
   mg(R, 0, R, 3);
   setCell(R, 4, 'CNPJ: ' + (data.cnpj || '-'), { font: { sz: 9, color: { rgb: CL.mutedText } }, fill: hdrFill, alignment: { horizontal: 'right', vertical: 'center' } });
-  for (let c = 5; c <= 7; c++) setCell(R, c, '', blankHdr);
-  mg(R, 4, R, 7);
+  setCell(R, 5, '', blankHdr);
+  mg(R, 4, R, 5);
   R++;
 
   // ── Cabeçalho da tabela (linha 2) ────────────────────────────────────────
-  const HDRS   = ['SEGURADORA', 'CAPACIDADE TOTAL', 'MODALIDADES', 'LIMITES POR MODALIDADE', 'TAXA POR MODALIDADE', 'STATUS CCG', 'VENCIMENTOS', 'STATUS'];
-  const HALIGN = ['left', 'right', 'left', 'right', 'right', 'left', 'left', 'center'];
+  const HDRS   = ['SEGURADORA', 'CAPACIDADE TOTAL', 'MODALIDADES', 'LIMITES POR MODALIDADE', 'TAXAS POR MODALIDADE', 'STATUS'];
+  const HALIGN = ['left', 'right', 'left', 'right', 'right', 'center'];
   HDRS.forEach((h, c) => {
     setCell(R, c, h, {
       font: { bold: true, sz: 8, color: { rgb: CL.darkText } },
       fill: hdrFill,
       alignment: { horizontal: HALIGN[c], vertical: 'center' },
-      border: { bottom: medBdr, right: c < 7 ? rgtBdr : undefined },
+      border: { bottom: medBdr, right: c < 5 ? rgtBdr : undefined },
     });
   });
   R++;
@@ -3991,23 +4280,9 @@ function exportTcEmailTableXlsx() {
         border: { bottom: rowBtm, right: rgtBdr },
       });
 
-      // col 5 – Status CCG
-      setCell(R, 5, idx === 0 ? (r.statusCcg || '-') : '', {
-        font: { sz: 9, color: { rgb: CL.mutedText } }, fill: whtFill,
-        alignment: { horizontal: 'left', vertical: 'top' },
-        border: { bottom: grpBtm, right: rgtBdr },
-      });
-
-      // col 6 – Vencimentos
-      setCell(R, 6, idx === 0 ? (r.venc || '-') : '', {
-        font: { sz: 9, color: { rgb: CL.darkText } }, fill: whtFill,
-        alignment: { horizontal: 'left', vertical: 'top' },
-        border: { bottom: grpBtm, right: rgtBdr },
-      });
-
-      // col 7 – Status (com cor de fundo do badge)
+      // col 5 – Status (com cor de fundo do badge)
       const color = sc(r.status);
-      setCell(R, 7, idx === 0 ? tcStatusText(r.status) : '', {
+      setCell(R, 5, idx === 0 ? tcStatusText(r.status) : '', {
         font: { bold: true, sz: 9, color: { rgb: color.fg } },
         fill: { patternType: 'solid', fgColor: { rgb: color.bg } },
         alignment: { horizontal: 'center', vertical: 'top' },
@@ -4019,16 +4294,16 @@ function exportTcEmailTableXlsx() {
 
     // Mescla colunas de grupo quando há mais de 1 modalidade
     if (span > 1) {
-      [0, 1, 5, 6, 7].forEach(col => mg(r0, col, r0 + span - 1, col));
+      [0, 1, 5].forEach(col => mg(r0, col, r0 + span - 1, col));
     }
   });
 
-  ws['!ref']    = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: R - 1, c: 7 } });
+  ws['!ref']    = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: R - 1, c: 5 } });
   ws['!merges'] = merges;
   ws['!rows']   = [{ hpt: 26 }, { hpt: 14 }, { hpt: 20 }];
   ws['!cols']   = [
     { wch: 22 }, { wch: 18 }, { wch: 24 }, { wch: 22 },
-    { wch: 18 }, { wch: 16 }, { wch: 14 }, { wch: 14 },
+    { wch: 18 }, { wch: 20 },
   ];
 
   XLSX.utils.book_append_sheet(wb, ws, 'T&C');
@@ -4479,107 +4754,6 @@ function buildEmpresaCard(emp, idx) {
 
 // ── Consulta de Limites por Seguradora ──
 
-const LIM_LOGO_MAP = {
-  jns: 'assets/jns-logo.png',
-  junto: 'assets/junto-logo.png',
-  essor: 'assets/essor-logo.png',
-  sombrero: 'assets/Sombrero-logo.png',
-  newe: 'assets/Newe-logo.png',
-  mitsui: 'assets/Mitisui-logo.png',
-  axa: 'assets/axa-logo.png',
-  now: 'assets/now-logo.png',
-  fator: 'assets/fator.png',
-};
-
-// Todas as seguradoras integradas são consultadas por padrão — sem seleção manual.
-const LIM_ALL_SEGURADORAS = ['jns', 'junto', 'essor', 'sombrero', 'newe', 'mitsui', 'axa', 'now', 'fator'];
-const LIM_LABELS = {
-  jns: 'JNS Seguros',
-  junto: 'Junto Seguros',
-  essor: 'Essor Seguros',
-  sombrero: 'Sombrero Seguros',
-  newe: 'NEWE Seguros',
-  mitsui: 'Mitsui Sumitomo',
-  axa: 'AXA Seguros',
-  now: 'Now Seguros',
-  fator: 'Fator Seguradora',
-};
-
-function limLogoHtml(seguradora) {
-  const src = LIM_LOGO_MAP[seguradora];
-  if (!src) return '';
-  return `<img src="${esc(src)}" alt="${esc(LIM_LABELS[seguradora] || seguradora)}" class="lim-card-logo" onerror="this.style.display='none'">`;
-}
-
-function showLimError(msg) {
-  document.getElementById('limErrorText').textContent = msg;
-  document.getElementById('limErrorMsg').classList.add('show');
-}
-function hideLimError() {
-  document.getElementById('limErrorMsg').classList.remove('show');
-}
-
-// Renderiza os cards de todas as seguradoras em estado "Aguardando" antes da primeira
-// consulta — não sobrescreve resultados já carregados ao trocar de aba.
-function renderLimitesPlaceholders() {
-  const results = document.getElementById('limResults');
-  if (!results || results.dataset.hasResults === '1') return;
-  results.innerHTML = `<div class="lim-cards-grid">${LIM_ALL_SEGURADORAS.map(buildLimWaitingCardHtml).join('')}</div>`;
-}
-
-function buildLimWaitingCardHtml(key) {
-  return `
-    <div class="lim-card lim-card--waiting">
-      <div class="lim-card-top">
-        <p class="lim-card-eyebrow">Seguradora</p>
-        <span class="lim-badge2 lim-badge--aguardando">Aguardando</span>
-      </div>
-      <div class="lim-card-brand">
-        ${limLogoHtml(key)}
-      </div>
-      <p class="lim-card-desc">Informe o CNPJ e clique em <strong>Consultar limites</strong> para ver os limites deste tomador.</p>
-    </div>`;
-}
-
-async function consultarLimitesUI() {
-  hideLimError();
-  const cnpjRaw = document.getElementById('limCnpjInput').value;
-  const cnpj = String(cnpjRaw || '').replace(/\D/g, '');
-  if (cnpj.length !== 14) {
-    showLimError('Informe um CNPJ válido com 14 dígitos.');
-    return;
-  }
-
-  const btn = document.getElementById('limBtnConsultar');
-  const loading = document.getElementById('limLoading');
-  const results = document.getElementById('limResults');
-  btn.disabled = true;
-  loading.hidden = false;
-
-  try {
-    const data = await consultarLimitesSeguradoras(cnpj, LIM_ALL_SEGURADORAS);
-    renderLimitesResults(data);
-  } catch (err) {
-    showLimError('Erro ao consultar limites: ' + err.message);
-  } finally {
-    btn.disabled = false;
-    loading.hidden = true;
-  }
-}
-
-const LIM_STATUS_CONFIG = {
-  aprovado:     { label: 'Aprovado',     cls: 'lim-badge--aprovado' },
-  bloqueado:    { label: 'Bloqueado',    cls: 'lim-badge--bloqueado' },
-  nomeado:      { label: 'Nomeado',      cls: 'lim-badge--nomeado' },
-  sem_limite:   { label: 'Sem limite',   cls: 'lim-badge--semlimite' },
-  sem_resposta: { label: 'Sem resposta', cls: 'lim-badge--nomeado' },
-  instavel:     { label: 'Instável',     cls: 'lim-badge--nomeado' },
-  erro:         { label: 'Erro',         cls: 'lim-badge--erro' },
-  aguardando:   { label: 'Aguardando',   cls: 'lim-badge--aguardando' },
-};
-
-let _ultimoLimitesData = null;
-
 // Um limite explicitamente zerado não deve aparecer na UI — mas valor ausente
 // (null/undefined, ex.: Junto sem cotação de taxa) ainda é informativo e permanece.
 function isZeroLimite(valor) {
@@ -4753,119 +4927,6 @@ function normalizeLimiteFator(d) {
     return { statusKey: 'sem_limite', modalidades: [], mensagem: LIM_SEM_LIMITE_MSG, nomeTomador };
   }
   return { statusKey: 'aprovado', modalidades, nomeTomador };
-}
-
-function fmtLimiteTimestamp(iso) {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString('pt-BR') + ', ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-}
-
-function fmtCnpjDisplay(cnpj) {
-  const c = String(cnpj || '').replace(/\D/g, '');
-  if (c.length !== 14) return cnpj || '';
-  return `${c.slice(0, 2)}.${c.slice(2, 5)}.${c.slice(5, 8)}/${c.slice(8, 12)}-${c.slice(12, 14)}`;
-}
-
-function buildLimResultCardHtml(r, index, consultadoEm) {
-  const cfg = LIM_STATUS_CONFIG[r._norm.statusKey] || LIM_STATUS_CONFIG.erro;
-  const temModalidades = r._norm.modalidades && r._norm.modalidades.length > 0;
-  const footer = temModalidades
-    ? `<button type="button" class="lim-card-btn" onclick="openLimiteModal(${index})">
-        Ver limites do tomador
-        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-      </button>`
-    : `<p class="lim-card-desc lim-card-desc--muted">${esc(r._norm.mensagem || 'Nenhum limite disponível nesta consulta.')}</p>`;
-
-  return `
-    <div class="lim-card">
-      <div class="lim-card-top">
-        <p class="lim-card-eyebrow">Seguradora</p>
-        <span class="lim-badge2 ${cfg.cls}">${esc(cfg.label)}</span>
-      </div>
-      <div class="lim-card-brand">
-        ${limLogoHtml(r.seguradora)}
-        <p class="lim-card-nome">${esc(r.label || LIM_LABELS[r.seguradora] || r.seguradora)}</p>
-      </div>
-      ${footer}
-      <p class="lim-card-updated">Atualizado: ${esc(fmtLimiteTimestamp(consultadoEm))}</p>
-    </div>`;
-}
-
-function renderLimitesResults(data) {
-  const results = document.getElementById('limResults');
-  const resultados = (data && data.resultados) || [];
-  _ultimoLimitesData = data;
-  results.dataset.hasResults = '1';
-
-  if (resultados.length === 0) {
-    results.innerHTML = '<p class="lim-empty">Nenhum resultado retornado.</p>';
-    return;
-  }
-
-  const normalizados = resultados.map(r => ({ ...r, _norm: normalizeLimiteResultado(r) }));
-  const comNome = normalizados.find(r => r._norm.nomeTomador);
-  const tomadorNome = comNome ? comNome._norm.nomeTomador : null;
-  const tomadorCnpj = (comNome && comNome._norm.cnpjTomador) || data.cnpj;
-
-  const headerHtml = `
-    <div class="lim-tomador-header">
-      <div>
-        <p class="lim-tomador-eyebrow">Tomador consultado</p>
-        <p class="lim-tomador-nome">${esc(tomadorNome || 'Não identificado')}${tomadorCnpj ? ' - ' + esc(fmtCnpjDisplay(tomadorCnpj)) : ''}</p>
-      </div>
-    </div>`;
-
-  const cardsHtml = normalizados.map((r, i) => buildLimResultCardHtml(r, i, data.consultadoEm)).join('');
-
-  results.innerHTML = `${headerHtml}<div class="lim-cards-grid">${cardsHtml}</div><div class="lim-modal-overlay" id="limModalOverlay" hidden onclick="if(event.target===this) closeLimiteModal()"></div>`;
-}
-
-function openLimiteModal(index) {
-  const resultados = (_ultimoLimitesData && _ultimoLimitesData.resultados) || [];
-  const r = resultados[index];
-  if (!r) return;
-  const n = normalizeLimiteResultado(r);
-  const cfg = LIM_STATUS_CONFIG[n.statusKey] || LIM_STATUS_CONFIG.erro;
-
-  const noteHtml = (n.modalidades.length && n.mensagem)
-    ? `<p class="lim-modal-note">${esc(n.mensagem)}</p>`
-    : '';
-
-  const itemsHtml = n.modalidades.length
-    ? n.modalidades.map(m => `
-        <div class="lim-modal-item">
-          <p class="lim-modal-item-label">${esc(m.label)}</p>
-          ${m.valor !== null && m.valor !== undefined ? `<p class="lim-modal-item-valor">${fmtBRL(m.valor)}</p>` : ''}
-          ${m.taxa !== null && m.taxa !== undefined ? `<p class="lim-modal-item-taxa">Taxa: ${esc(String(m.taxa).replace('.', ','))}%</p>` : ''}
-          ${m.segurado ? `<p class="lim-modal-item-segurado">Segurado: ${esc(m.segurado)}</p>` : ''}
-        </div>`).join('')
-    : `<p class="lim-modal-empty">${esc(n.mensagem || 'Nenhum limite disponível.')}</p>`;
-
-  const overlay = document.getElementById('limModalOverlay');
-  overlay.innerHTML = `
-    <div class="lim-modal" role="dialog" aria-modal="true">
-      <div class="lim-modal-header">
-        ${limLogoHtml(r.seguradora)}
-        <div>
-          <p class="lim-card-eyebrow">Seguradora</p>
-          <p class="lim-modal-nome">${esc(r.label || r.seguradora)}</p>
-        </div>
-        <span class="lim-badge2 ${cfg.cls}">${esc(cfg.label)}</span>
-        <button type="button" class="lim-modal-close" onclick="closeLimiteModal()" aria-label="Fechar">
-          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-        </button>
-      </div>
-      <div class="lim-modal-body">${noteHtml}${itemsHtml}</div>
-      <p class="lim-modal-updated">Atualizado: ${esc(fmtLimiteTimestamp(_ultimoLimitesData && _ultimoLimitesData.consultadoEm))}</p>
-    </div>`;
-  overlay.hidden = false;
-}
-
-function closeLimiteModal() {
-  const overlay = document.getElementById('limModalOverlay');
-  if (overlay) { overlay.hidden = true; overlay.innerHTML = ''; }
 }
 
 function classificacaoFinanceiraClass(sit) {

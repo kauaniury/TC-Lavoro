@@ -22,7 +22,7 @@
 <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="closeMobileSidebar()"></div>
 
 <aside class="sidebar" id="appSidebar">
-  <a class="sidebar-brand" href="#page-upload" aria-label="Lavoro Seguros" onclick="abrirTcModo('upload'); return false;">
+  <a class="sidebar-brand" href="#page-mkt" aria-label="Lavoro Seguros" onclick="abrirMktModo('portais'); return false;">
     <img src="assets/img/lavoro_logo_sem_fundo.png" alt="Lavoro Seguros" class="sidebar-brand-img">
   </a>
   <button type="button" class="sidebar-close-btn" aria-label="Fechar menu" onclick="closeMobileSidebar()">
@@ -30,23 +30,23 @@
   </button>
   <nav class="sidebar-nav" aria-label="Navegação principal">
     <div class="sidebar-group" id="tcSidebarGroup">
-      <button type="button" class="sidebar-item sidebar-group-toggle active" id="tab-relatorio-tc" data-pages="upload dashboard tc-salvos" aria-current="page" aria-expanded="true" aria-controls="tcSidebarGroupList" onclick="toggleTcSidebarGroup()" title="Relatório T&amp;C">
+      <button type="button" class="sidebar-item sidebar-group-toggle active" id="tab-relatorio-tc" data-pages="mkt dashboard tomadores-salvos" aria-current="page" aria-expanded="true" aria-controls="tcSidebarGroupList" onclick="toggleTcSidebarGroup()" title="Relatório T&amp;C">
         <span class="sidebar-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7a2 2 0 0 1 2-2h3.5l1.5 2H18a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7z" stroke-linejoin="round"/></svg></span>
         <span class="sidebar-item-label">Relatório T&amp;C</span>
         <svg class="sidebar-group-chevron" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M6 8l4 4 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
       <div class="sidebar-group-list" id="tcSidebarGroupList">
-        <button type="button" class="sidebar-subitem sidebar-subitem--active" id="tab-tc-planilha" onclick="abrirTcModo('upload')" title="Importar planilha">
-          <span class="sidebar-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 9v11" stroke-linecap="round"/></svg></span>
-          <span class="sidebar-item-label">Importar planilha</span>
+        <button type="button" class="sidebar-subitem sidebar-subitem--active" id="tab-mkt-portais" onclick="abrirMktModo('portais')" title="Seguradoras portais">
+          <span class="sidebar-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M13 13l4 4" stroke-linecap="square"/></svg></span>
+          <span class="sidebar-item-label">Seguradoras portais</span>
         </button>
-        <button type="button" class="sidebar-subitem" id="tab-tc-manual" onclick="abrirTcModo('manual')" title="Preencher manualmente">
-          <span class="sidebar-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20h3.6L18.4 9.2a1.5 1.5 0 0 0 0-2.1l-1.5-1.5a1.5 1.5 0 0 0-2.1 0L4 16.4V20z" stroke-linejoin="round"/><path d="M13.5 6.5l4 4" stroke-linecap="round"/></svg></span>
-          <span class="sidebar-item-label">Preencher manualmente</span>
+        <button type="button" class="sidebar-subitem" id="tab-mkt-todas" onclick="abrirMktModo('todas')" title="Todas as seguradoras">
+          <span class="sidebar-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 13h6M9 16h4" stroke-linecap="round"/></svg></span>
+          <span class="sidebar-item-label">Todas as seguradoras</span>
         </button>
-        <button type="button" class="sidebar-subitem" id="tab-tc-salvos" onclick="abrirTcSalvosPage()" title="TCs salvos">
+        <button type="button" class="sidebar-subitem" id="tab-tomadores-salvos" onclick="abrirTomadoresSalvosPage()" title="Tomadores salvos">
           <span class="sidebar-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5l3.5 2" stroke-linecap="round"/></svg></span>
-          <span class="sidebar-item-label">TCs salvos</span>
+          <span class="sidebar-item-label">Tomadores salvos</span>
         </button>
       </div>
     </div>
@@ -66,10 +66,6 @@
       <span class="sidebar-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 3h7l4 4v14H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" stroke-linejoin="round"/><path d="M14 3v5h5M9 12h6M9 16h6" stroke-linecap="round"/></svg></span>
       <span class="sidebar-item-label">Análise de Apólice</span>
     </button>
-    <button type="button" class="sidebar-item" id="tab-consulta-limites" data-page="consulta-limites" onclick="switchTab('consulta-limites')" title="Consulta de Limites">
-      <span class="sidebar-item-icon" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none"><circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" stroke-width="1.6"/><path d="M13 13l4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="square"/></svg></span>
-      <span class="sidebar-item-label">Consulta de Limites (homolog)</span>
-    </button>
   </nav>
 </aside>
 
@@ -79,133 +75,81 @@
 </button>
 
 <div class="app-content">
-<!-- ── Página: Importar (XLSX dashboard) ── -->
-<main class="page page-upload active" id="page-upload" aria-label="Importar planilha">
+<!-- ── Página: Consulta de Mercado por CNPJ (Relatório T&C) ── -->
+<main class="page page-mkt active" id="page-mkt" aria-label="Consulta de mercado por CNPJ">
   <div class="upload-page upload-page--single">
     <section class="upload-section upload-section--solo">
       <div class="upload-header">
-        <p class="upload-header-eyebrow">Análise de Limites</p>
-        <h1 class="upload-header-title">Importe sua planilha de cotações</h1>
-        <p class="upload-header-sub">Carregue o arquivo Excel com as respostas das seguradoras para gerar o dashboard executivo.</p>
+        <p class="upload-header-eyebrow">Relatório T&amp;C</p>
+        <h1 class="upload-header-title">Consulta de mercado por CNPJ</h1>
+        <p class="upload-header-sub">Consulte automaticamente as seguradoras integradas e preencha as demais manualmente — tudo na mesma análise consolidada do tomador.</p>
       </div>
 
-      <!-- Alternância de método (planilha/manual) agora vive na sidebar, dentro da
-           pasta "Relatório T&C" (ver .sidebar-group em #appSidebar). tcBtnUpload/
-           tcBtnManual e o toggle visual saíram daqui; switchTcMode(mode) continua
-           existindo e é quem os sub-itens da sidebar chamam. -->
-      <div class="upload-card card" id="tcUploadCard">
-        <div class="upload-card-header">
-          <p class="upload-card-title">Selecione o arquivo</p>
-        </div>
-        <div class="upload-card-body">
-          <div class="drop-zone" id="dropZone" role="button" tabindex="0" aria-label="Clique ou arraste um arquivo Excel para fazer upload">
-            <input type="file" id="fileInput" accept=".xlsx,.xls" onchange="handleFile(this.files[0])" tabindex="-1">
-            <svg class="drop-icon" viewBox="0 0 48 48" fill="none" aria-hidden="true"><rect x="6" y="4" width="28" height="36" rx="2" stroke="currentColor" stroke-width="2.5"/><path d="M28 4v10h10" stroke="currentColor" stroke-width="2.5" stroke-linecap="square"/><path d="M16 26l8-8 8 8M24 18v16" stroke="currentColor" stroke-width="2.5" stroke-linecap="square" stroke-linejoin="miter"/></svg>
-            <p class="drop-title">Arraste o arquivo aqui</p>
-            <p class="drop-sub">ou <span>clique para selecionar</span></p>
-            <p class="drop-hint">Aceita .xlsx e .xls</p>
-          </div>
+      <div id="mktTabBar" class="tc-tab-bar" aria-label="Abas de tomador"></div>
 
-          <div class="file-selected" id="fileSelected" aria-live="polite">
-            <div class="file-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 4h5v7h7v9H6V4z"/></svg></div>
-            <div>
-              <p class="file-name" id="fileName">-</p>
-              <p class="file-size" id="fileSize">-</p>
-            </div>
+      <div class="mkt-console card">
+        <div class="mkt-console-fields">
+          <div class="tc-form-group">
+            <label class="tc-label" for="mktTomadorInput">Tomador</label>
+            <input type="text" id="mktTomadorInput" class="tc-input" placeholder="Nome do tomador" autocomplete="off" oninput="updateMktActiveTabLabel()">
           </div>
-
-          <div class="error-msg" id="errorMsg" role="alert" aria-live="polite">
-            <p id="errorText">Erro ao processar.</p>
+          <div class="tc-form-group">
+            <label class="tc-label" for="mktCnpjInput">CNPJ</label>
+            <input type="text" id="mktCnpjInput" class="tc-input" placeholder="00.000.000/0000-00" autocomplete="off" inputmode="numeric" maxlength="18" oninput="fmtTcCnpj(this)" onkeydown="if(event.key==='Enter'){event.preventDefault();consultarMercadoUI();}">
           </div>
-
-          <button type="button" class="btn-primary btn-generate" id="btnGenerate" disabled onclick="generateDashboard()">
-            <span class="btn-label">Gerar Dashboard</span>
+          <button type="button" class="btn-primary mkt-btn-consultar" id="mktBtnConsultar" onclick="consultarMercadoUI()">
+            <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" stroke-width="1.7"/><path d="M13 13l4 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+            Consultar mercado
           </button>
-
-          <div class="upload-instructions">
-            <h2 class="instr-title">Como usar</h2>
-            <ol class="instr-list">
-              <li class="instr-item"><span class="instr-num">01</span><span class="instr-text">Importe o arquivo .xlsx com os dados das seguradoras.</span></li>
-              <li class="instr-item"><span class="instr-num">02</span><span class="instr-text">O sistema identificará tomador, status, limites, modalidades e taxas.</span></li>
-              <li class="instr-item"><span class="instr-num">03</span><span class="instr-text">Clique em <strong>Gerar Dashboard</strong> para processar os dados.</span></li>
-              <li class="instr-item"><span class="instr-num">04</span><span class="instr-text">Exporte o relatório em PDF pelo botão no dashboard.</span></li>
-            </ol>
-          </div>
+        </div>
+        <p class="mkt-console-hint">A consulta automática cobre as 9 seguradoras já integradas (JNS, Junto, Essor, Sombrero, NEWE, Mitsui, AXA, Now e Fator). As demais seguradoras ficam disponíveis logo abaixo para preenchimento manual.</p>
+        <div class="error-msg" id="mktErrorMsg" role="alert" aria-live="polite">
+          <p id="mktErrorText">Erro.</p>
         </div>
       </div>
 
-      <div class="upload-card card tc-manual-card" id="tcManualCard" hidden>
-        <div class="upload-card-header">
-          <p class="upload-card-title">Preencher dados manualmente</p>
-        </div>
-        <div class="upload-card-body">
+      <div class="lim-loading" id="mktLoading" hidden>
+        <div class="af-spinner" aria-hidden="true"></div>
+        <p class="af-loading-text">Consultando seguradoras…</p>
+      </div>
 
-          <div id="tcTabBar" class="tc-tab-bar"></div>
+      <div class="mkt-filter-row" role="tablist" aria-label="Filtrar seguradoras exibidas">
+        <button type="button" class="mkt-filter-btn mkt-filter-btn--active" id="mktFilterPortaisBtn" onclick="switchMktFiltro('portais')" role="tab" aria-selected="true">Seguradoras portais</button>
+        <button type="button" class="mkt-filter-btn" id="mktFilterTodasBtn" onclick="switchMktFiltro('todas')" role="tab" aria-selected="false">Todas as seguradoras</button>
+      </div>
 
-          <div class="tc-form-header">
-            <div class="tc-form-group">
-              <label class="tc-label" for="tcTomador">Tomador</label>
-              <input type="text" id="tcTomador" class="tc-input" placeholder="Nome do tomador" autocomplete="off" oninput="updateTcActiveTabLabel()">
-            </div>
-            <div class="tc-form-group">
-              <label class="tc-label" for="tcCnpj">CNPJ</label>
-              <input type="text" id="tcCnpj" class="tc-input" placeholder="00.000.000/0000-00" autocomplete="off" inputmode="numeric" maxlength="18" oninput="fmtTcCnpj(this)">
-            </div>
-          </div>
+      <div class="mkt-cards-grid" id="mktCardsGrid" aria-live="polite"></div>
+      <div class="mkt-focus-backdrop" id="mktFocusBackdrop" hidden onclick="closeMktCardFocus()"></div>
 
-          <datalist id="tcSegList">
-            <option value="AKAD"><option value="ALLIANZ"><option value="AUSTRAL">
-            <option value="AVLA"><option value="AXA"><option value="BERKLEY">
-            <option value="BTG"><option value="CESCE"><option value="CHUBB">
-            <option value="DAYCOVAL"><option value="ESSOR"><option value="EZZE">
-            <option value="FAIRFAX"><option value="FATOR"><option value="HDI">
-            <option value="JNS"><option value="JUNTO"><option value="KOVR">
-            <option value="LIBERTY"><option value="NEWE"><option value="MITISUI">
-            <option value="POTTENCIAL"><option value="SOMBRERO"><option value="SOMPO">
-            <option value="SWISS RE"><option value="THINKSEG"><option value="TOKIO">
-            <option value="ZURICH">
-          </datalist>
+      <div class="mkt-legacy-extra" id="mktLegacyExtra" hidden>
+        <p class="mkt-legacy-extra-title">Outras seguradoras (importado de um tomador salvo)</p>
+        <div id="mktLegacyExtraList" class="tc-insurer-list"></div>
+      </div>
 
-          <div id="tcInsurerList" class="tc-insurer-list"></div>
+      <div class="tc-btn-row">
+        <button type="button" class="btn-secondary tc-export-btn" onclick="renderTcEmailTable()">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11M5.5 2v12" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"/></svg>
+          Gerar tabela
+        </button>
+        <button type="button" class="btn-secondary tc-export-btn" onclick="exportTcEmailTableXlsx()">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="1.5" y="1.5" width="13" height="13" rx="1" stroke="currentColor" stroke-width="1.5"/><path d="M1.5 6h13M1.5 10h13M5.5 6v8" stroke="currentColor" stroke-width="1.5"/></svg>
+          Exportar XLSX
+        </button>
+        <button type="button" class="btn-primary btn-generate" id="btnGenerate" onclick="generateDashboardFromForm()">
+          <span class="btn-label">Gerar Dashboard</span>
+        </button>
+      </div>
 
-          <button type="button" class="tc-btn-add-insurer" onclick="addTcInsurer()">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-              <path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-            </svg>
-            Adicionar Seguradora
-          </button>
+      <div id="tcEmailTableMount" class="tc-email-capture-host" aria-hidden="true"></div>
 
-          <div class="error-msg" id="errorMsgManual" role="alert" aria-live="polite">
-            <p id="errorTextManual"></p>
-          </div>
-
-          <div class="tc-btn-row">
-            <button type="button" class="btn-secondary tc-export-btn" onclick="renderTcEmailTable()">
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11M5.5 2v12" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"/></svg>
-              Gerar tabela
-            </button>
-            <button type="button" class="btn-secondary tc-export-btn" onclick="exportTcEmailTableXlsx()">
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="1.5" y="1.5" width="13" height="13" rx="1" stroke="currentColor" stroke-width="1.5"/><path d="M1.5 6h13M1.5 10h13M5.5 6v8" stroke="currentColor" stroke-width="1.5"/></svg>
-              Exportar XLSX
-            </button>
-            <button type="button" class="btn-primary btn-generate" id="btnGenerateManual" onclick="generateDashboardFromForm()">
-              <span class="btn-label">Gerar Dashboard</span>
-            </button>
-          </div>
-
-          <div id="tcEmailTableMount" class="tc-email-capture-host" aria-hidden="true"></div>
-
-          <div class="upload-instructions">
-            <h2 class="instr-title">Como usar</h2>
-            <ol class="instr-list">
-              <li class="instr-item"><span class="instr-num">01</span><span class="instr-text">Preencha o tomador e CNPJ no topo.</span></li>
-              <li class="instr-item"><span class="instr-num">02</span><span class="instr-text">Adicione cada seguradora com seu status e capacidade total.</span></li>
-              <li class="instr-item"><span class="instr-num">03</span><span class="instr-text">Para aprovadas, adicione as modalidades com limite e taxa individualmente.</span></li>
-              <li class="instr-item"><span class="instr-num">04</span><span class="instr-text">Clique em <strong>Gerar tabela</strong> para montar a imagem de envio por e-mail.</span></li>
-            </ol>
-          </div>
-
-        </div>
+      <div class="upload-instructions">
+        <h2 class="instr-title">Como usar</h2>
+        <ol class="instr-list">
+          <li class="instr-item"><span class="instr-num">01</span><span class="instr-text">Informe o CNPJ do tomador e clique em <strong>Consultar mercado</strong> para preencher as seguradoras integradas automaticamente.</span></li>
+          <li class="instr-item"><span class="instr-num">02</span><span class="instr-text">Complete manualmente as demais seguradoras — todo card é editável, mesmo os preenchidos por API.</span></li>
+          <li class="instr-item"><span class="instr-num">03</span><span class="instr-text">Use "Todas as seguradoras" para ver a lista completa; "Seguradoras portais" mostra só as que têm portal próprio.</span></li>
+          <li class="instr-item"><span class="instr-num">04</span><span class="instr-text">Clique em <strong>Gerar Dashboard</strong>, <strong>Gerar tabela</strong> ou <strong>Exportar XLSX</strong> quando a análise estiver pronta.</span></li>
+        </ol>
       </div>
 
       <div class="upload-other-tools">
@@ -902,56 +846,14 @@
   </div>
 </main>
 
-<!-- ── Página: Consulta de Limites por Seguradora ── -->
-<main class="page page-consulta-limites" id="page-consulta-limites" aria-label="Consulta de Limites por Seguradora">
-  <div class="tab-upload-section">
-    <div class="tab-upload-inner">
-      <div class="upload-header">
-        <p class="upload-header-eyebrow">Consulta de Limites</p>
-        <h1 class="upload-header-title">Consultar limites por CNPJ</h1>
-        <p class="upload-header-sub">Consulta em tempo real dos limites disponíveis para o tomador em cada seguradora integrada.</p>
-      </div>
-
-      <div class="lim-console">
-        <p class="lim-console-eyebrow">
-          <span class="lim-console-dot" aria-hidden="true"></span>
-          Consulta automática · 9 seguradoras integradas
-        </p>
-
-        <div class="lim-console-row">
-          <div class="lim-console-field">
-            <span class="lim-console-tag" aria-hidden="true">CNPJ</span>
-            <input type="text" id="limCnpjInput" class="lim-console-input" placeholder="00.000.000/0000-00" inputmode="numeric" maxlength="18" autocomplete="off" aria-label="CNPJ do tomador" oninput="fmtTcCnpj(this)" onkeydown="if(event.key==='Enter'){event.preventDefault();consultarLimitesUI();}">
-          </div>
-          <button type="button" class="lim-console-submit" id="limBtnConsultar" onclick="consultarLimitesUI()">
-            <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" stroke-width="1.7"/><path d="M13 13l4 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
-            Consultar limites
-          </button>
-        </div>
-
-        <div class="error-msg" id="limErrorMsg" role="alert" aria-live="polite">
-          <p id="limErrorText">Erro.</p>
-        </div>
-      </div>
-
-      <div class="lim-loading" id="limLoading" hidden>
-        <div class="af-spinner" aria-hidden="true"></div>
-        <p class="af-loading-text">Consultando seguradoras…</p>
-      </div>
-
-      <div class="lim-results" id="limResults" aria-live="polite"></div>
-    </div>
-  </div>
-</main>
-
-<!-- ── Página: TCs salvos ── -->
-<main class="page page-tc-salvos" id="page-tc-salvos" aria-label="TCs salvos por tomador">
+<!-- ── Página: Tomadores salvos ── -->
+<main class="page page-tomadores-salvos" id="page-tomadores-salvos" aria-label="Tomadores salvos">
   <div class="tab-upload-section">
     <div class="tab-upload-inner">
       <div class="upload-header">
         <p class="upload-header-eyebrow">Relatório T&amp;C</p>
-        <h1 class="upload-header-title">TCs salvos por tomador</h1>
-        <p class="upload-header-sub">Busque pelo CNPJ ou pelo nome do tomador para reabrir uma análise de T&amp;C salva anteriormente.</p>
+        <h1 class="upload-header-title">Tomadores salvos</h1>
+        <p class="upload-header-sub">Busque pelo CNPJ ou pelo nome do tomador para reabrir uma análise de mercado salva anteriormente.</p>
       </div>
 
       <div class="lim-console">
@@ -963,31 +865,31 @@
         <div class="lim-console-row">
           <div class="lim-console-field">
             <span class="lim-console-tag" aria-hidden="true">BUSCAR</span>
-            <input type="text" id="tcSalvosQueryInput" class="lim-console-input" placeholder="CNPJ ou nome do tomador" autocomplete="off" aria-label="CNPJ ou nome do tomador" onkeydown="if(event.key==='Enter'){event.preventDefault();buscarTcSalvos();}">
+            <input type="text" id="tomadoresSalvosQueryInput" class="lim-console-input" placeholder="CNPJ ou nome do tomador" autocomplete="off" aria-label="CNPJ ou nome do tomador" onkeydown="if(event.key==='Enter'){event.preventDefault();buscarTomadoresSalvos();}">
           </div>
-          <button type="button" class="lim-console-submit" id="tcSalvosBtnBuscar" onclick="buscarTcSalvos()">
+          <button type="button" class="lim-console-submit" id="tomadoresSalvosBtnBuscar" onclick="buscarTomadoresSalvos()">
             <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" stroke-width="1.7"/><path d="M13 13l4 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
             Buscar histórico
           </button>
         </div>
 
-        <div class="error-msg" id="tcSalvosErrorMsg" role="alert" aria-live="polite">
-          <p id="tcSalvosErrorText">Erro.</p>
+        <div class="error-msg" id="tomadoresSalvosErrorMsg" role="alert" aria-live="polite">
+          <p id="tomadoresSalvosErrorText">Erro.</p>
         </div>
       </div>
 
-      <div class="lim-loading" id="tcSalvosLoading" hidden>
+      <div class="lim-loading" id="tomadoresSalvosLoading" hidden>
         <div class="af-spinner" aria-hidden="true"></div>
         <p class="af-loading-text">Buscando histórico…</p>
       </div>
 
-      <div class="empty-state" id="tcSalvosEmpty">
+      <div class="empty-state" id="tomadoresSalvosEmpty">
         <div class="search-empty-icon" aria-hidden="true">⌕</div>
         <p class="empty-state-title">Busque um CNPJ ou nome</p>
         <p class="empty-state-text">As análises salvas para o tomador aparecem aqui.</p>
       </div>
 
-      <div class="tc-salvos-list" id="tcSalvosResults" aria-live="polite"></div>
+      <div class="tc-salvos-list" id="tomadoresSalvosResults" aria-live="polite"></div>
     </div>
   </div>
 </main>

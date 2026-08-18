@@ -1488,10 +1488,16 @@ tbody tr:hover td {
   border-color: var(--color-warning-border);
 }
 
-.badge-bloqueado {
-  color: var(--color-neutral);
-  background: var(--color-neutral-bg);
-  border-color: var(--color-neutral-border);
+.badge-erro-portal {
+  color: var(--color-purple);
+  background: var(--color-purple-bg);
+  border-color: var(--color-purple-border);
+}
+
+.badge-enviar-balancos {
+  color: var(--color-accent-ink);
+  background: var(--color-accent-light);
+  border-color: var(--color-accent);
 }
 
 .bar-row {
@@ -5954,11 +5960,12 @@ details[open] .fl-clausula-chevron { transform: rotate(180deg); }
 .fl-condicoes li { margin-bottom: 4px; font-size: 13px; opacity: 0.9; }
 .fl-resumo-text { margin: 0; font-size: 12.5px; opacity: 0.78; font-style: italic; }
 
-/* ── Consulta de Limites por Seguradora ── */
+/* ── Consulta de Mercado por CNPJ (Relatório T&C) ── */
 
 /* Console de consulta: instrumento de busca por CNPJ. A tag "CNPJ" dourada e o
    valor em monospace tratam o campo como leitura de um ID federal preciso; o
-   único elemento verde-escuro é a ação (botão), mantendo a hierarquia limpa. */
+   único elemento verde-escuro é a ação (botão), mantendo a hierarquia limpa.
+   Reaproveitado pela página "Tomadores salvos" (busca por CNPJ/nome). */
 .lim-console {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
@@ -6086,140 +6093,385 @@ details[open] .fl-clausula-chevron { transform: rotate(180deg); }
   gap: var(--space-3);
   padding: var(--space-8) 0;
 }
-.lim-results {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  margin-top: var(--space-6);
-}
-.lim-empty { color: var(--color-text-muted); font-size: var(--text-sm); }
 
-/* Cabeçalho do tomador consultado */
-.lim-tomador-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-bottom: var(--space-3);
-  border-bottom: 1px solid var(--color-border);
+/* Console de consulta de mercado — igual em espírito ao .lim-console, mas com
+   dois campos (tomador + CNPJ) e ação lado a lado, refletindo os dois estados
+   que a análise carrega (não é só uma busca, é a sessão inteira). */
+.mkt-console {
+  padding: var(--space-6);
   margin-bottom: var(--space-5);
 }
-.lim-tomador-eyebrow {
-  margin: 0 0 2px;
-  font-size: var(--text-xs);
-  font-weight: var(--weight-semibold);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--color-text-muted);
+.mkt-console-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 260px) auto;
+  gap: var(--space-4);
+  align-items: end;
 }
-.lim-tomador-nome {
-  margin: 0;
-  font-size: var(--text-lg);
-  font-weight: var(--weight-bold);
-  color: var(--color-text);
+.mkt-console-fields .tc-form-group { margin: 0; }
+.mkt-btn-consultar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  height: 44px;
+  padding: 0 var(--space-6);
+  white-space: nowrap;
+}
+.mkt-btn-consultar svg { width: 16px; height: 16px; }
+.mkt-console-hint {
+  margin: var(--space-4) 0 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  line-height: var(--leading-normal);
+}
+.mkt-console .error-msg { margin-top: var(--space-3); }
+
+@media (max-width: 760px) {
+  .mkt-console-fields { grid-template-columns: 1fr; }
+  .mkt-btn-consultar { width: 100%; }
 }
 
-/* Grid de cards por seguradora — 3 colunas fixas no desktop (9 seguradoras = 3x3) */
-.lim-cards-grid {
+/* Segmentado leve "Seguradoras portais / Todas as seguradoras" — preferência
+   de exibição da MESMA grade, não uma navegação (a navegação real é a sidebar). */
+.mkt-filter-row {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  margin-bottom: var(--space-5);
+  background: var(--color-surface-muted);
+  border-radius: var(--radius-lg);
+}
+.mkt-filter-btn {
+  padding: 8px 16px;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+.mkt-filter-btn:hover { color: var(--color-text); }
+.mkt-filter-btn--active {
+  color: var(--color-primary);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-xs);
+  font-weight: var(--weight-semibold);
+}
+
+/* Grid de cards por seguradora — 3 colunas fixas no desktop. O filtro
+   "Seguradoras portais" esconde via CSS os cards fora do catálogo de portal
+   (data-portal="0"); "Todas as seguradoras" (.mkt-grid--todas) revela todos —
+   nunca recria os nós, só alterna visibilidade (ver SPEC 1.1z/4). */
+.mkt-cards-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-4);
+  align-items: start;
 }
+.mkt-cards-grid .mkt-card[data-portal="0"] { display: none; }
+.mkt-cards-grid.mkt-grid--todas .mkt-card[data-portal="0"] { display: flex; }
 
 @media (max-width: 900px) {
-  .lim-cards-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mkt-cards-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .mkt-cards-grid { grid-template-columns: 1fr; }
 }
 
-@media (max-width: 560px) {
-  .lim-cards-grid { grid-template-columns: 1fr; }
-}
-.lim-card {
+.mkt-card {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   padding: var(--space-4);
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--space-3);
   box-shadow: var(--shadow-xs);
 }
-.lim-card-top {
+/* flex-wrap: wrap é o que evita a etiqueta de origem (texto longo, ex.
+   "Consultado automaticamente") espremer/sobrepor o nome da seguradora em
+   cards estreitos (3 colunas) — sem wrap, os dois brigavam pela mesma linha e
+   a etiqueta acabava cobrindo a logo/nome. Com wrap, ela cai para uma linha
+   própria abaixo quando não cabe ao lado. */
+.mkt-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+}
+.mkt-card-brand {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: var(--space-2);
+  flex: 1 1 auto;
+  min-width: 0;
 }
-.lim-card-eyebrow {
-  margin: 0;
-  font-size: var(--text-xs);
-  font-weight: var(--weight-semibold);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--color-primary-light);
-}
-.lim-card-brand {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  min-height: 34px;
-}
-.lim-card-logo {
-  height: 34px;
-  max-width: 120px;
+.mkt-card-logo {
+  height: 26px;
+  max-width: 92px;
   width: auto;
   object-fit: contain;
   flex-shrink: 0;
 }
-.lim-card-nome {
+.mkt-card-nome {
   margin: 0;
   font-size: var(--text-md);
   font-weight: var(--weight-bold);
+  letter-spacing: 0.01em;
   color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.lim-card--waiting {
-  background: var(--color-surface-muted);
-  border-style: dashed;
+.mkt-card-origem-tag {
+  flex: 0 0 auto;
+  max-width: 100%;
+  font-size: 10px;
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.lim-card-desc {
+.mkt-card-origem-tag--auto { background: var(--color-accent-light); color: var(--color-accent-ink); }
+.mkt-card-origem-tag--manual { background: var(--color-surface-muted); color: var(--color-text-secondary); }
+
+/* Select + olhinho (+ "!" de retorno da API) na mesma linha — é o que mantém
+   o card do MESMO tamanho em qualquer status: nada é adicionado abaixo, só
+   esses botões somem/aparecem dentro da própria linha (ver 4.4b/4.4c). */
+.mkt-card-status-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.mkt-status-select {
+  flex: 1;
+  min-width: 0;
+}
+/* Filete lateral de cor sinaliza o status escolhido sem precisar de um badge
+   extra — o próprio campo de edição já comunica o estado (ver 3.2a: cores
+   semânticas continuam sinalizando estado, não marca). */
+.mkt-status-select[data-status="aprovado"]        { border-color: var(--color-success); }
+.mkt-status-select[data-status="concorrente"]     { border-color: var(--color-warning); }
+.mkt-status-select[data-status="declinado"]       { border-color: var(--color-danger); }
+.mkt-status-select[data-status="erro_portal"]     { border-color: var(--color-purple); }
+.mkt-status-select[data-status="enviar_balancos"] { border-color: var(--color-accent); }
+
+/* Base compartilhada pelos botões-ícone do card (olhinho de editar, "!" de
+   retorno da API) — mesmo tamanho, só muda a cor de destaque. */
+.mkt-card-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1.5px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+.mkt-card-icon-btn svg { width: 18px; height: 18px; }
+
+/* Olhinho — único jeito de abrir a capacidade/modalidades de um card Aprovado
+   fora do foco; não expõe nenhum valor no próprio card (ver 4.4b). */
+.mkt-card-view-btn:hover { background: var(--color-accent-light); border-color: var(--color-accent); color: var(--color-primary); }
+
+/* "!" — só aparece quando a seguradora devolveu alguma mensagem (motivo de
+   negócio, erro, aviso); clicar mostra o texto exato num card em foco, sem
+   deixá-lo exposto por padrão (ver 4.4c). */
+.mkt-card-info-btn {
+  border-color: var(--color-warning-border);
+  color: var(--color-warning);
+  font-family: var(--font-heading);
+  font-weight: var(--weight-bold);
+  font-size: var(--text-md);
+}
+.mkt-card-info-btn:hover { background: var(--color-warning-bg); border-color: var(--color-warning); }
+
+/* Painel de retorno da API — mesmo tratamento "em foco" do formulário de
+   Aprovado (mkt-card--focused), só que somente leitura. */
+.mkt-card-info-label {
+  margin: 0 0 4px;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+.mkt-card-info-text {
   margin: 0;
-  margin-top: auto;
   font-size: var(--text-sm);
   line-height: var(--leading-normal);
-  color: var(--color-text-secondary);
+  color: var(--color-text);
 }
-.lim-card-desc strong { color: var(--color-text); font-weight: var(--weight-semibold); }
-.lim-card-desc--muted {
+
+.mkt-card-body { margin: 0; }
+
+/* Apresentação somente-leitura de um card vindo de API (origem 'auto') —
+   mesma linguagem visual da antiga página de Consulta de Limites: rótulo
+   discreto em caixa alta, valor grande em mono, taxa como nota pequena. Só
+   troca pro formulário de digitação (.mkt-card-editform) se o usuário clicar
+   em "Editar valores" (ver 4.4d). */
+.mkt-card-readonly {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.mkt-readonly-label {
+  margin: 0 0 4px;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--color-text-muted);
-  padding: 10px 14px;
+}
+.mkt-readonly-cap {
+  padding: var(--space-3);
+  background: var(--color-accent-light);
+  border-radius: var(--radius-md);
+}
+.mkt-readonly-cap-value {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+  color: var(--color-primary);
+}
+.mkt-readonly-mods {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.mkt-readonly-mod-item {
   background: var(--color-surface-muted);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  margin-top: auto;
+  padding: var(--space-3);
 }
-.lim-card-btn {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.mkt-readonly-mod-label {
+  margin: 0 0 4px;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+.mkt-readonly-mod-value {
+  margin: 0 0 2px;
+  font-family: var(--font-mono);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  color: var(--color-primary-light);
+}
+.mkt-readonly-mod-taxa {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+.mkt-card-edit-toggle {
+  margin-top: var(--space-1);
   width: 100%;
-  margin-top: auto;
-  padding: 10px 14px;
+  padding: 10px;
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
-  color: var(--color-text-secondary);
-  background: var(--color-surface-muted);
+  color: var(--color-primary);
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   cursor: pointer;
   transition: var(--transition-fast);
 }
-.lim-card-btn:hover:not(:disabled) { background: var(--color-surface-soft); }
-.lim-card-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.lim-card-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
-.lim-card-updated {
-  margin: 0;
-  font-size: var(--text-xs);
-  color: var(--color-text-faint);
+.mkt-card-edit-toggle:hover { background: var(--color-accent-light); border-color: var(--color-accent); }
+
+.mkt-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+}
+.mkt-card-info .mkt-card-focus-done { margin-top: 0; }
+
+/* Card "em foco" — status Aprovado traz o próprio card pra frente da grade,
+   com o resto da página desfocado atrás (.mkt-focus-backdrop). É o MESMO nó
+   de DOM do card, só reposicionado — nenhuma duplicação de estado. */
+body.mkt-focus-active { overflow: hidden; }
+
+.mkt-focus-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(11, 26, 36, 0.45);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  z-index: calc(var(--z-modal) - 1);
 }
 
-/* TCs salvos — cards de histórico por tomador (mesma linguagem visual do .lim-card) */
+.mkt-card--focused {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: var(--z-modal);
+  width: min(460px, 92vw);
+  max-height: 86vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow-lg);
+  animation: mkt-focus-in 0.16s ease;
+}
+
+@keyframes mkt-focus-in {
+  from { opacity: 0; transform: translate(-50%, -48%) scale(0.98); }
+  to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mkt-card--focused { animation: none; }
+}
+
+.mkt-card-focus-done {
+  margin-top: var(--space-2);
+  width: 100%;
+  padding: 10px;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-inverse);
+  background: var(--color-primary);
+  border: 0;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.mkt-card-focus-done:hover { background: var(--color-primary-hover); }
+
+@media (max-width: 560px) {
+  .mkt-card--focused { width: 94vw; }
+}
+
+/* "Outras seguradoras (importado)" — só aparece ao reabrir um tomador salvo
+   com nome de seguradora fora do catálogo fixo (compatibilidade, ver SPEC 4). */
+.mkt-legacy-extra {
+  margin-top: var(--space-6);
+  padding-top: var(--space-5);
+  border-top: 1px dashed var(--color-border);
+}
+.mkt-legacy-extra-title {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+/* TCs salvos — cards de histórico por tomador (mesma linguagem visual dos cards de mercado) */
 .tc-salvos-list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -6302,131 +6554,8 @@ details[open] .fl-clausula-chevron { transform: rotate(180deg); }
 }
 .tc-salvo-btn-remover:hover { color: #dc2626; border-color: #dc2626; background: rgba(220, 38, 38, 0.06); }
 
-/* Badges de status */
-.lim-badge2 {
-  font-size: var(--text-xs);
-  font-weight: var(--weight-semibold);
-  padding: 3px 10px;
-  border-radius: var(--radius-full);
-  white-space: nowrap;
-}
-.lim-badge--aprovado  { background: var(--color-success-bg); color: var(--color-success); border: 1px solid var(--color-success-border); }
-.lim-badge--bloqueado { background: var(--color-warning-bg); color: var(--color-warning); border: 1px solid var(--color-warning-border); }
-.lim-badge--nomeado   { background: var(--color-warning-bg); color: var(--color-warning); border: 1px solid var(--color-warning-border); }
-.lim-badge--semlimite { background: var(--color-neutral-bg); color: var(--color-neutral); border: 1px solid var(--color-neutral-border); }
-.lim-badge--erro      { background: var(--color-danger-bg); color: var(--color-danger); border: 1px solid var(--color-danger-border); }
-.lim-badge--aguardando { background: var(--color-surface); color: var(--color-text-faint); border: 1px solid var(--color-border-strong); }
 
-/* Modal de limites por modalidade */
-.lim-modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(11, 26, 36, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: var(--z-modal);
-  padding: var(--space-4);
-}
-.lim-modal {
-  width: 100%;
-  max-width: 420px;
-  max-height: 80vh;
-  background: var(--color-surface);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-.lim-modal-header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-4);
-  border-bottom: 1px solid var(--color-border);
-}
-.lim-modal-header > div { flex: 1; }
-.lim-modal-nome { margin: 0; font-size: var(--text-md); font-weight: var(--weight-bold); color: var(--color-text); }
-.lim-modal-close {
-  background: none;
-  border: none;
-  padding: 4px;
-  cursor: pointer;
-  color: var(--color-text-muted);
-  border-radius: var(--radius-sm);
-}
-.lim-modal-close svg { width: 16px; height: 16px; }
-.lim-modal-close:hover { background: var(--color-surface-muted); }
-.lim-modal-body {
-  padding: var(--space-4);
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-.lim-modal-note {
-  margin: 0;
-  font-size: var(--text-xs);
-  color: var(--color-text-secondary);
-  background: var(--color-surface-soft);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-3);
-}
-.lim-modal-item {
-  background: var(--color-surface-muted);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-3);
-}
-.lim-modal-item-label {
-  margin: 0 0 4px;
-  font-size: var(--text-xs);
-  font-weight: var(--weight-semibold);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--color-text-muted);
-}
-.lim-modal-item-valor {
-  margin: 0 0 2px;
-  font-size: var(--text-lg);
-  font-weight: var(--weight-bold);
-  color: var(--color-primary-light);
-}
-.lim-modal-item-taxa,
-.lim-modal-item-segurado {
-  margin: 0;
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
-}
-.lim-modal-empty {
-  margin: 0;
-  font-size: var(--text-sm);
-  color: var(--color-text-secondary);
-  text-align: center;
-  padding: var(--space-6) 0;
-}
-.lim-modal-updated {
-  margin: 0;
-  padding: var(--space-3) var(--space-4);
-  font-size: var(--text-xs);
-  color: var(--color-text-faint);
-  border-top: 1px solid var(--color-border);
-}
-
-/* ── T&C Manual Form ─────────────────────────────── */
-.tc-manual-card .upload-card-body {
-  padding: var(--space-6);
-}
-
-.tc-form-header {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-4);
-  margin-bottom: var(--space-6);
-}
-
+/* ── T&C — componentes de card reaproveitados pela grade de mercado (seção 4) ── */
 .tc-form-group {
   display: flex;
   flex-direction: column;
@@ -6498,24 +6627,6 @@ details[open] .fl-clausula-chevron { transform: rotate(180deg); }
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
   background: var(--color-surface-muted);
-}
-
-.tc-insurer--approved .tc-insurer-head {
-  border-bottom: 1px solid var(--color-border);
-}
-
-.tc-insurer-num {
-  flex-shrink: 0;
-  width: 26px;
-  height: 26px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-full);
-  background: var(--color-accent-light);
-  color: var(--color-primary);
-  font-size: var(--text-xs);
-  font-weight: var(--weight-bold);
 }
 
 .tc-head-seg {
@@ -6627,30 +6738,6 @@ details[open] .fl-clausula-chevron { transform: rotate(180deg); }
 }
 
 .tc-btn-add-modal:hover {
-  border-color: var(--color-accent);
-  color: var(--color-primary);
-  background: var(--color-accent-light);
-}
-
-.tc-btn-add-insurer {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  width: 100%;
-  padding: var(--space-3);
-  margin-bottom: var(--space-5);
-  border: 1px dashed var(--color-border-strong);
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--color-text-secondary);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-medium);
-  cursor: pointer;
-  transition: var(--transition-fast);
-}
-
-.tc-btn-add-insurer:hover {
   border-color: var(--color-accent);
   color: var(--color-primary);
   background: var(--color-accent-light);

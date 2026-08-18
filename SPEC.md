@@ -1,22 +1,28 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.42  
-> Atualizado em: 2026-08-14
+> Versao: 2.49
+> Atualizado em: 2026-08-18
 
 ## 1. Visão Geral
 
-Aplicação web estática da **Lavoro Seguros** com seis fluxos independentes:
+Aplicação web estática da **Lavoro Seguros** com cinco fluxos independentes:
 
 | Fluxo | Entrada | Saída |
 |---|---|---|
-| T&C Dashboard | Planilha Excel `.xlsx/.xls` | Dashboard executivo com limites, comparativos e exportação PDF |
+| T&C — Consulta de Mercado por CNPJ | CNPJ do tomador (consulta automática) + preenchimento manual | Dashboard executivo com limites, comparativos e exportação PDF; consolida seguradoras automáticas (JNS, Junto, Onpoint/Essor/Sombrero/NEWE/Mitsui/Now, AXA, Fator) e manuais na mesma análise |
 | Análise Financeira IA | DRE, Balanço, Balancete, CSV, PDF e imagem | JSON consolidado multiempresa/multiperíodo renderizado em cards |
 | Seguro Garantia IA | Edital, contrato, aditivos, apostilamentos, PDF/imagem/planilhas | Relatório técnico estruturado (primeira resposta) + chat conversacional + exportação PDF |
 | Fiança Locatícia IA | Contrato de locação, aditivos, laudos, PDF/imagem/planilhas | JSON contratual renderizado em tela |
 | Análise de Apólice IA | Apólice, endossos, condições particulares, PDF/imagem/planilhas | JSON objetivo com dados essenciais da apólice renderizado em relatório |
-| Consulta de Limites | CNPJ do tomador | Consulta em tempo real dos limites disponíveis em cada seguradora integrada (JNS, Junto, Onpoint/Essor/Sombrero/NEWE/Mitsui/Now, AXA, Fator) |
 
-O fluxo **T&C** continua estável e não deve ser alterado sem necessidade explícita.
+**Mudança estrutural desta versão (2.43):** as antigas telas independentes "Relatório T&C"
+(upload de planilha + formulário manual) e "Consulta de Limites" (CNPJ → 9 seguradoras com
+API, somente leitura) foram unificadas num único fluxo operacional — consulta de mercado por
+CNPJ com preenchimento automático das seguradoras integradas e edição manual das demais, tudo
+nos mesmos cards e alimentando o mesmo `parsedData.rows`/dashboard/exportações de sempre. Ver
+seção 1.1z (navegação) e seção 4 (novo contrato de cards/rows). O núcleo do T&C — dashboard,
+gráficos, tabela executiva, exportação PDF e persistência D1 — continua estável e não deve ser
+alterado sem necessidade explícita.
 
 ### 1.1 Navegação — sidebar recolhível
 
@@ -33,23 +39,24 @@ A navegação principal é uma sidebar fixa à esquerda (`.sidebar`, `index.html
 - `--topbar-height` foi zerado em `variables.css` (mantido só porque várias fórmulas de sticky-offset ainda somam esse token) — não representa mais uma barra horizontal.
 - Durante captura de PDF (`body.pdf-generating`) e impressão, `.sidebar` fica oculta e `.app-content` perde a margem reservada, evitando espaço em branco à esquerda no conteúdo exportado.
 
-#### 1.1z Item de sidebar com sub-itens — grupo "Relatório T&C"
+#### 1.1z Item de sidebar com sub-itens — grupo "Relatório T&C" (reescrito na 2.43)
 
-O item "Relatório T&C" deixou de navegar direto: agora é uma **pasta expansível** (`.sidebar-group`, `#tcSidebarGroup`) com três sub-itens (`.sidebar-subitem`), indentados, dentro de `.sidebar-group-list`:
+O item "Relatório T&C" continua **pasta expansível** (`.sidebar-group`, `#tcSidebarGroup`), mas os três sub-itens (`.sidebar-subitem`, dentro de `.sidebar-group-list`) mudaram por completo na 2.43 — a antiga tripla "Importar planilha / Preencher manualmente / TCs salvos" foi substituída pela unificação com a antiga Consulta de Limites (ver seção 4):
 
 | Sub-item | Ação | Função (app.js) |
 |---|---|---|
-| Importar planilha | `switchTab('upload')` + `switchTcMode('upload')` | `abrirTcModo('upload')` |
-| Preencher manualmente | `switchTab('upload')` + `switchTcMode('manual')` | `abrirTcModo('manual')` |
-| TCs salvos | `switchTab('tc-salvos')` | `abrirTcSalvosPage()` |
+| Seguradoras portais | `switchTab('mkt')` + `switchMktFiltro('portais')` | `abrirMktModo('portais')` |
+| Todas as seguradoras | `switchTab('mkt')` + `switchMktFiltro('todas')` | `abrirMktModo('todas')` |
+| Tomadores salvos | `switchTab('tomadores-salvos')` | `abrirTomadoresSalvosPage()` |
 
-- O botão-cabeçalho (`#tab-relatorio-tc`, ainda `.sidebar-item`) só **abre/fecha** a pasta (`toggleTcSidebarGroup()`) — não navega mais sozinho. Mantém `data-pages="upload dashboard tc-salvos"`, então o laço genérico de `switchTab()` continua marcando-o `.active`/`aria-current="page"` normalmente sempre que a página ativa for uma dessas três (nenhuma mudança precisou no `switchTab()` em si).
-- Os três sub-itens usam a classe `.sidebar-subitem` (não `.sidebar-item`) — ficam **fora** do laço genérico de `switchTab()` de propósito, porque `upload` e `manual` compartilham a mesma página (`#page-upload`) e o laço não teria como diferenciá-los. O estado ativo dos três é gerido manualmente por `updateTcSubNav(chave)` (`'upload' | 'manual' | 'salvos'`), chamada por `switchTcMode()`, `abrirTcModo()`, `abrirTcSalvosPage()` e no fim de `generateDashboard()` (usando `_tcOrigemAtual`, para o dashboard saber qual dos dois sub-itens veio da análise atual).
+- **"Importar planilha" foi removido** — não existe mais upload de `.xlsx` para o T&C; `handleFile`, `parseWorkbook` e `normalizeStatus` (que faziam esse parsing) foram removidos de `app.js`. Toda análise nasce por consulta de CNPJ e/ou preenchimento manual na grade de cards (seção 4).
+- **"Seguradoras portais" e "Todas as seguradoras" são a MESMA página** (`#page-mkt`, antigo `#page-upload`) e a MESMA grade de 35 cards (`#mktCardsGrid`) — não são duas árvores de DOM diferentes. `switchMktFiltro(modo)` só alterna a classe `.mkt-grid--todas` no container, que via CSS esconde/mostra os cards fora da lista de portal (`[data-portal="0"]`). Isso é deliberado: se fossem páginas/grades separadas, uma edição feita na aba "portais" não apareceria na aba "todas" para a mesma seguradora — duplicar o DOM quebraria a consolidação exigida pela seção 4.
+- O botão-cabeçalho (`#tab-relatorio-tc`, ainda `.sidebar-item`) só **abre/fecha** a pasta (`toggleTcSidebarGroup()`) — não navega mais sozinho. Mantém `data-pages="mkt dashboard tomadores-salvos"`, então o laço genérico de `switchTab()` continua marcando-o `.active`/`aria-current="page"` normalmente sempre que a página ativa for uma dessas três.
+- Os três sub-itens usam a classe `.sidebar-subitem` (não `.sidebar-item`) — ficam **fora** do laço genérico de `switchTab()` de propósito, pelo mesmo motivo de antes: `portais` e `todas` compartilham a mesma página (`#page-mkt`) e o laço não teria como diferenciá-los. O estado ativo dos três é gerido manualmente por `updateTcSubNav(chave)` (`'portais' | 'todas' | 'salvos'`), chamada por `switchMktFiltro()`, `abrirMktModo()`, `abrirTomadoresSalvosPage()` e no fim de `generateDashboard()` (usando `_mktFiltro`, para o dashboard saber qual sub-item estava ativo quando a análise foi gerada).
 - `abrirTcSidebarGroup()` força a pasta aberta (remove `.sidebar-group--collapsed`) sempre que a navegação entra em qualquer página do grupo — clicar num sub-item nunca deixa a pasta fechada escondendo o próprio item que acabou de ficar ativo.
-- O logo da sidebar (`.sidebar-brand`) chama `abrirTcModo('upload')` em vez de `switchTab('upload')` puro, para manter a pasta e o sub-item corretos sincronizados ao clicar no logo.
+- O logo da sidebar (`.sidebar-brand`) chama `abrirMktModo('portais')` em vez de `switchTab('mkt')` puro, para manter a pasta e o sub-item corretos sincronizados ao clicar no logo.
 - Em mobile, o chevron (`.sidebar-group-chevron`) segue a mesma regra do rótulo (`.sidebar-item-label`): força `opacity: 1` no breakpoint ≤768px, já que não existe `:hover`/`:focus-within` em touch.
 - **`.sidebar-group-list` fica oculta por padrão** (`display: none`) e só aparece com `.sidebar:hover`/`:focus-within` — a mesma condição que revela `.sidebar-item-label` — **e** apenas se a pasta não tiver sido fechada manualmente (`.sidebar-group:not(.sidebar-group--collapsed)`). Sem isso, a pasta "aberta" continuava mostrando os três ícones dos sub-itens (sem rótulo, sem sentido) mesmo com a sidebar recolhida só em ícones — o toggle manual (`toggleTcSidebarGroup()`) e o hover da sidebar são duas condições independentes, e as duas precisam ser verdadeiras para o sub-menu aparecer. Em mobile (≤768px, sem hover) a regra volta a ser só o toggle manual, já que o drawer nesse breakpoint é sempre a versão "expandida" quando visível (ver 1.1a).
-- **O antigo alternador visual dentro da página** (`.tc-mode-toggle`, botões `tcBtnUpload`/`tcBtnManual` acima do cartão de upload) foi removido de `index.html` — virou redundante depois que a navegação passou para a sidebar. `switchTcMode(mode)` continua existindo em `app.js` e não lê mais esses botões (só alterna `#tcUploadCard`/`#tcManualCard` e chama `updateTcSubNav`); classes CSS `.tc-mode-toggle`/`.tc-mode-btn*` (desktop e mobile) foram removidas por não terem mais uso.
 
 #### 1.1z-bis Correção — logo do cabeçalho aparecia sempre na tela
 
@@ -98,7 +105,7 @@ TC Lavoro/
 - Nunca expor `DEEPSEEK_API_KEY`, `UPSTASH_REDIS_REST_URL` ou `UPSTASH_REDIS_REST_TOKEN` no front-end.
 - Secrets ficam somente no Cloudflare Worker.
 - Credenciais das APIs de seguradoras (`JNS_*`, `JUNTO_*`, `ONPOINT_*`, `FATOR_*`) seguem a mesma regra: só existem como secrets do Worker, nunca no front-end.
-- Toda navegação da SPA deve continuar usando apenas `switchTab('upload' | 'dashboard' | 'analise-financeira' | 'seguro-garantia' | 'fianca-locaticia' | 'analise-apolice' | 'consulta-limites')`.
+- Toda navegação da SPA deve continuar usando apenas `switchTab('mkt' | 'dashboard' | 'analise-financeira' | 'seguro-garantia' | 'fianca-locaticia' | 'analise-apolice' | 'tomadores-salvos')`.
 - Toda string inserida em `innerHTML` deve passar por `esc()`.
 
 ### 3.2 Front-end
@@ -124,6 +131,12 @@ A paleta é derivada do logo Lavoro: **navy/petrol `#104058`** (marca escura) e 
 
 Cores **semânticas não mudam**: verde de sucesso (`#16a34a` e derivados), vermelho de erro, âmbar de aviso continuam sinalizando estado, não marca. As séries de gráfico do T&C (`brandBars` em `app.js`) passaram a usar tons de azul — mudança apenas cromática, sem alteração de lógica.
 
+**Roxo (`--color-purple` / `-bg` / `-border`, `#7c3aed` / `#ede9fe` / `#c4b5fd`)** — token novo
+na 2.46, mesmo padrão dos demais semânticos (tom principal + fundo claro + borda). Usado
+exclusivamente pelo status "Erro no portal" da consulta de mercado (seção 4.4), para se
+diferenciar claramente de verde/âmbar/vermelho/cinza nos 3 lugares onde o status aparece:
+filete do `<select>` do card, badge da tabela executiva e cor do XLSX/doughnut do dashboard.
+
 #### 3.2b Grid e respiro lateral — `--page-gutter`
 
 `--page-gutter: clamp(16px, 3.5vw, 32px)` é o respiro lateral único de todas as páginas (16px no celular → 32px no desktop). Usar esse token em vez de padding fixo.
@@ -146,49 +159,261 @@ Correções de responsividade que vieram junto: `.ai-split-body` tinha `padding:
 - O Worker pode iterar por partes, mas o resultado final deve respeitar o contrato atual do front-end.
 - Texto livre digitado pelo usuário (considerações da demanda) é **conteúdo não confiável**: sempre delimitado, sanitizado e tratado como dado, nunca como instrução (ver 5.7.3).
 
-## 4. Fluxo 1 — T&C Dashboard
+## 4. Fluxo 1 — T&C · Consulta de Mercado por CNPJ
 
-O parsing, a tabela manual e a estrutura de `rows[]` (4.1–4.3) seguem sem alteração. A mudança estrutural desta versão foi explicitamente pedida pelo usuário: navegação em pasta na sidebar (1.1z) e persistência de histórico por tomador (4.4, complementando a seção 13).
+**Reescrita estrutural na 2.43**: as antigas telas "Importar planilha" (upload de `.xlsx`),
+"Preencher manualmente" (formulário com seguradora adicionada por nome livre) e a página
+independente "Consulta de Limites" (seção antiga 10, CNPJ → 9 seguradoras com API, somente
+leitura) foram substituídas por um único fluxo — a página `#page-mkt` — onde a consulta
+automática por CNPJ e o preenchimento manual convivem nos mesmos cards editáveis, alimentando
+o mesmo `parsedData.rows`/dashboard/exportações/D1 de sempre. A geração do dashboard
+(`generateDashboard()`), os gráficos, a tabela executiva, a exportação em PDF e o schema D1
+(seção 13) **não mudaram**.
 
-### 4.1 Parsing
+### 4.0 Catálogo de seguradoras (`MKT_SEGURADORAS`, `app.js`)
 
-- `handleFile(file)` valida e lê `.xlsx/.xls`
-- `parseWorkbook(wb)` localiza cabeçalho `SEGURADORA(S)` e extrai:
-  - `tomador`
-  - `cnpj`
-  - `rows[]`
-- Modalidades adicionais entram em `modalidades[]` do registro principal
+Array fixo com todas as seguradoras suportadas, na ordem alfabética abaixo (idêntica à
+fornecida pelo usuário nas duas listas — portal e completa):
 
-### 4.2 Tabela Manual para E-mail
+```js
+{ key, label, apiKey, portal }
+```
 
-Funcoes envolvidas em `app.js`:
+- `key`: chave estável interna, usada em toda a UI e em `rows[].seguradoraKey`.
+- `label`: nome comercial exibido no card (ex.: chave `mitsui` exibe **"MITISUI"**, grafia
+  pedida explicitamente pelo usuário — a chave interna `mitsui` já usada pela integração da
+  seção 10 não mudou).
+- `apiKey`: chave interna da integração (`jns`, `junto`, `essor`, `sombrero`, `newe`,
+  `mitsui`, `axa`, `now`, `fator`) quando a seguradora tem consulta automática; `null` quando
+  só permite preenchimento manual.
+- `portal`: `true` para as 18 seguradoras da lista "com portal" (aba "Seguradoras portais");
+  `false` para as demais 17, que só aparecem em "Todas as seguradoras".
 
-- `buildManualParsedData()` consolida o formulario manual em `rows[]` e inclui `statusCcg` apenas para seguradoras aprovadas
-- `fmtTcCnpj(el)` aplica mascara no CNPJ do tomador no formato `00.000.000/0000-00`
-- `fmtTcDate(el)` aplica mascara no vencimento no formato `DD/MM/AAAA`
-- `fmtTcTaxa(el)` normaliza a taxa digitada como percentual literal no campo manual
-- `renderTcEmailTable()` substitui a antiga exportacao XLSX, monta a tabela visual compacta fora da tela e baixa automaticamente a imagem PNG
-- `downloadTcEmailTableImage()` usa `html2canvas` para baixar a tabela renderizada como PNG
+35 entradas ao todo: AKAD, ALLIANZ, ALM, AUSTRAL, AVLA, AXA, BERKLEY, BTG, CESCE, CHUBB,
+DARWIN, DAYCOVAL, ESSOR, EZZE, FAIRFAX, FAIRWAY, FATOR, FINANGUARD, HDI, JNS, JUNTO, KOVR,
+LIBERTY, MAPFRE, MITISUI, NEWE, NOW SEGUROS, POTTENCIAL, SOMBRERO, SOMPO, SUDASEG, SWISS RE,
+THINKSEG, TOKIO, ZURICH. As 9 com `apiKey` são as mesmas já integradas na seção 10 — nenhuma
+API nova foi adicionada nesta versão. `MKT_API_KEYS` deriva as 9 chaves com `apiKey` não nulo.
 
-A tabela de e-mail contem todas as colunas operacionais do formulario manual nesta ordem: seguradora, capacidade total, modalidades, limites por modalidade, taxa por modalidade, status CCG, vencimentos e status. Tomador e CNPJ aparecem no cabecalho. O campo Status CCG so aparece no formulario quando a seguradora esta com status Aprovado. A tabela nao fica visivel na tela; ela e renderizada temporariamente apenas para captura e download da imagem.
+### 4.1 Duas grades, uma só árvore de DOM
 
-As classes CSS `tc-email-status-ccg-head` e `tc-email-status-ccg-cell` mantem uma borda esquerda dedicada na coluna Status CCG para preservar a linha vertical entre Taxa por Modalidade e Status CCG durante a captura por html2canvas, inclusive quando ha multiplas modalidades com `rowspan`.
+"Seguradoras portais" e "Todas as seguradoras" (as duas primeiras sub-abas de 1.1z) **são a
+mesma página e a mesma grade** (`#page-mkt`, `#mktCardsGrid`), nunca duas cópias — ver
+justificativa completa em 1.1z. `switchMktFiltro('portais' | 'todas')` só alterna a classe
+`.mkt-grid--todas`, que via CSS mostra/esconde os cards com `data-portal="0"`. Os 35 cards são
+renderizados **uma única vez**, por `renderMktCardsGridSkeleton()`, no carregamento da página
+(chamada de topo de arquivo em `app.js`, mesmo padrão de inicialização imediata usado pelos
+outros fluxos).
 
-### 4.3 Estrutura Parsed
+### 4.2 Abas de tomador (mantido do formulário manual antigo)
+
+Como no antigo formulário manual, é possível manter **várias sessões de tomador abertas ao
+mesmo tempo** antes de gerar qualquer dashboard — útil para preparar várias consultas de
+mercado numa sentada. A barra (`#mktTabBar`, mesma classe `.tc-tab-bar` de antes) e as
+funções `initMktTabs`/`renderMktTabBar`/`switchMktTab`/`addMktTab`/`removeMktTab`/
+`updateMktActiveTabLabel` espelham 1:1 as antigas `initTcTabs`/`renderTcTabBar`/`switchTcTab`/
+`addTcTab`/`removeTcTab`/`updateTcActiveTabLabel` — só que cada aba guarda um dicionário fixo
+`cards: { [key]: { status, capTotal, modalidades[], origem, mensagem } }` (uma entrada por
+seguradora do catálogo) em vez de uma lista dinâmica de blocos adicionados por nome.
+
+Trocar de aba (`switchMktTab`) **nunca recria os 35 nós de DOM** — `saveMktTabState(tabId)`
+lê a grade viva para dentro do objeto da aba que está saindo, e `rebuildMktGrid(tabId)`
+repopula os mesmos nós com os dados da aba que está entrando, via `populateMktCard(key,
+data)`. `populateMktCard` é a mesma função usada pelo preenchimento automático (4.3) e pela
+reabertura de um tomador salvo (4.5) — um único caminho de "aplicar dados num card".
+
+Cada aba também guarda `extras: [{ seguradora, status, capTotal, modalidades }]` — ver 4.5.
+
+### 4.3 Consulta automática — `consultarMercadoUI()`
+
+O console no topo da página (`#mktTomadorInput`, `#mktCnpjInput`, botão "Consultar mercado"
+`#mktBtnConsultar`) pertence à aba de tomador ativa. Ao clicar (ou Enter no campo de CNPJ):
+
+1. Valida CNPJ (14 dígitos) e chama `consultarLimitesSeguradoras(cnpj, MKT_API_KEYS)`
+   (`deepseek.js`, inalterada) — mesmo endpoint `POST /v1/limits/query` de sempre (seção 10).
+2. Para cada resultado, `normalizeLimiteResultado(r)` — **100% reaproveitada da antiga
+   Consulta de Limites**, junto com os 4 normalizadores por seguradora
+   (`normalizeLimiteJns`/`normalizeLimiteJunto`/`normalizeLimiteOnpoint`/
+   `normalizeLimiteFator`) e `classifyErrorMessage` — nada dessa lógica fina de leitura de
+   resposta por seguradora mudou; só o destino final mudou (card em vez de página própria).
+3. `mapNormStatusToMkt(statusKey)` traduz o `statusKey` antigo (`aprovado`/`nomeado`/
+   `sem_limite`/`bloqueado`/`sem_resposta`/`instavel`/`erro`) para o novo modelo de 5 status
+   (4.4): `aprovado→aprovado`, `nomeado→concorrente`, `sem_limite→declinado`,
+   `bloqueado→declinado`, `sem_resposta→erro_portal`, `instavel→erro_portal`,
+   `erro→erro_portal`.
+4. `populateMktCard(key, { status, capTotal, modalidades, origem: 'auto', mensagem })`
+   preenche o card correspondente. `capTotal` é a soma dos limites das modalidades
+   retornadas. `mensagem` (quando a seguradora não libera limite) aparece como nota discreta
+   no card (`.mkt-card-note`), sem jargão bruto da seguradora — mesma filosofia da antiga
+   `LIM_SEM_LIMITE_MSG`/`classifyErrorMessage`.
+5. O nome do tomador retornado por qualquer seguradora preenche `#mktTomadorInput` **somente
+   se o usuário ainda não tiver digitado um nome manualmente** nessa aba
+   (`tab.tomadorUserEdited`) — uma sugestão nunca apaga uma edição manual existente.
+
+A consulta roda sempre para as 9 seguradoras com API (`MKT_API_KEYS`), independente do filtro
+"portais"/"todas" estar ativo — as 9 já pertencem à lista de portal.
+
+### 4.4 Cards — status, origem e edição manual
+
+Todo card (dos 35, com ou sem API) é editável. Campos por card:
+
+| Campo | Elemento | Regra |
+|---|---|---|
+| Seguradora | `.mkt-card-nome` | nome comercial fixo, exibido sem logo nesta fase |
+| Status | `select#mktStatus-{key}` | 5 opções (ver abaixo) |
+| Capacidade Total | `input#mktCap-{key}` | só existe/é lida quando status = Aprovado |
+| Modalidades | `#mktModalList-{key}` | lista de `{label, limite, taxa}` — só quando Aprovado; `+ Adicionar modalidade` / remover por linha, mesmo componente `.tc-modal-row` do antigo formulário manual |
+
+**5 status** (`MKT_STATUS_CONFIG`), substituem os 4 antigos (`aprovado`/`declinado`/
+`concorrente`/`bloqueado`) — `statusCcg` e `venc` (vencimento) foram **removidos por
+completo**, não existem mais em nenhum card nem no contrato de `rows[]`. Cada um tem uma cor
+fixa, tanto no filete do `<select>` (`.mkt-status-select[data-status="..."]`) quanto no badge
+da tabela executiva/XLSX/gráfico doughnut do dashboard — cores semânticas de estado, não de
+marca (ver 3.2a):
+
+| Status | Rótulo | Cor |
+|---|---|---|
+| `aprovado` | Aprovado | verde (`--color-success`) |
+| `concorrente` | Concorrente | âmbar (`--color-warning`) |
+| `declinado` | Declinada | vermelho (`--color-danger`) |
+| `erro_portal` | Erro no portal | **roxo** (`--color-purple`, novo token — ver 3.2a) |
+| `enviar_balancos` | Enviar balanços para análise | ciano/accent (`--color-accent`) |
+
+**Origem do dado** (`card.dataset.origem`, `'auto' | 'manual'`): mostrado como uma etiqueta
+discreta no cabeçalho do card (`.mkt-card-origem-tag`) — "Consultado automaticamente" (ciano)
+ou "Preenchimento manual" (neutro). `populateMktCard` só usa `.value =`, que nunca dispara
+`input`/`change` — por isso preencher via API nunca é confundido com edição do usuário.
+Qualquer edição genuína (digitar, trocar o status, adicionar/remover modalidade) é capturada
+por um listener delegado em `#mktCardsGrid` (`markMktCardManual`, em `input`/`change`/`click`
+nos botões de modalidade) que vira o card para `'manual'` — mesmo que ele tivesse sido
+preenchido por API.
+
+**Seguradoras com API nunca mostram "Preenchimento manual".** Para as 9 integradas
+(`seg.apiKey` presente), a etiqueta só aparece quando `origem === 'auto'`
+("Consultado automaticamente"); editar manualmente um card com API não mostra tag nenhuma —
+essa distinção só faz sentido para seguradoras que nunca têm alternativa automática. Tanto
+`populateMktCard` quanto `markMktCardManual` checam `MKT_SEGURADORAS_BY_KEY[key].apiKey` antes
+de exibir a etiqueta "manual" (o dado interno `card.dataset.origem`/`rows[].origem` continua
+registrando `'manual'` normalmente — só a etiqueta visual é que fica oculta).
+
+**Correção de bug:** `markMktCardManual` tinha uma guarda (`if (dataset.origem === 'manual')
+return`) que impedia a etiqueta de aparecer na **primeira** edição manual de qualquer card —
+todo card nasce com `data-origem="manual"` como placeholder de "nunca veio de API", então essa
+guarda achava que o card "já era manual" e nunca chegava a mostrar a tag. Só reaparecia depois
+de um card ir para `'auto'` (via API) e ser editado por cima. A guarda foi removida; reatribuir
+`dataset.origem = 'manual'` e reescrever a tag a cada evento é idempotente e não tem custo
+perceptível.
+
+**Correção de layout:** `.mkt-card-head` ganhou `flex-wrap: wrap` — sem isso, uma etiqueta de
+origem longa ("Consultado automaticamente") espremia o nome da seguradora até ele
+desaparecer/ser coberto em cards estreitos (grade de 3 colunas). Com wrap, a etiqueta cai para
+uma linha própria abaixo do nome quando não cabe ao lado, em vez de disputar espaço na mesma
+linha.
+
+#### 4.4a Card "em foco" — status Aprovado abre o formulário por cima da grade
+
+Quando o usuário seleciona **Aprovado** no `<select>` de um card, `onMktStatusChange` chama
+`openMktCardFocus(key)`: o próprio nó do card (não uma cópia) ganha a classe
+`.mkt-card--focused` (`position: fixed`, centralizado, `z-index` acima de um backdrop com
+`backdrop-filter: blur`), e o restante da página fica visualmente desfocado atrás
+(`#mktFocusBackdrop`, `body.mkt-focus-active` trava o scroll de fundo). O formulário
+(Capacidade Total + Modalidades) só existe visualmente dentro desse estado — por isso é o
+mesmo elemento reposicionado via CSS, nunca um modal separado com dado duplicado.
+
+- **Fecha** ao clicar em "Concluir" (`.mkt-card-focus-done`, dentro do card), clicar no
+  backdrop, apertar `Escape`, trocar de aba de tomador/filtro/página, ou mudar o status para
+  qualquer valor diferente de Aprovado — todos via `closeMktCardFocus()`.
+- **Fora de foco, o card não expõe nenhum valor nem muda de tamanho.** Não há resumo, não há
+  capacidade/modalidade visível — só a linha do status (`.mkt-card-status-row`) com um
+  **botão de olho** ao lado (`.mkt-card-view-btn`, `id="mktViewBtn-{key}"`), visível somente
+  quando o status é Aprovado (`updateMktCardViewButton(key)` alterna `hidden`). Clicar no
+  olho chama `openMktCardFocus(key)` diretamente — é a única forma de ver ou editar
+  capacidade/modalidades fora do foco. Como nada é adicionado abaixo do select, o card tem a
+  mesma altura em qualquer status (era esse o ponto: a versão anterior desta seção mostrava
+  um resumo com o valor mascarado embaixo do select, o que fazia o card crescer ao virar
+  Aprovado — descartado a pedido do usuário).
+- **Preenchimento automático (API), troca de aba e reabertura de tomador salvo nunca abrem o
+  foco sozinhos** — `populateMktCard` só liga/desliga o botão de olho
+  (`updateMktCardViewButton`), mesmo para cards que vêm `aprovado` da API. Abrir o foco
+  automaticamente para cada seguradora aprovada retornada pela consulta empilharia vários
+  cards em foco de uma vez; o usuário abre manualmente pelo olho quando quiser revisar.
+- **O foco tem dois modos** (`_mktFocusedMode`, `'edit' | 'info'` — ver 4.4b): `openMktCardFocus`
+  (olho) abre `'edit'` (`#mktBody-{key}`); `openMktCardInfo` (botão "!") abre `'info'`
+  (`#mktInfo-{key}`). Só um card fica em foco por vez, em qualquer modo; `closeMktCardFocus()`
+  fecha o que estiver aberto e atualiza tanto o olho quanto o "!" ao sair.
+
+#### 4.4b Botão "!" — ver o retorno bruto da consulta sem deixá-lo exposto
+
+Quando uma seguradora com API devolve uma mensagem de negócio (motivo de "sem limite", erro,
+aviso — o mesmo `mensagem` que os normalizadores da seção 10.1a já produzem), o card mostra um
+botão circular **"!"** (`.mkt-card-info-btn`, ao lado do olho na `.mkt-card-status-row`,
+âmbar) em vez de expor o texto direto no card. Clicar chama `openMktCardInfo(key)`, que abre o
+mesmo tratamento "em foco" do 4.4a (card para frente, fundo desfocado) mostrando só a
+mensagem (`#mktInfo-{key}`: rótulo "Retorno da consulta" + texto + botão "Fechar").
+`updateMktCardInfoButton(key)` liga/desliga o botão conforme `#mktInfoText-{key}` (preenchido
+por `populateMktCard`/`saveMktTabState`) tem texto ou não — igual ao olho, nada aparece no
+card enquanto não há mensagem, e nada é exposto por padrão quando há.
+
+#### 4.4c Apresentação — API mostra resultado, não formulário de digitação
+
+Um card com `origem: 'auto'` (dado que veio de verdade da API e ainda não foi editado) abre o
+foco (via olho) numa **apresentação somente-leitura** (`.mkt-card-readonly`,
+`renderMktCardReadonly(key)`) em vez do formulário de inputs — mesma linguagem visual da
+antiga página de Consulta de Limites: capacidade total em destaque (fundo accent-light, valor
+grande em mono) e cada modalidade como um cartão com rótulo em caixa alta, valor grande e a
+taxa como nota pequena. O formulário de digitação (`.mkt-card-editform`, os mesmos
+`#mktCap-{key}`/`#mktModalList-{key}` de sempre) só aparece se o usuário clicar em **"Editar
+valores"** dentro da apresentação — a edição "por trás dos panos" (o que alimenta
+exportação/dashboard) continua sendo os mesmos inputs de sempre, só não é a visão padrão para
+dado que já veio pronto da seguradora.
+
+- `setMktCardFocusView(key, 'readonly' | 'form')` alterna qual dos dois (`#mktReadonly-{key}`
+  / `#mktEditForm-{key}`) fica visível dentro do mesmo `#mktBody-{key}`; o botão "Concluir" é
+  único e compartilhado pelos dois.
+- **Quem decide qual visão abrir é a origem do dado no momento do clique, não o status:**
+  `openMktCardFocus(key)` (chamada pelo olho) abre `readonly` quando `card.dataset.origem ===
+  'auto'`, `form` caso contrário. `onMktStatusChange` — que é sempre uma edição manual de
+  verdade, o usuário acabou de mexer no select — chama `openMktCardFocus(key, { forceForm:
+  true })`, pulando a apresentação e indo direto pro formulário mesmo que o card já estivesse
+  `'auto'` (ex.: sobrescrever manualmente o status que a API tinha devolvido).
+- Clicar de novo no olho com o card **já aberto** nunca reseta a visão escolhida (`
+  alreadyOpenInEdit` em `openMktCardFocus`) — sem essa checagem, reabrir o mesmo card depois
+  de já ter trocado pra "Editar valores" voltaria pra readonly e descartaria a escolha do
+  usuário.
+- Como `switchMktCardToEditForm(key)` (o botão "Editar valores") só troca a visão — não
+  dispara `input`/`change` — abrir o formulário sozinho **não** vira `origem: 'manual'`; só
+  vira quando o usuário de fato altera algum campo (mesmo `markMktCardManual` de sempre). Por
+  isso reabrir o mesmo card sem ter digitado nada volta a mostrar a apresentação somente-leitura.
+
+### 4.5 Compatibilidade com nomes fora do catálogo — "Outras seguradoras (importado)"
+
+Snapshots salvos antes da 2.43 podem ter `row.seguradora` como texto livre que não bate com
+nenhum `label` do catálogo (ex.: uma seguradora digitada manualmente que não está nas 35
+listadas). `matchMktKeyByLabel(label)` normaliza (maiúsculas, sem acento) e tenta casar
+exatamente contra o catálogo; sem correspondência, a linha entra em `extras[]` da aba de
+tomador e é renderizada numa seção à parte (`#mktLegacyExtra`, título "Outras seguradoras
+(importado de um tomador salvo)") com nome livre editável e botão remover — reaproveita o
+markup `.tc-insurer-block`. Não há como criar uma entrada nova aqui a partir desta versão; é
+só um caminho de leitura para não perder dado histórico. `buildMktParsedData()` inclui os
+extras no `rows[]` final com `seguradoraKey: null`.
+
+### 4.6 Estrutura Parsed (`rows[]`) — 2.43
 
 ```js
 {
   rows: [
     {
-      seguradora: string,
-      status: 'aprovado' | 'declinado' | 'concorrente' | 'bloqueado',
-      statusCcg: string | null,
+      seguradora: string,             // label comercial (ex.: "AXA")
+      seguradoraKey: string | null,   // NOVO — chave do catálogo (null = extra/legado, ver 4.5)
+      status: 'aprovado' | 'concorrente' | 'declinado' | 'erro_portal' | 'enviar_balancos',
       limite: number,
-      modalidade: string,
+      modalidade: string,             // 1ª modalidade (compat)
       valorModal: number,
       taxa: number | string | null,
-      venc: string | null,
-      modalidades: [{ label, value, taxa }]
+      modalidades: [{ label, value, taxa }],
+      origem: 'auto' | 'manual'       // NOVO — se o card veio de API sem edição, ou manual/editado
+      // statusCcg e venc: REMOVIDOS. Um snapshot antigo que ainda tenha esses campos é lido
+      // sem erro, mas eles não são renderizados nem voltam a existir ao salvar de novo.
     }
   ],
   tomador: string | null,
@@ -196,17 +421,35 @@ As classes CSS `tc-email-status-ccg-head` e `tc-email-status-ccg-cell` mantem um
 }
 ```
 
-### 4.4 Salvar tomador e reabrir histórico (D1)
+`buildMktParsedData()` (substitui `buildManualParsedData()`) lê a grade viva da aba ativa (35
+cards + extras) para montar esse objeto — mesmo padrão de "ler o DOM no momento de gerar", só
+que sobre a grade fixa em vez de blocos dinâmicos.
 
-Front-end conectado aos endpoints da seção 13. `_tcOrigemAtual` (`'upload' | 'manual'`) rastreia qual dos dois modos gerou o `parsedData` atual — definida em `handleFile()` (sucesso do upload) e em `generateDashboardFromForm()`, e lida por `salvarTomadorAtual()` ao montar o payload e por `updateTcSubNav()` para destacar o sub-item certo da sidebar quando a página é `dashboard` (página compartilhada pelos dois modos).
+**Leitura compatível de snapshots antigos** (ao reabrir, ver 4.8): o antigo status `bloqueado`
+(e qualquer valor desconhecido) é mapeado para `declinado` — `mapLegacyRowStatus(status)`.
+Não há equivalente exato para `bloqueado` no novo modelo de 5 status; `declinado` é a leitura
+mais próxima de uma decisão de negócio de bloqueio.
 
-- **Botão "Salvar tomador"** (`#btnSalvarTomador`, dentro de `#page-dashboard`, logo abaixo do hero): `salvarTomadorAtual()` valida que `parsedData.cnpj` tem 14 dígitos (mesma normalização do Worker, `onlyDigits()` espelhando `normalizeCnpj()`), monta `{ cnpj, tomador, origem, rows }` e chama `salvarTcAnalise()` (`deepseek.js`). Sem CNPJ válido, mostra erro em `#tcSaveStatus` sem chamar o Worker. `resetTcSaveStatus()` limpa a mensagem toda vez que um novo dashboard é gerado (evita mensagem de uma análise anterior sobrando na tela).
-- **Página "TCs salvos"** (`#page-tc-salvos`, tab `tc-salvos`): console de busca igual ao da Consulta de Limites (mesmas classes `.lim-console`/`.lim-console-*`, reaproveitadas), campo único `#tcSalvosQueryInput` — **CNPJ ou nome do tomador**. `buscarTcSalvos()` decide o modo no cliente: se o texto digitado tem 14 dígitos após remover não-dígitos, busca por CNPJ (`listarTcAnalises({ cnpj })`); senão, busca por nome com o texto original (`listarTcAnalises({ nome })`). Sem mascara de CNPJ no campo (`fmtTcCnpj` foi removido dele) — texto livre, já que agora também precisa aceitar nome. `renderTcSalvosResultados()` monta um card (`.tc-salvo-card`) por análise, sempre mostrando o CNPJ (`.tc-salvo-cnpj`, formatado por `formatTcCnpj()`) além do nome — necessário porque uma busca por nome pode trazer tomadores diferentes com nomes parecidos e CNPJs distintos (ver 13.2). Cada card tem:
-  - **Abrir** → `abrirTcSalvo(id)` chama `buscarTcAnalise(id)`, repopula `parsedData` e `_tcOrigemAtual`, e chama `generateDashboard()` (que já navega para `dashboard` sozinho).
-  - **Remover** → `removerTcSalvo(id)` confirma via `confirm()`, chama `apagarTcAnalise(id)` e atualiza a lista.
-- **Funções em `deepseek.js`**: `salvarTcAnalise(payload)`, `listarTcAnalises({ cnpj } | { nome })`, `buscarTcAnalise(id)`, `apagarTcAnalise(id)` — wrappers finos sobre `fetch` para `/v1/tc/analises`, no mesmo padrão de `consultarLimitesSeguradoras()` (erro lança `Error` com status HTTP no texto). `listarTcAnalises` monta a query string via `URLSearchParams`, incluindo só o parâmetro presente no filtro.
-- Nenhuma mudança no contrato JSON de `rows[]` (4.3) nem no schema do banco (13.1) — esta seção só liga UI já existente aos endpoints já testados.
-- `.tc-save-bar-wrap` (botão "Salvar tomador" + status) entra na mesma lista de elementos ocultos durante a exportação (`body.pdf-generating`) e na impressão nativa (`@media print`), junto de `.search-bar-wrap`/`.btn-download`/`.topbar-download` — sem isso o botão e a mensagem de "Salvo com sucesso" apareciam no PDF exportado.
+### 4.7 Tabela/E-mail e XLSX — colunas atualizadas
+
+`buildTcEmailTableHtml()`/`exportTcEmailTableXlsx()` (funções inalteradas de nome) removeram
+as colunas **Status CCG** e **Vencimentos**. Ordem atual: Seguradora, Capacidade Total,
+Modalidades, Limites por Modalidade, Taxas por Modalidade, Status. As classes CSS
+`tc-email-status-ccg-head`/`tc-email-status-ccg-cell` foram removidas (não há mais coluna
+correspondente). O XLSX ganhou cores para os 2 status novos (`erro_portal` no mesmo tom
+neutro do antigo `bloqueado`; `enviar_balancos` em tom ciano/accent, distinto dos demais).
+
+### 4.8 Salvar tomador e reabrir histórico (D1)
+
+Front-end conectado aos endpoints da seção 13 — **nenhuma mudança de schema ou endpoint**.
+
+- **Botão "Salvar tomador"** (`#btnSalvarTomador`, dentro de `#page-dashboard`, logo abaixo do hero): `salvarTomadorAtual()` valida que `parsedData.cnpj` tem 14 dígitos (mesma normalização do Worker, `onlyDigits()` espelhando `normalizeCnpj()`), monta `{ cnpj, tomador, origem: 'manual', rows }` e chama `salvarTcAnalise()` (`deepseek.js`). `origem` é sempre `'manual'` agora — não existe mais o modo `'upload'` (ver 4.0); snapshots antigos com `origem: 'upload'` continuam válidos e exibem a etiqueta "Planilha (legado)" na lista (13.2/4.8), só não é mais um valor que a UI atual produz. Sem CNPJ válido, mostra erro em `#tcSaveStatus` sem chamar o Worker. `resetTcSaveStatus()` limpa a mensagem toda vez que um novo dashboard é gerado.
+- **Página "Tomadores salvos"** (`#page-tomadores-salvos`, tab `tomadores-salvos`, antiga "TCs salvos"): console de busca igual ao de antes (mesmas classes `.lim-console`/`.lim-console-*`, reaproveitadas), campo único `#tomadoresSalvosQueryInput` — **CNPJ ou nome do tomador**. `buscarTomadoresSalvos()` (renomeada de `buscarTcSalvos`) decide o modo no cliente: 14 dígitos → busca por CNPJ (`listarTcAnalises({ cnpj })`); senão → busca por nome (`listarTcAnalises({ nome })`). `renderTomadoresSalvosResultados()` (renomeada) monta um card (`.tc-salvo-card`) por análise, sempre mostrando o CNPJ além do nome (ver 13.2). Cada card tem:
+  - **Abrir** → `abrirTomadorSalvo(id)` (renomeada e reescrita de `abrirTcSalvo`): chama `buscarTcAnalise(id)`, mapeia cada `row` do snapshot para uma chave do catálogo (`seguradoraKey` se presente e válido, senão `matchMktKeyByLabel`) ou para `extras[]` quando não casa, mapeia status legado (`mapLegacyRowStatus`, ver 4.6) e **abre uma NOVA aba de tomador** pré-preenchida (nunca sobrescreve a aba ativa — preserva qualquer trabalho em andamento nas outras abas). Navega para `#page-mkt` com o filtro **"todas"** (garante que toda seguradora restaurada apareça, mesmo que não seja de portal) — ao contrário do comportamento anterior, **não** pula direto para o dashboard: o usuário cai na tela de edição, pode ajustar, rodar uma nova consulta de mercado e só então gerar o dashboard/exportar.
+  - **Remover** → `removerTomadorSalvo(id)` (renomeada de `removerTcSalvo`) confirma via `confirm()`, chama `apagarTcAnalise(id)` e atualiza a lista.
+- **Funções em `deepseek.js`**: inalteradas — `salvarTcAnalise(payload)`, `listarTcAnalises({ cnpj } | { nome })`, `buscarTcAnalise(id)`, `apagarTcAnalise(id)`.
+- Nenhuma mudança no schema do banco (13.1) — só o conteúdo de `rows[]` ganhou os campos `seguradoraKey`/`origem` e perdeu `statusCcg`/`venc` (4.6), sempre dentro do mesmo `rows_json` de texto.
+- `.tc-save-bar-wrap` (botão "Salvar tomador" + status) continua oculto durante a exportação (`body.pdf-generating`) e na impressão nativa (`@media print`).
 
 ## 5. Fluxos IA
 
@@ -464,7 +707,7 @@ A estratégia de chaves, o TTL de 6h e a regra de as notas de chunk viverem fora
 
 ### 5.7 Contexto da demanda — modalidade e considerações
 
-Aplicável **somente** a Seguro Garantia e Fiança Locatícia. T&C Dashboard, Análise Financeira, Análise de Apólice e Consulta de Limites não foram alterados.
+Aplicável **somente** a Seguro Garantia e Fiança Locatícia. T&C, Análise Financeira e Análise de Apólice não foram alterados por esta seção.
 
 #### 5.7.1 Catálogos de modalidades
 
@@ -995,28 +1238,31 @@ Classes CSS adicionadas:
 - `.ap-list-title`
 - `.ap-list-limite`
 
-## 10. Fluxo 6 — Consulta de Limites por Seguradora
+## 10. Consulta de Mercado — Worker e normalização por seguradora
+
+**A página independente "Consulta de Limites" foi removida na 2.43** — sua UI (console de
+CNPJ, cards, badges, modal) foi substituída pela grade de cards de mercado descrita na seção
+4. Esta seção documenta o que **não mudou**: o endpoint do Worker (10.2) e a lógica de
+normalização por seguradora (10.1a, hoje consumida por `aplicarResultadosMercado()` em vez de
+`renderLimitesResults()`). Nenhuma credencial, endpoint ou secret mudou.
 
 ### 10.0 Visão geral
 
-Consulta em tempo real (sem upload de arquivo) do limite disponível para um CNPJ em cada seguradora integrada. O front-end envia apenas `{ cnpj, seguradoras[] }` para o Worker; toda credencial fica nos secrets do Worker.
+Consulta em tempo real (sem upload de arquivo) do limite disponível para um CNPJ em cada
+seguradora integrada, disparada pelo botão "Consultar mercado" da seção 4.3. O front-end
+envia apenas `{ cnpj, seguradoras[] }` para o Worker; toda credencial fica nos secrets do
+Worker.
 
-### 10.1 Front-end
+### 10.1 Front-end — `aplicarResultadosMercado()` (ver seção 4.3)
 
-- Aba `consulta-limites` (`index.html`), sem dependência de IA/chat.
-- Entrada em um **console de consulta** (`.lim-console`): eyebrow "Consulta automática · 9 seguradoras integradas" com indicador dourado pulsante (`.lim-console-dot`, respeita `prefers-reduced-motion`), campo instrumento (`.lim-console-field` com tag dourada `.lim-console-tag` "CNPJ" + input `.lim-console-input` em `--font-mono`) e o botão de ação `.lim-console-submit` (único elemento verde-escuro). O input aplica máscara ao vivo via `oninput="fmtTcCnpj(this)"` e dispara a consulta no Enter. Não há seleção manual de seguradoras — `consultarLimitesUI()` sempre consulta as 9 integradas (`LIM_ALL_SEGURADORAS`). Em telas ≤560px o console empilha (campo e botão full-width).
-- Antes da primeira consulta, `renderLimitesPlaceholders()` (chamada por `switchTab('consulta-limites')`) já exibe um card por seguradora em estado **Aguardando** (`buildLimWaitingCardHtml`), com logo e texto instrutivo — nunca sobrescreve resultados já carregados (`#limResults[data-has-results]`).
-- `deepseek.js`: `consultarLimitesSeguradoras(cnpj, seguradoras)` — `POST` para `${DEEPSEEK_WORKER_URL}/v1/limits/query`.
-- `app.js`: `consultarLimitesUI()` valida CNPJ (14 dígitos), chama `consultarLimitesSeguradoras` e renderiza via `renderLimitesResults(data)`.
-- Renderização em **cards por seguradora** (grid `.lim-cards-grid`, `buildLimResultCardHtml`): logo da seguradora (`LIM_LOGO_MAP` → `assets/*.png`, via `limLogoHtml()`), nome, badge de status colorido. Quando há modalidades, botão "Ver limites do tomador" abre um modal (`openLimiteModal` / `closeLimiteModal`); quando não há, o card mostra a mensagem de negócio/erro diretamente (`.lim-card-desc--muted`) em vez de um botão desabilitado.
-- `.lim-cards-grid` usa **3 colunas fixas** no desktop (`repeat(3, minmax(0, 1fr))`, as 9 seguradoras cabem em 3×3) — antes era `auto-fill` responsivo por largura de card. Colapsa para 2 colunas em ≤900px e 1 coluna em ≤560px (mesmo breakpoint do `.lim-console-row`).
-- No modal, os campos `valor` (`fmtBRL`), `taxa` e `segurado` de cada modalidade só são renderizados quando não são `null`/`undefined` — nunca aparece um traço `—` como placeholder de dado ausente. Quando `n.mensagem` existe **e** há modalidades (ex.: Junto sem taxa disponível), a mensagem aparece como nota (`.lim-modal-note`) no topo do corpo do modal.
-- Cabeçalho `.lim-tomador-header` exibe nome e CNPJ do tomador, extraídos do primeiro resultado que os retornar (nem toda seguradora devolve o nome).
-- **Limites zerados nunca aparecem**: `isZeroLimite(valor)` filtra qualquer modalidade cujo valor numérico seja exatamente `0` (valor `null`/`undefined` — ainda sem taxa cotada — continua aparecendo, pois é informativo, não "sem limite"). Se todas as modalidades de uma seguradora forem filtradas, o card cai para `sem_limite`.
+- `deepseek.js`: `consultarLimitesSeguradoras(cnpj, seguradoras)` — `POST` para `${DEEPSEEK_WORKER_URL}/v1/limits/query`, inalterada.
+- `app.js`: `consultarMercadoUI()` valida CNPJ (14 dígitos), chama `consultarLimitesSeguradoras(cnpj, MKT_API_KEYS)` e aplica o resultado card a card via `aplicarResultadosMercado(data)` (seção 4.3) — substitui a antiga dupla `consultarLimitesUI()`/`renderLimitesResults()`.
+- **Limites zerados nunca aparecem**: `isZeroLimite(valor)` filtra qualquer modalidade cujo valor numérico seja exatamente `0` (valor `null`/`undefined` — ainda sem taxa cotada — continua aparecendo, pois é informativo, não "sem limite"). Se todas as modalidades de uma seguradora forem filtradas, o resultado cai para `sem_limite` → card fica `declinado` (ver mapeamento em 4.3).
+- Removidos por não terem mais uso: `LIM_LOGO_MAP`/`limLogoHtml` (a fase atual não usa logo, só o nome — ver pedido do usuário), `LIM_ALL_SEGURADORAS`/`LIM_LABELS`, `renderLimitesPlaceholders`/`buildLimWaitingCardHtml`, `LIM_STATUS_CONFIG`, `buildLimResultCardHtml`/`renderLimitesResults`, `openLimiteModal`/`closeLimiteModal`, `_ultimoLimitesData`, `fmtLimiteTimestamp`/`fmtCnpjDisplay`. O status de cada seguradora agora é um campo editável (`<select>` no card), não mais um badge somente leitura com modal de detalhe.
 
-### 10.1a Normalização por seguradora (app.js)
+### 10.1a Normalização por seguradora (app.js) — reaproveitada sem alteração
 
-Cada seguradora tem um formato de resposta próprio; `normalizeLimiteResultado(r)` despacha para o normalizador correto e retorna sempre `{ statusKey, modalidades[], mensagem?, nomeTomador?, cnpjTomador? }`. Quando `r.status !== 'ok'` (falha técnica do Worker, incluindo timeout), `classifyErrorMessage(r.erro)` decide o `statusKey` por palavra-chave em vez de sempre cair em `erro`.
+Cada seguradora tem um formato de resposta próprio; `normalizeLimiteResultado(r)` despacha para o normalizador correto e retorna sempre `{ statusKey, modalidades[], mensagem?, nomeTomador?, cnpjTomador? }`. Quando `r.status !== 'ok'` (falha técnica do Worker, incluindo timeout), `classifyErrorMessage(r.erro)` decide o `statusKey` por palavra-chave em vez de sempre cair em `erro`. Esta função e as quatro abaixo são usadas **sem nenhuma alteração** pela nova `aplicarResultadosMercado()` (seção 4.3) — só o mapeamento final de `statusKey` para status de UI mudou (`mapNormStatusToMkt`, seção 4.3), de 7 valores para os 5 da seção 4.4.
 
 | Função | Seguradora(s) | Lógica |
 |---|---|---|
@@ -1024,8 +1270,6 @@ Cada seguradora tem um formato de resposta próprio; `normalizeLimiteResultado(r
 | `normalizeLimiteJunto` | `junto` | `dados` é array de modalidades com `submodalities[]`, cada uma já enriquecida pelo Worker com `limitAvailable`/`rate` reais (ver 10.2). Lista vazia (ou só zerados) → `sem_limite`; senão `aprovado` com `valor`/`taxa` reais quando disponíveis |
 | `normalizeLimiteOnpoint` | `essor`, `sombrero`, `newe`, `mitsui`, `axa`, `now` | Aceita `dados.Response[0]` (envelope padrão) **ou** `dados` já desembrulhado pelo Worker; se `CanSetupAProposal` e `LimitsAndRates[]` presentes (após `.filter(Boolean)` e filtro de zerados) → `aprovado`; senão lê `Reasons[]`/`Errors[]` e classifica via `classifyErrorMessage` (`bloqueado`, `nomeado`, `instavel`, `sem_resposta` ou `sem_limite`) |
 | `normalizeLimiteFator` | `fator` | `cd_retorno !== 0` é sempre resposta de negócio (nunca erro técnico): `nm_retorno` é classificado via `classifyErrorMessage` — `nomeado` (mensagem original exibida, é acionável) se menciona corretor, senão `sem_limite` com a mensagem substituída pelo texto padrão `LIM_SEM_LIMITE_MSG` (o jargão bruto da Fator, ex. "tomador deve estar Aprovado e dentro da Data de Validade", não é repassado ao usuário). Quando `cd_retorno === 0`, parseia `DadosTomador[]` em modalidades (`NomeGrupoSubLimite`, `ValorLimiteDisponivel`, `ValorTaxa`), filtrando zerados; se a lista ficar vazia após o filtro, também usa `LIM_SEM_LIMITE_MSG` |
-
-`LIM_STATUS_CONFIG` mapeia `statusKey` para label e classe de badge: `aprovado` (verde), `bloqueado`/`nomeado`/`sem_resposta`/`instavel` (âmbar), `sem_limite` (cinza neutro), `erro` (vermelho), `aguardando` (neutro, só no placeholder pré-consulta).
 
 `classifyErrorMessage` reconhece, além do `"motor de crédito"`/`"problema ao rodar"` (família "instável"):
 - `"negado"` combinado com `"técnic[a/o]"` (JNS, ex.: `"Risco negado por questões técnicas."`) → `sem_limite` (cinza) — é decisão de negócio (risco negado), o "por questões técnicas" é jargão da própria JNS para negativa de crédito, não convite a tentar de novo;
@@ -1131,14 +1375,14 @@ Em caso de `401`, o token é invalidado e a consulta refeita uma vez com login n
 - O front-end já está preparado para o Worker novo.
 - Para ativar memória Redis de fato em produção, é necessário publicar `workers/deepseek-memory-worker.js` no mesmo domínio do Worker atual ou atualizar `DEEPSEEK_WORKER_URL`.
 - Se o Worker novo ainda não estiver publicado, o front-end usa fallback automático para o endpoint legado `/`.
-- Para a Consulta de Limites, publicar o Worker atualizado (`/v1/limits/query`) e configurar todos os secrets listados na seção 10.3, incluindo `ONPOINT_BROKER_CNPJ` e `FATOR_CORRETOR_ID`.
-- CORS do Worker hoje libera `Access-Control-Allow-Origin: '*'` para todos os endpoints. Como a Consulta de Limites expõe dados de crédito mais sensíveis que o proxy de IA, considerar restringir a origem ao domínio de produção do front-end.
+- Para a consulta de mercado (seção 4), publicar o Worker atualizado (`/v1/limits/query`) e configurar todos os secrets listados na seção 10.3, incluindo `ONPOINT_BROKER_CNPJ` e `FATOR_CORRETOR_ID`.
+- CORS do Worker hoje libera `Access-Control-Allow-Origin: '*'` para todos os endpoints. Como a consulta de mercado expõe dados de crédito mais sensíveis que o proxy de IA, considerar restringir a origem ao domínio de produção do front-end.
 
 ## 13. Persistência — Histórico de T&C (Cloudflare D1)
 
 ### 13.0 Visão geral
 
-Único uso de banco de dados relacional do projeto: guardar cada análise do **T&C Dashboard** (upload de planilha ou tabela manual) como um snapshot recuperável depois, associado ao CNPJ do tomador. Não cobre autenticação, nem histórico de Análise Financeira/Seguro Garantia/Fiança/Apólice/Consulta de Limites — só o fluxo 1.
+Único uso de banco de dados relacional do projeto: guardar cada análise consolidada de mercado do **T&C** (seção 4 — cards automáticos e manuais) como um snapshot recuperável depois, associado ao CNPJ do tomador. Não cobre autenticação, nem histórico de Análise Financeira/Seguro Garantia/Fiança/Apólice — só o fluxo 1.
 
 Banco: **Cloudflare D1** (SQLite gerenciado), no mesmo Worker que já processa os outros fluxos — sem infraestrutura nova, sem segundo fornecedor.
 
@@ -1164,7 +1408,7 @@ CREATE TABLE tc_analises (
 );
 ```
 
-**Cada análise é um snapshot, não um relatório normalizado.** `rows_json` guarda o array `rows[]` inteiro (seção 4.3) exatamente como `parseWorkbook`/`buildManualParsedData` o produzem — nenhuma coluna por seguradora ou modalidade. O objetivo declarado é arquivar o que já foi feito, não cruzar dados entre seguradoras ao longo do tempo; se essa necessidade aparecer, uma tabela filha normalizada pode ser derivada destes snapshots depois, sem migração destrutiva.
+**Cada análise é um snapshot, não um relatório normalizado.** `rows_json` guarda o array `rows[]` inteiro (seção 4.6) exatamente como `buildMktParsedData()` o produz — nenhuma coluna por seguradora ou modalidade. O objetivo declarado é arquivar o que já foi feito, não cruzar dados entre seguradoras ao longo do tempo; se essa necessidade aparecer, uma tabela filha normalizada pode ser derivada destes snapshots depois, sem migração destrutiva.
 
 `tc_tomadores` existe para não duplicar o mesmo CNPJ a cada análise: `handleCreateTcAnalise` faz `INSERT ... ON CONFLICT(cnpj) DO UPDATE` (atualiza `nome` e `atualizado_em`, preserva o `id`).
 
@@ -1177,17 +1421,17 @@ CREATE TABLE tc_analises (
 | `GET /v1/tc/analises/:id` | Devolve o snapshot completo, incluindo `rows[]` já parseado de volta de JSON — pronto para recarregar em `parsedData` e renderizar o dashboard |
 | `DELETE /v1/tc/analises/:id` | Remove um snapshot. 404 lógico (`Analise nao encontrada`) vira erro 500 pelo mesmo padrão do restante do Worker (ver 13.4) |
 
-`cnpj` é normalizado com a mesma `normalizeCnpj()` já usada pela Consulta de Limites (seção 10) — reaproveitada, não duplicada. `requireDb(env)` lança erro explícito se o binding `DB` não estiver configurado, no mesmo estilo de `redisCall` para `UPSTASH_REDIS_REST_URL` ausente.
+`cnpj` é normalizado com a mesma `normalizeCnpj()` já usada pela consulta de mercado (seção 10) — reaproveitada, não duplicada. `requireDb(env)` lança erro explícito se o binding `DB` não estiver configurado, no mesmo estilo de `redisCall` para `UPSTASH_REDIS_REST_URL` ausente.
 
 **Busca por CNPJ ou por nome (`handleListTcAnalises`):** exatamente um dos dois parâmetros é aceito por chamada — `cnpj` é normalizado e exige 14 dígitos (busca exata, direto em `tc_analises.cnpj`); `nome` faz `LIKE` parcial case-insensitive contra `tc_tomadores.nome` (via `JOIN tc_analises.tomador_id = tc_tomadores.id`), **não** contra `tc_analises.tomador` — `tc_tomadores` é a fonte canônica do nome, então a busca não duplica nem perde resultado por causa de pequenas variações de grafia entre snapshots do mesmo tomador. Sem nenhum parâmetro, erro `Informe um CNPJ ou o nome do tomador para buscar.`; `cnpj` presente e inválido continua sendo erro (`Informe um CNPJ valido com 14 digitos.`), mesmo com `nome` também presente. Ambos os modos aplicam `LIMIT 50` (`TC_SEARCH_RESULT_LIMIT`) — uma busca por nome genérico pode, em tese, casar com muito mais tomadores do que uma busca por CNPJ (sempre no máximo um). Testado com SQLite real (`node:sqlite`): CNPJ exato, nome parcial trazendo múltiplos CNPJs distintos, case-insensitividade, ausência de parâmetros e CNPJ inválido.
 
-### 13.3 Front-end — conectado (ver seção 4.4 e 1.1z)
+### 13.3 Front-end — conectado (ver seção 4.8 e 1.1z)
 
-Os endpoints acima estão ligados à UI: botão "Salvar tomador" no T&C Dashboard (`salvarTomadorAtual()`) e página "TCs salvos" (`#page-tc-salvos`, sub-item da pasta "Relatório T&C" na sidebar) para buscar, reabrir e remover snapshots por CNPJ. Detalhes de função e markup em 4.4; estrutura da sidebar em pasta em 1.1z.
+Os endpoints acima estão ligados à UI: botão "Salvar tomador" no T&C Dashboard (`salvarTomadorAtual()`) e página "Tomadores salvos" (`#page-tomadores-salvos`, sub-item da pasta "Relatório T&C" na sidebar) para buscar, reabrir e remover snapshots por CNPJ. Detalhes de função e markup em 4.8; estrutura da sidebar em pasta em 1.1z.
 
 ### 13.4 Convenções e limitações conhecidas
 
 - Todo endpoint devolve `version: WORKER_VERSION`, como os demais fluxos.
-- Erros de validação (CNPJ inválido, `rows` que não é array, id inexistente) lançam `Error` comum e caem no mesmo catch-all do `fetch()` do Worker — sempre HTTP 500, igual ao restante do Worker hoje (`validateCreateJobBody`, CNPJ da Consulta de Limites). Não é o código HTTP mais correto (um 400/404 seria mais preciso), mas é consistente com o padrão já existente; não foi introduzido um padrão novo só para este recurso.
+- Erros de validação (CNPJ inválido, `rows` que não é array, id inexistente) lançam `Error` comum e caem no mesmo catch-all do `fetch()` do Worker — sempre HTTP 500, igual ao restante do Worker hoje (`validateCreateJobBody`, CNPJ da consulta de mercado). Não é o código HTTP mais correto (um 400/404 seria mais preciso), mas é consistente com o padrão já existente; não foi introduzido um padrão novo só para este recurso.
 - Sem paginação em `GET /v1/tc/analises?cnpj=...` — o volume esperado (histórico de um único tomador) não justifica ainda.
 - Sem autenticação própria — depende do que já existe fora deste Worker; **nenhuma mudança de auth foi feita como parte desta persistência.**
