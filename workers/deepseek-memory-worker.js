@@ -5,7 +5,7 @@ const CORS_HEADERS = {
 };
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
-const WORKER_VERSION = '2026-08-14.1';
+const WORKER_VERSION = '2026-08-18.2';
 const PRIMARY_DEEPSEEK_MODEL = 'deepseek-chat';
 const FALLBACK_DEEPSEEK_MODEL = 'deepseek-chat';
 const JOB_TTL_SECONDS = 60 * 60 * 6;
@@ -62,6 +62,12 @@ const ONPOINT_INSURERS = {
   now: { name: 'Now Seguros S.A.', id: '992f6760-66d8-4501-b0ca-1c716da9b7b7', axaRoute: false },
 };
 const LIMITS_TOKEN_TTL_SECONDS = 60 * 25;
+// Resultado consolidado de uma consulta de mercado. Evita refazer a mesma
+// sequência de APIs ao trocar de aba, dar duplo clique ou consultar o mesmo
+// tomador por mais de uma pessoa em um intervalo curto.
+const LIMITS_RESULT_CACHE_TTL_SECONDS = 60 * 5;
+const LIMITS_QUERY_RETRY_AFTER_MS = 2500;
+const LIMITS_QUERY_LOCK_TTL_MS = 6 * 60 * 1000;
 
 export default {
   async fetch(request, env) {
@@ -1254,22 +1260,78 @@ async function handleLimitsQuery(request, env) {
     : ALL_INSURER_KEYS;
   if (requested.length === 0) throw new Error('Nenhuma seguradora valida informada.');
 
-  const resultados = [];
+  const cacheKey = limitsResultCacheKey(cnpj, requested);
+  const cached = await redisGet(env, cacheKey);
+  if (cached) return jsonResponse({ ...cached, cache: 'hit' });
 
-  // Fila sequencial: uma seguradora por vez (nunca em paralelo).
-  // Evita sobrecarregar integracoes como a Onpoint, que agrupa varias
-  // seguradoras (essor/sombrero/newe/mitsui/axa/now) no mesmo endpoint e
-  // rejeita chamadas concorrentes para o mesmo CNPJ.
-  for (const key of requested) {
-    resultados.push(await queryInsurer(env, cnpj, key));
+  // Não mantém uma requisição do Worker esperando: a chamada concorrente recebe
+  // 202 e o navegador a repete. Assim a fila não gasta dezenas de subrequests
+  // de polling dentro da mesma invocação.
+  const lockToken = crypto.randomUUID();
+  if (!await acquireLimitsQueryLock(env, cnpj, lockToken)) {
+    return jsonResponse({
+      status: 'pending',
+      message: 'Já existe uma consulta de mercado em andamento para este CNPJ.',
+      retryAfterMs: LIMITS_QUERY_RETRY_AFTER_MS,
+    }, 202);
   }
 
-  return jsonResponse({
-    version: WORKER_VERSION,
-    cnpj,
-    consultadoEm: new Date().toISOString(),
-    resultados,
-  });
+  try {
+    const cachedAfterLock = await redisGet(env, cacheKey);
+    if (cachedAfterLock) return jsonResponse({ ...cachedAfterLock, cache: 'hit' });
+
+    const resultados = [];
+    // Fila sequencial: uma seguradora por vez (nunca em paralelo).
+    // Evita sobrecarregar integracoes como a Onpoint, que agrupa varias
+    // seguradoras (essor/sombrero/newe/mitsui/axa/now) no mesmo endpoint e
+    // rejeita chamadas concorrentes para o mesmo CNPJ.
+    for (const key of requested) {
+      resultados.push(await queryInsurer(env, cnpj, key));
+    }
+
+    const response = {
+      version: WORKER_VERSION,
+      cnpj,
+      consultadoEm: new Date().toISOString(),
+      resultados,
+      cache: 'miss',
+    };
+    await redisSet(env, cacheKey, response, LIMITS_RESULT_CACHE_TTL_SECONDS);
+    return jsonResponse(response);
+  } finally {
+    try {
+      await releaseLimitsQueryLock(env, cnpj, lockToken);
+    } catch (err) {
+      // O TTL ainda libera a fila; não transforma uma consulta concluída em erro
+      // apenas porque a remoção antecipada do lock falhou.
+      console.error('Falha ao liberar lock da consulta de mercado:', err);
+    }
+  }
+}
+
+function limitsResultCacheKey(cnpj, requested) {
+  return `limits:result:${cnpj}:${[...requested].sort().join(',')}`;
+}
+
+function limitsQueryLockKey(cnpj) {
+  return `limits:query-lock:${cnpj}`;
+}
+
+async function acquireLimitsQueryLock(env, cnpj, token) {
+  const res = await redisCall(env, [
+    'SET', limitsQueryLockKey(cnpj), token, 'NX', 'PX', String(LIMITS_QUERY_LOCK_TTL_MS),
+  ]);
+  return res.result === 'OK';
+}
+
+async function releaseLimitsQueryLock(env, cnpj, token) {
+  // Só o dono do lock pode removê-lo; isso evita que uma requisição antiga
+  // apague a fila de outra após o TTL expirar.
+  await redisCall(env, [
+    'EVAL',
+    'if redis.call("GET", KEYS[1]) == ARGV[1] then return redis.call("DEL", KEYS[1]) else return 0 end',
+    '1', limitsQueryLockKey(cnpj), token,
+  ]);
 }
 
 async function queryInsurer(env, cnpj, key) {
@@ -1540,9 +1602,7 @@ const ONPOINT_IN_PROGRESS_MAX_ATTEMPTS = 3;
 // Como o Worker roda distribuido (multiplos isolates/colos, sem processo unico
 // persistente), um lock em memoria (Map) nao seria confiavel — usa o Redis
 // (ja usado para cache de token) como lock distribuido via SET NX PX.
-const ONPOINT_LOCK_TTL_MS = 30000;
-const ONPOINT_LOCK_WAIT_MS = 400;
-const ONPOINT_LOCK_MAX_WAIT_MS = 20000;
+const ONPOINT_LOCK_TTL_MS = 60000;
 
 function onpointLockKey(cnpj) {
   return `limits:onpoint-lock:${cnpj}`;
@@ -1553,13 +1613,8 @@ function onpointLockKey(cnpj) {
 // por mensagem abaixo como segunda linha de defesa se a corrida persistir.
 async function acquireOnpointLock(env, cnpj) {
   const key = onpointLockKey(cnpj);
-  const deadline = Date.now() + ONPOINT_LOCK_MAX_WAIT_MS;
-  for (;;) {
-    const res = await redisCall(env, ['SET', key, '1', 'NX', 'PX', String(ONPOINT_LOCK_TTL_MS)]);
-    if (res.result === 'OK') return true;
-    if (Date.now() >= deadline) return false;
-    await sleep(ONPOINT_LOCK_WAIT_MS);
-  }
+  const res = await redisCall(env, ['SET', key, '1', 'NX', 'PX', String(ONPOINT_LOCK_TTL_MS)]);
+  return res.result === 'OK';
 }
 
 async function releaseOnpointLock(env, cnpj) {
@@ -1576,6 +1631,7 @@ function isOnpointInProgressMessage(message) {
 // desistir por timeout).
 async function queryOnpoint(env, cnpj, key) {
   const locked = await acquireOnpointLock(env, cnpj);
+  if (!locked) throw new Error('Onpoint: consulta em andamento para este CNPJ. Aguarde e tente novamente.');
   try {
     return await queryOnpointRequest(env, cnpj, key);
   } finally {
@@ -1607,7 +1663,7 @@ async function queryOnpointRequest(env, cnpj, key, attempt = 1) {
       PolicyHolderCnpj: cnpj,
       Options: {},
     }),
-  }, 25000);
+  }, 45000);
 
   const payload = await parseJsonSafe(res);
   const unwrapped = Array.isArray(payload) && payload.length === 1 ? payload[0] : payload;

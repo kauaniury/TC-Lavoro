@@ -1,6 +1,6 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.53
+> Versao: 2.54
 > Atualizado em: 2026-08-18
 
 ## 1. Visão Geral
@@ -608,6 +608,11 @@ Consulta status do job.
 #### `POST /v1/limits/query`
 
 Consulta de limites por seguradora (ver seção 10).
+
+Quando já houver uma consulta para o mesmo CNPJ, o endpoint devolve temporariamente
+`202 { status: 'pending', retryAfterMs }`; o front-end aguarda esse intervalo e tenta de
+novo, por até seis minutos. Isso cria uma fila distribuída sem manter uma única invocação
+do Worker aberta em polling — cada tentativa é uma nova invocação pequena.
 
 #### `GET /health`
 
@@ -1335,9 +1340,17 @@ Now Seguros usa a mesma credencial já cadastrada da Onpoint (`ONPOINT_APPLICATI
 
 **Regra crítica — a consulta roda inteiramente em fila (`for...of`), nunca em paralelo.** `handleLimitsQuery` consulta as seguradoras solicitadas uma de cada vez, na ordem recebida, aguardando cada `queryInsurer` terminar antes de iniciar a próxima. Isso evita sobrecarregar qualquer integração — em especial a Onpoint, que agrupa `essor`/`sombrero`/`newe`/`mitsui`/`axa`/`now` no mesmo endpoint e rejeita chamadas concorrentes para o mesmo CNPJ — mas agora vale para todas as 9 seguradoras, não só a família Onpoint. Como consequência, o tempo total de resposta escala linearmente com o número de seguradoras consultadas.
 
+**Fila e cache Redis por CNPJ.** Antes de iniciar as APIs, o Worker consulta
+`limits:result:{cnpj}:{seguradoras-ordenadas}` (TTL de 5 minutos). Em cache, devolve o mesmo
+resultado imediatamente. Sem cache, adquire `limits:query-lock:{cnpj}` com `SET NX PX` (TTL de
+6 minutos); uma requisição concorrente não consulta as seguradoras em duplicidade, responde
+`202` e o navegador refaz a tentativa após 2,5 segundos. O lock usa token aleatório e é
+liberado com `EVAL` condicionado ao mesmo token, impedindo uma execução antiga de apagar o lock
+de uma consulta nova. A fila é por CNPJ, para não bloquear tomadores diferentes.
+
 ### 10.3a Tratamento de erro no Worker
 
-- `fetchWithTimeout(url, options, timeoutMs)` (padrão 20s, 25s no Onpoint, **60s na Junto** — `LIMITS_FETCH_TIMEOUT_JUNTO_MS`, ver justificativa abaixo) envolve toda chamada externa com `AbortController`; ao abortar, lança `Error` com mensagem contendo "tempo limite" — o front-end reconhece essa string e classifica como aviso "Sem resposta", nunca como erro técnico vermelho (`classifyErrorMessage` em `app.js`).
+- `fetchWithTimeout(url, options, timeoutMs)` (padrão 20s, **45s no Onpoint**, **60s na Junto** — `LIMITS_FETCH_TIMEOUT_JUNTO_MS`, ver justificativa abaixo) envolve toda chamada externa com `AbortController`; ao abortar, lança `Error` com mensagem contendo "tempo limite" — o front-end reconhece essa string e classifica como aviso "Sem resposta", nunca como erro técnico vermelho (`classifyErrorMessage` em `app.js`).
 - `parseJsonSafe(response)` faz parse defensivo do corpo de erro (nunca estoura se a seguradora devolver texto puro em 5xx) e `extractErrorMessage(payload, fallback)` extrai a mensagem mais específica possível (`message`, `nm_retorno`, `Errors[]`, `errors{}` no formato ASP.NET, `title`, texto bruto).
 - **Junto — fluxo completo de limites** (`queryJunto`): autentica → `GET /policyholders/{cnpj}` + `GET /policyholders/{cnpj}/modalities` em paralelo → se qualquer uma falhar, tenta `POST /policyholders {federalId}` e aguarda 9000ms (propagação assíncrona documentada da Junto) antes de repetir as duas chamadas; se ainda falharem ambas, erro técnico. Para **cada modalidade** retornada por `/modalities`, busca `GET /policyholders/{cnpj}/modalities/{modalidade.id}/rates` usando **sempre o id de nível superior da modalidade** (nunca o id de uma submodalidade — esse endpoint é por modalidade, não por submodalidade; correção desta versão, antes usava `submodalityId ?? modalityId`). Uma falha pontual nessa chamada para uma modalidade não derruba as outras nem remove a modalidade do resultado (try/catch por modalidade — fica sem `limitAvailable`/`rate`, mas continua na lista). A resposta de `/rates` pode trazer mais de uma entrada (uma por submodalidade); `matchJuntoRateEntry` casa cada entrada com sua submodalidade pelo id (`submodalityId`/`subModalityId`/`id`) e, sem id para casar, cai para a posição ou para a única entrada disponível. Retorna o array de modalidades já enriquecido com `limitAvailable`/`rate` por `submodality`.
 - **Junto — timeout de 60s por chamada** (`LIMITS_FETCH_TIMEOUT_JUNTO_MS`): o fluxo da Junto é o mais longo dos 8 integrados (auth → 2 GETs → eventual cadastro + espera fixa de 9s → repete os 2 GETs → 1 GET de rates por modalidade) e já foi observado excedendo o timeout padrão de 20s nesse caminho, retornando "Sem resposta" ao usuário sem necessidade. Autenticação (`getJuntoToken`) e todas as chamadas de `fetchAuthorized` em `queryJunto` (`/policyholders`, `/modalities`, cadastro, `/rates`) usam esse timeout de 60s. **É por chamada individual, não cumulativo** — a sequência completa (várias chamadas + a espera de 9s) pode, em tese, levar bem mais que 60s no total; nenhum timeout agregado foi introduzido para o fluxo inteiro.
@@ -1350,7 +1363,7 @@ O `for...of` sequencial de `handleLimitsQuery` (10.3) só serializa as chamadas 
 
 Como o Worker roda distribuído (múltiplos isolates/colos, sem processo único persistente), um lock em memória (`Map`) não seria confiável — `queryOnpoint(env, cnpj, key)` usa o Redis (Upstash, já usado para cache de token) como lock distribuído:
 
-- Antes de qualquer chamada Onpoint (`queryOnpointRequest`) para um CNPJ, `acquireOnpointLock` tenta `SET limits:onpoint-lock:{cnpj} 1 NX PX 30000` (`ONPOINT_LOCK_TTL_MS`); se não conseguir, aguarda `ONPOINT_LOCK_WAIT_MS` (400ms) e tenta de novo, até um teto de `ONPOINT_LOCK_MAX_WAIT_MS` (~20s) — esgotado o teto, desiste e segue sem lock (a Onpoint ainda tem o retry por mensagem de 10.3a como segunda linha de defesa).
+- Antes de qualquer chamada Onpoint (`queryOnpointRequest`) para um CNPJ, `acquireOnpointLock` tenta `SET limits:onpoint-lock:{cnpj} 1 NX PX 60000` (`ONPOINT_LOCK_TTL_MS`). Se não conseguir, a chamada não entra na API concorrente: devolve a condição “consulta em andamento”. No fluxo normal isso não chega ao usuário, pois o lock maior de `limits:query-lock:{cnpj}` já organiza a fila antes da família Onpoint.
 - `releaseOnpointLock` faz `DEL` da chave no `finally` de `queryOnpoint`, sucesso ou erro — **só quando este mesmo request chegou a adquirir o lock** (`locked === true`), para nunca apagar o lock de outra requisição que esteja com a fila legitimamente ocupada após esta ter desistido por timeout.
 - O lock é por CNPJ, não por seguradora — cobre a família Onpoint inteira, como a Onpoint exige.
 
@@ -1363,9 +1376,15 @@ Tokens de login (JNS, Junto, Fator) são cacheados no Redis para evitar novo log
 | `limits:token:jns` | 25 min (fixo — API não informa `expires_in`) |
 | `limits:token:junto` | `expiresIn` da resposta menos 30s de margem |
 | `limits:token:fator` | `expires_in` da resposta menos 30s de margem |
-| `limits:onpoint-lock:{cnpj}` | 30s (`ONPOINT_LOCK_TTL_MS`) — lock distribuído por CNPJ, não cache de token; ver 10.3b |
+| `limits:result:{cnpj}:{seguradoras-ordenadas}` | 5 min — resposta consolidada da consulta de mercado |
+| `limits:query-lock:{cnpj}` | 6 min — fila distribuída da consulta completa por CNPJ |
+| `limits:onpoint-lock:{cnpj}` | 60s (`ONPOINT_LOCK_TTL_MS`) — proteção da família Onpoint, não cache de token; ver 10.3b |
 
 Em caso de `401`, o token é invalidado e a consulta refeita uma vez com login novo.
+
+O `workers/wrangler.toml` declara `[limits] subrequests = 1000`, porque a Junto pode fazer uma
+requisição por modalidade além de Redis e das demais APIs. Esse limite exige conta Workers paga;
+no plano gratuito a Cloudflare mantém o teto de 50 por invocação.
 
 ### 10.5 Onpoint — IDs estáticos de seguradora
 

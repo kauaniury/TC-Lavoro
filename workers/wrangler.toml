@@ -2,6 +2,11 @@ name = "lucky-hat-b241"
 main = "deepseek-memory-worker.js"
 compatibility_date = "2024-01-01"
 
+[limits]
+# A consulta da Junto pode exigir uma chamada por modalidade, além das APIs,
+# Redis e D1. Requer conta Workers paga; no plano gratuito o teto é 50.
+subrequests = 1000
+
 [vars]
 # Secrets são configurados via dashboard ou wrangler secret put
 # DEEPSEEK_API_KEY, UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN
