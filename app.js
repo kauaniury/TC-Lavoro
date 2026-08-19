@@ -3938,8 +3938,8 @@ function categoriaModalidadeMercado(label) {
   // anexa a um grupo comercial genérico (caso da Fator). Já Trabalhista ou
   // Previdenciária, sem "recursal", continua sendo cobertura contratual
   // quando vier sob Executante/Fornecedor/Prestador.
-  if (/JUDICIAL|ARBITRAL|RECURSAL/.test(normalizada)) return 'Judiciais';
-  if (/JUDICIAL|ARBITRAL|RECURSAL/.test(completa)) return 'Judiciais';
+  if (/JUDICIAL|ARBITRAL|RECURSAL|CIVIL/.test(normalizada)) return 'Judiciais';
+  if (/JUDICIAL|ARBITRAL|RECURSAL|CIVIL/.test(completa)) return 'Judiciais';
 
   // Quando a API entrega grupo e submodalidade, o grupo tem precedência:
   // "Estruturadas — Executante Concessionário" não é Tradicional apenas por
@@ -4009,11 +4009,12 @@ function condensarModalidadesMercado(modalidades) {
 
   return Array.from(grupos.values()).map(grupo => {
     let label = grupo.categoria;
-    if ((condicoesPorCategoria.get(grupo.categoria) || 0) > 1) {
-      const qualificadores = [...new Set(grupo.labelsOriginais
-        .map(original => qualificadorModalidadeMercado(original, grupo.categoria))
-        .filter(Boolean))];
-      if (qualificadores.length) label += ' — ' + qualificadores.join(', ');
+    const isJudicial = String(grupo.categoria).replace(/\s+(Público|Privado)$/i, '') === 'Judiciais';
+    const submodalidades = [...new Set(grupo.labelsOriginais
+      .map(original => qualificadorModalidadeMercado(original, grupo.categoria))
+      .filter(Boolean))];
+    if ((condicoesPorCategoria.get(grupo.categoria) || 0) > 1 || (isJudicial && submodalidades.length > 1)) {
+      if (submodalidades.length) label += ' — ' + submodalidades.join(', ');
     }
     return { label, limite: grupo.limite, taxa: grupo.taxa };
   });

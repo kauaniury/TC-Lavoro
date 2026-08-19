@@ -1,6 +1,6 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.67
+> Versao: 2.68
 > Atualizado em: 2026-08-19
 
 ## 1. Visão Geral
@@ -250,13 +250,15 @@ O console no topo da página (`#mktTomadorInput`, `#mktCnpjInput`, botão "Consu
    Para normalizar retornos sem prefixo de JNS, Junto e Fator, `categoriaModalidadeMercado`
    reconhece Licitante/Concorrente, Construtor, Fornecedor, Prestador de Serviços, Executante,
    Adiantamento, Manutenção, Retenção, Garantia de Pagamento, Compra e Venda, Finep,
-   Performance como **Tradicional**. Judicial, Arbitral e Recursal viram **Judiciais**;
+   Performance como **Tradicional**. Civil, Judicial, Arbitral e Recursal viram **Judiciais**;
    Trabalhista/Previdenciária também vira Judicial quando não for extensão explícita de uma
    cobertura contratual (Prestador, Fornecedor, Construtor ou Executante). Quando o texto da
    modalidade/submodalidade trouxer Público ou Privado, o rótulo preserva o setor, por exemplo
    **Tradicional Público** e **Tradicional Privado**. A Fator combina `NomeGrupoSubLimite` com
    campos de submodalidade compatíveis antes da classificação. A deduplicação só ocorre quando
-   categoria, limite e taxa coincidirem.
+   categoria, limite e taxa coincidirem. Em **Judiciais**, quando duas ou mais submodalidades
+   tiverem a mesma condição, o rótulo preserva seus nomes (ex.: **Judiciais — Civil, Recursal,
+   Trabalhista**) para não ocultar coberturas distintas.
    Nas seguradoras Onpoint, o `BranchName` da API participa do rótulo para distinguir
    **Tradicional Público** de **Tradicional Privado**. O grupo da API tem precedência sobre o
    nome da submodalidade: Estruturadas (mesmo quando a submodalidade contém “Executante”) e
