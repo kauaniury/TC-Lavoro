@@ -5,7 +5,7 @@ const CORS_HEADERS = {
 };
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
-const WORKER_VERSION = '2026-08-18.2';
+const WORKER_VERSION = '2026-08-19.1';
 const PRIMARY_DEEPSEEK_MODEL = 'deepseek-chat';
 const FALLBACK_DEEPSEEK_MODEL = 'deepseek-chat';
 const JOB_TTL_SECONDS = 60 * 60 * 6;
@@ -49,6 +49,7 @@ const INSURER_LABELS = {
   axa: 'AXA Seguros',
   now: 'Now Seguros',
   fator: 'Fator Seguradora',
+  avla: 'AVLA Seguros',
 };
 const ALL_INSURER_KEYS = Object.keys(INSURER_LABELS);
 // Seguradoras que passam pelo endpoint compartilhado da Onpoint (dispatch em queryInsurer)
@@ -1431,6 +1432,7 @@ async function queryInsurer(env, cnpj, key) {
     if (key === 'jns') dados = await queryJns(env, cnpj);
     else if (key === 'junto') dados = await queryJunto(env, cnpj);
     else if (key === 'fator') dados = await queryFator(env, cnpj);
+    else if (key === 'avla') dados = await queryAvla(env, cnpj);
     else if (ONPOINT_FAMILY.includes(key)) dados = await queryOnpoint(env, cnpj, key);
     else throw new Error(`Seguradora desconhecida: ${key}`);
 
@@ -1903,6 +1905,82 @@ async function queryFator(env, cnpj) {
   // cd_retorno !== 0 e sempre resposta de negocio (sem limite, nomeado etc.), mesmo com
   // HTTP 200 — nunca deve ser tratado como erro tecnico. So HTTP nao-2xx e falha real.
   if (!res.ok) throw new Error(extractErrorMessage(await parseJsonSafe(res), `Fator consulta error ${res.status}`));
+  return res.json();
+}
+
+// -- AVLA Seguros --
+// A AVLA exige um bearer inicial para o login. O access token devolvido pelo
+// login e o unico token usado na consulta de limites e fica no Redis para
+// evitar autenticar novamente a cada CNPJ.
+const AVLA_DEFAULT_TOKEN_TTL_SECONDS = 60 * 10;
+
+function requireAvlaConfig(env) {
+  const required = [
+    'AVLA_URL',
+    'AVLA_SOURCE',
+    'AVLA_LOGIN_BEARER_TOKEN',
+    'AVLA_USERNAME',
+    'AVLA_ORGANIZATION_UNIT_NAME',
+    'AVLA_PASSWORD',
+  ];
+  const missing = required.filter(name => !env[name]);
+  if (missing.length) throw new Error(`Configure os secrets da AVLA no Worker: ${missing.join(', ')}.`);
+}
+
+function avlaBaseUrl(env) {
+  return env.AVLA_URL.replace(/\/+$/, '');
+}
+
+function avlaTokenTtlSeconds(data) {
+  const expiresIn = Number(data && (data.expiresIn ?? data.expires_in ?? data.expiresInSeconds));
+  return Number.isFinite(expiresIn) && expiresIn > 60
+    ? Math.max(60, Math.floor(expiresIn) - 30)
+    : AVLA_DEFAULT_TOKEN_TTL_SECONDS;
+}
+
+async function getAvlaToken(env, forceRefresh = false) {
+  requireAvlaConfig(env);
+  if (!forceRefresh) {
+    const cached = await redisGet(env, 'limits:token:avla');
+    if (cached && cached.token) return cached.token;
+  }
+
+  const res = await fetchWithTimeout(`${avlaBaseUrl(env)}/login`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${env.AVLA_LOGIN_BEARER_TOKEN}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify({
+      username: env.AVLA_USERNAME,
+      organizationUnitName: env.AVLA_ORGANIZATION_UNIT_NAME,
+      password: env.AVLA_PASSWORD,
+    }),
+  });
+  if (!res.ok) throw new Error(extractErrorMessage(await parseJsonSafe(res), `AVLA login error ${res.status}`));
+
+  const data = await res.json();
+  const token = data.accessToken || data.access_token || data.token || (data.data && (data.data.accessToken || data.data.access_token || data.data.token));
+  if (!token) throw new Error('AVLA: access token nao encontrado na resposta de login.');
+
+  await redisSet(env, 'limits:token:avla', { token }, avlaTokenTtlSeconds(data));
+  return token;
+}
+
+async function queryAvla(env, cnpj) {
+  let token = await getAvlaToken(env);
+  const buildUrl = () => `${avlaBaseUrl(env)}/getLimitsByDocument/${encodeURIComponent(cnpj)}?sourceApp=${encodeURIComponent(env.AVLA_SOURCE)}`;
+  const request = () => fetchWithTimeout(buildUrl(), {
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+  });
+
+  let res = await request();
+  if (res.status === 401) {
+    token = await getAvlaToken(env, true);
+    res = await request();
+  }
+  if (!res.ok) throw new Error(extractErrorMessage(await parseJsonSafe(res), `AVLA consulta error ${res.status}`));
   return res.json();
 }
 

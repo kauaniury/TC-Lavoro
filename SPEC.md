@@ -1,6 +1,6 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.65
+> Versao: 2.66
 > Atualizado em: 2026-08-19
 
 ## 1. Visão Geral
@@ -9,7 +9,7 @@ Aplicação web estática da **Lavoro Seguros** com cinco fluxos independentes:
 
 | Fluxo | Entrada | Saída |
 |---|---|---|
-| T&C — Consulta de Mercado por CNPJ | CNPJ do tomador (consulta automática) + preenchimento manual | Dashboard executivo com limites, comparativos e exportação PDF; consolida seguradoras automáticas (JNS, Junto, Onpoint/Essor/Sombrero/NEWE/Mitsui/Now, AXA, Fator) e manuais na mesma análise |
+| T&C — Consulta de Mercado por CNPJ | CNPJ do tomador (consulta automática) + preenchimento manual | Dashboard executivo com limites, comparativos e exportação PDF; consolida seguradoras automáticas (AVLA, JNS, Junto, Onpoint/Essor/Sombrero/NEWE/Mitsui/Now, AXA, Fator) e manuais na mesma análise |
 | Análise Financeira IA | DRE, Balanço, Balancete, CSV, PDF e imagem | JSON consolidado multiempresa/multiperíodo renderizado em cards |
 | Seguro Garantia IA | Edital, contrato, aditivos, apostilamentos, PDF/imagem/planilhas | Relatório técnico estruturado (primeira resposta) + chat conversacional + exportação PDF |
 | Fiança Locatícia IA | Contrato de locação, aditivos, laudos, PDF/imagem/planilhas | JSON contratual renderizado em tela |
@@ -183,7 +183,7 @@ fornecida pelo usuário nas duas listas — portal e completa):
 - `label`: nome comercial exibido no card (ex.: chave `mitsui` exibe **"MITISUI"**, grafia
   pedida explicitamente pelo usuário — a chave interna `mitsui` já usada pela integração da
   seção 10 não mudou).
-- `apiKey`: chave interna da integração (`jns`, `junto`, `essor`, `sombrero`, `newe`,
+- `apiKey`: chave interna da integração (`avla`, `jns`, `junto`, `essor`, `sombrero`, `newe`,
   `mitsui`, `axa`, `now`, `fator`) quando a seguradora tem consulta automática; `null` quando
   só permite preenchimento manual.
 - `portal`: `true` para as 18 seguradoras da lista "com portal" (aba "Seguradoras portais");
@@ -192,8 +192,8 @@ fornecida pelo usuário nas duas listas — portal e completa):
 35 entradas ao todo: AKAD, ALLIANZ, ALM, AUSTRAL, AVLA, AXA, BERKLEY, BTG, CESCE, CHUBB,
 DARWIN, DAYCOVAL, ESSOR, EZZE, FAIRFAX, FAIRWAY, FATOR, FINANGUARD, HDI, JNS, JUNTO, KOVR,
 LIBERTY, MAPFRE, MITISUI, NEWE, NOW SEGUROS, POTTENCIAL, SOMBRERO, SOMPO, SUDASEG, SWISS RE,
-THINKSEG, TOKIO, ZURICH. As 9 com `apiKey` são as mesmas já integradas na seção 10 — nenhuma
-API nova foi adicionada nesta versão. `MKT_API_KEYS` deriva as 9 chaves com `apiKey` não nulo.
+THINKSEG, TOKIO, ZURICH. As 10 com `apiKey` são as mesmas já integradas na seção 10 — nenhuma
+API nova foi adicionada nesta versão. `MKT_API_KEYS` deriva as 10 chaves com `apiKey` não nulo.
 
 **Logos dos cards.** `MKT_LOGO_MAP` associa cada `key` do catálogo ao respectivo arquivo local
 em `assets/`. `mktLogoHtml()` usa esse mapa no cabeçalho de todos os 35 cards, inclusive os da
@@ -281,8 +281,8 @@ O console no topo da página (`#mktTomadorInput`, `#mktCnpjInput`, botão "Consu
    se o usuário ainda não tiver digitado um nome manualmente** nessa aba
    (`tab.tomadorUserEdited`) — uma sugestão nunca apaga uma edição manual existente.
 
-A consulta roda sempre para as 9 seguradoras com API (`MKT_API_KEYS`), independente do filtro
-"portais"/"todas" estar ativo — as 9 já pertencem à lista de portal.
+A consulta roda sempre para as 10 seguradoras com API (`MKT_API_KEYS`), independente do filtro
+"portais"/"todas" estar ativo — as 10 já pertencem à lista de portal.
 
 ### 4.4 Cards — status, origem e edição manual
 
@@ -557,6 +557,7 @@ Secrets esperados no Worker:
 - `JUNTO_CLIENT_ID`, `JUNTO_CLIENT_SECRET`
 - `ONPOINT_APPLICATION_KEY_V2`, `ONPOINT_BROKER_CNPJ`
 - `FATOR_CLIENT_ID`, `FATOR_CLIENT_SECRET`, `FATOR_CORRETOR_ID`, `FATOR_NM_LOGIN`
+- `AVLA_URL`, `AVLA_SOURCE`, `AVLA_LOGIN_BEARER_TOKEN`, `AVLA_USERNAME`, `AVLA_ORGANIZATION_UNIT_NAME`, `AVLA_PASSWORD`
 
 Modelo no Worker:
 
@@ -1315,9 +1316,9 @@ Worker.
 - **Limites zerados nunca aparecem**: `isZeroLimite(valor)` filtra qualquer modalidade cujo valor numérico seja exatamente `0` (valor `null`/`undefined` — ainda sem taxa cotada — continua aparecendo, pois é informativo, não "sem limite"). Se todas as modalidades de uma seguradora forem filtradas, o resultado cai para `sem_limite` → card fica `declinado` (ver mapeamento em 4.3).
 - Removidos por não terem mais uso: `LIM_LOGO_MAP`/`limLogoHtml` (a fase atual não usa logo, só o nome — ver pedido do usuário), `LIM_ALL_SEGURADORAS`/`LIM_LABELS`, `renderLimitesPlaceholders`/`buildLimWaitingCardHtml`, `LIM_STATUS_CONFIG`, `buildLimResultCardHtml`/`renderLimitesResults`, `openLimiteModal`/`closeLimiteModal`, `_ultimoLimitesData`, `fmtLimiteTimestamp`/`fmtCnpjDisplay`. O status de cada seguradora agora é um campo editável (`<select>` no card), não mais um badge somente leitura com modal de detalhe.
 
-### 10.1a Normalização por seguradora (app.js) — reaproveitada sem alteração
+### 10.1a Normalização por seguradora (app.js)
 
-Cada seguradora tem um formato de resposta próprio; `normalizeLimiteResultado(r)` despacha para o normalizador correto e retorna sempre `{ statusKey, modalidades[], mensagem?, nomeTomador?, cnpjTomador? }`. Quando `r.status !== 'ok'` (falha técnica do Worker, incluindo timeout), `classifyErrorMessage(r.erro)` decide o `statusKey` por palavra-chave em vez de sempre cair em `erro`. Esta função e as quatro abaixo são usadas **sem nenhuma alteração** pela nova `aplicarResultadosMercado()` (seção 4.3) — só o mapeamento final de `statusKey` para status de UI mudou (`mapNormStatusToMkt`, seção 4.3), de 7 valores para os 5 da seção 4.4.
+Cada seguradora tem um formato de resposta próprio; `normalizeLimiteResultado(r)` despacha para o normalizador correto e retorna sempre `{ statusKey, modalidades[], mensagem?, nomeTomador?, cnpjTomador? }`. Quando `r.status !== 'ok'` (falha técnica do Worker, incluindo timeout), `classifyErrorMessage(r.erro)` decide o `statusKey` por palavra-chave em vez de sempre cair em `erro`.
 
 | Função | Seguradora(s) | Lógica |
 |---|---|---|
@@ -1325,6 +1326,7 @@ Cada seguradora tem um formato de resposta próprio; `normalizeLimiteResultado(r
 | `normalizeLimiteJunto` | `junto` | `dados` é array de modalidades com `submodalities[]`, cada uma já enriquecida pelo Worker com `limitAvailable`/`rate` reais (ver 10.2). Lista vazia (ou só zerados) → `sem_limite`; senão `aprovado` com `valor`/`taxa` reais quando disponíveis |
 | `normalizeLimiteOnpoint` | `essor`, `sombrero`, `newe`, `mitsui`, `axa`, `now` | Aceita `dados.Response[0]` (envelope padrão) **ou** `dados` já desembrulhado pelo Worker; se `CanSetupAProposal` e `LimitsAndRates[]` presentes (após `.filter(Boolean)` e filtro de zerados) → `aprovado`; senão lê `Reasons[]`/`Errors[]` e classifica via `classifyErrorMessage` (`bloqueado`, `nomeado`, `instavel`, `sem_resposta` ou `sem_limite`) |
 | `normalizeLimiteFator` | `fator` | `cd_retorno !== 0` é sempre resposta de negócio (nunca erro técnico): `nm_retorno` é classificado via `classifyErrorMessage` — `nomeado` (mensagem original exibida, é acionável) se menciona corretor, senão `sem_limite` com a mensagem substituída pelo texto padrão `LIM_SEM_LIMITE_MSG` (o jargão bruto da Fator, ex. "tomador deve estar Aprovado e dentro da Data de Validade", não é repassado ao usuário). Quando `cd_retorno === 0`, parseia `DadosTomador[]` em modalidades (`NomeGrupoSubLimite`, `ValorLimiteDisponivel`, `ValorTaxa`), filtrando zerados; se a lista ficar vazia após o filtro, também usa `LIM_SEM_LIMITE_MSG` |
+| `normalizeLimiteAvla` | `avla` | Lê `nome` e `document` do tomador e converte `limites[]` em modalidades (`nome_modalidade`, `limite_disponivel`, `taxa`), filtrando limites zerados. Sem limite disponível, retorna `sem_limite` com a mensagem padrão. |
 
 `classifyErrorMessage` reconhece, além do `"motor de crédito"`/`"problema ao rodar"` (família "instável"):
 - `"negado"` combinado com `"técnic[a/o]"` (JNS, ex.: `"Risco negado por questões técnicas."`) → `sem_limite` (cinza) — é decisão de negócio (risco negado), o "por questões técnicas" é jargão da própria JNS para negativa de crédito, não convite a tentar de novo;
@@ -1340,9 +1342,9 @@ Essas mensagens chegam via `r.status !== 'ok'` (HTTP não-2xx do lado da segurad
 
 Body:
 ```json
-{ "cnpj": "00000000000000", "seguradoras": ["jns","junto","essor","sombrero","newe","mitsui","axa","fator"] }
+{ "cnpj": "00000000000000", "seguradoras": ["avla","jns","junto","essor","sombrero","newe","mitsui","axa","now","fator"] }
 ```
-`seguradoras` é opcional — se omitido, consulta todas as 8.
+`seguradoras` é opcional — se omitido, consulta todas as 10.
 
 Resposta:
 ```json
@@ -1366,10 +1368,11 @@ Resposta:
 | Essor / Sombrero / NEWE / Mitsui Sumitomo / Now (via Onpoint) | `essor`, `sombrero`, `newe`, `mitsui`, `now` | header fixo `application-key-v2`, sem login | `ONPOINT_APPLICATION_KEY_V2`, `ONPOINT_BROKER_CNPJ` |
 | AXA (via Onpoint, rota dedicada `/axa/...`) | `axa` | mesma auth do Onpoint acima | idem |
 | Fator Seguradora | `fator` | OAuth2 `client_credentials` (Basic + `grant_type=client_credentials`) → Bearer | `FATOR_CLIENT_ID`, `FATOR_CLIENT_SECRET`, `FATOR_CORRETOR_ID`, `FATOR_NM_LOGIN` |
+| AVLA Seguros | `avla` | Bearer inicial → `POST /login` (`username`, `organizationUnitName`, `password`) → bearer oficial para `GET /getLimitsByDocument/{cnpj}?sourceApp=...`; reautentica uma vez em `401` | `AVLA_URL`, `AVLA_SOURCE`, `AVLA_LOGIN_BEARER_TOKEN`, `AVLA_USERNAME`, `AVLA_ORGANIZATION_UNIT_NAME`, `AVLA_PASSWORD` |
 
 Now Seguros usa a mesma credencial já cadastrada da Onpoint (`ONPOINT_APPLICATION_KEY_V2`/`ONPOINT_BROKER_CNPJ`) — nenhum secret novo foi adicionado, só mais um `InsuranceUniqueId` na família (ver 10.5).
 
-**Regra crítica — a consulta roda inteiramente em fila (`for...of`), nunca em paralelo.** `handleLimitsQuery` consulta as seguradoras solicitadas uma de cada vez, na ordem recebida, aguardando cada `queryInsurer` terminar antes de iniciar a próxima. Isso evita sobrecarregar qualquer integração — em especial a Onpoint, que agrupa `essor`/`sombrero`/`newe`/`mitsui`/`axa`/`now` no mesmo endpoint e rejeita chamadas concorrentes para o mesmo CNPJ — mas agora vale para todas as 9 seguradoras, não só a família Onpoint. Como consequência, o tempo total de resposta escala linearmente com o número de seguradoras consultadas.
+**Regra crítica — a consulta roda inteiramente em fila (`for...of`), nunca em paralelo.** `handleLimitsQuery` consulta as seguradoras solicitadas uma de cada vez, na ordem recebida, aguardando cada `queryInsurer` terminar antes de iniciar a próxima. Isso evita sobrecarregar qualquer integração — em especial a Onpoint, que agrupa `essor`/`sombrero`/`newe`/`mitsui`/`axa`/`now` no mesmo endpoint e rejeita chamadas concorrentes para o mesmo CNPJ — mas agora vale para todas as 10 seguradoras, não só a família Onpoint. Como consequência, o tempo total de resposta escala linearmente com o número de seguradoras consultadas.
 
 **Fila e cache Redis por CNPJ.** Antes de iniciar as APIs, o Worker consulta
 `limits:result:{cnpj}:{seguradoras-ordenadas}` (TTL de 5 minutos). Em cache, devolve o mesmo
@@ -1414,13 +1417,14 @@ Como o Worker roda distribuído (múltiplos isolates/colos, sem processo único 
 
 ### 10.4 Cache de token no Redis
 
-Tokens de login (JNS, Junto, Fator) são cacheados no Redis para evitar novo login a cada consulta:
+Tokens de login (AVLA, JNS, Junto, Fator) são cacheados no Redis para evitar novo login a cada consulta:
 
 | Chave | TTL |
 |---|---|
 | `limits:token:jns` | 25 min (fixo — API não informa `expires_in`) |
 | `limits:token:junto` | `expiresIn` da resposta menos 30s de margem |
 | `limits:token:fator` | `expires_in` da resposta menos 30s de margem |
+| `limits:token:avla` | `expiresIn`/`expires_in` da resposta menos 30s; 10 min se a API não informar expiração |
 | `limits:result:{cnpj}:{seguradoras-ordenadas}` | 5 min — resposta consolidada da consulta de mercado |
 | `limits:query-lock:{cnpj}` | 6 min — fila distribuída da consulta completa por CNPJ |
 | `limits:junto-job:{cnpj}` | 10 min — modalidades, cursor e resultados parciais da Junto |
@@ -1458,7 +1462,7 @@ gratuito ao processar as taxas da Junto em lotes persistidos no Redis.
 - O front-end já está preparado para o Worker novo.
 - Para ativar memória Redis de fato em produção, é necessário publicar `workers/deepseek-memory-worker.js` no mesmo domínio do Worker atual ou atualizar `DEEPSEEK_WORKER_URL`.
 - Se o Worker novo ainda não estiver publicado, o front-end usa fallback automático para o endpoint legado `/`.
-- Para a consulta de mercado (seção 4), publicar o Worker atualizado (`/v1/limits/query`) e configurar todos os secrets listados na seção 10.3, incluindo `ONPOINT_BROKER_CNPJ` e `FATOR_CORRETOR_ID`.
+- Para a consulta de mercado (seção 4), publicar o Worker atualizado (`/v1/limits/query`) e configurar todos os secrets listados na seção 10.3, incluindo `ONPOINT_BROKER_CNPJ`, `FATOR_CORRETOR_ID` e os seis `AVLA_*`.
 - CORS do Worker libera `GET`, `POST`, `DELETE` e `OPTIONS`; incluir `DELETE` é obrigatório para o navegador encaminhar a remoção de snapshots em `/v1/tc/analises/:id` ao D1. A origem continua `*` por enquanto; como a consulta de mercado expõe dados de crédito mais sensíveis que o proxy de IA, considerar restringi-la ao domínio de produção do front-end.
 
 ## 13. Persistência — Histórico de T&C (Cloudflare D1)

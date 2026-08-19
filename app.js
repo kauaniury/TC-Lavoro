@@ -13,7 +13,7 @@ const MKT_SEGURADORAS = [
   { key: 'allianz', label: 'ALLIANZ', apiKey: null, portal: false },
   { key: 'alm', label: 'ALM', apiKey: null, portal: true },
   { key: 'austral', label: 'AUSTRAL', apiKey: null, portal: false },
-  { key: 'avla', label: 'AVLA', apiKey: null, portal: true },
+  { key: 'avla', label: 'AVLA', apiKey: 'avla', portal: true },
   { key: 'axa', label: 'AXA', apiKey: 'axa', portal: true },
   { key: 'berkley', label: 'BERKLEY', apiKey: null, portal: true },
   { key: 'btg', label: 'BTG', apiKey: null, portal: false },
@@ -4046,7 +4046,7 @@ async function consultarMercadoUI() {
   }
 }
 
-// Aplica os resultados das 9 seguradoras com API sobre os cards correspondentes
+// Aplica os resultados das 10 seguradoras com API sobre os cards correspondentes
 // — 100% reaproveitado de normalizeLimiteResultado (e normalizadores por
 // seguradora) já existentes, só muda o mapeamento final de status e o destino
 // (card em vez de página própria).
@@ -5031,6 +5031,7 @@ function normalizeLimiteResultado(r) {
   if (key === 'jns') return normalizeLimiteJns(r.dados);
   if (key === 'junto') return normalizeLimiteJunto(r.dados);
   if (key === 'fator') return normalizeLimiteFator(r.dados);
+  if (key === 'avla') return normalizeLimiteAvla(r.dados);
   if (['essor', 'sombrero', 'newe', 'mitsui', 'axa', 'now'].includes(key)) return normalizeLimiteOnpoint(r.dados);
   return { statusKey: 'erro', modalidades: [], mensagem: 'Seguradora desconhecida.' };
 }
@@ -5176,6 +5177,32 @@ function normalizeLimiteFator(d) {
     return { statusKey: 'sem_limite', modalidades: [], mensagem: LIM_SEM_LIMITE_MSG, nomeTomador };
   }
   return { statusKey: 'aprovado', modalidades, nomeTomador };
+}
+
+function normalizeLimiteAvla(d) {
+  if (!d || typeof d !== 'object') {
+    return { statusKey: 'erro', modalidades: [], mensagem: 'Resposta inesperada da seguradora.' };
+  }
+  const nomeTomador = d.nome || null;
+  const cnpjTomador = d.document || null;
+  const modalidades = (Array.isArray(d.limites) ? d.limites : [])
+    .map(limite => ({
+      label: String(limite.nome_modalidade || '').trim(),
+      valor: limite.limite_disponivel ?? limite.limite_total,
+      taxa: limite.taxa ?? null,
+    }))
+    .filter(modalidade => !isZeroLimite(modalidade.valor));
+
+  if (!modalidades.length) {
+    return {
+      statusKey: 'sem_limite',
+      modalidades: [],
+      mensagem: 'Sem limite liberado ao tomador.',
+      nomeTomador,
+      cnpjTomador,
+    };
+  }
+  return { statusKey: 'aprovado', modalidades, nomeTomador, cnpjTomador };
 }
 
 function classificacaoFinanceiraClass(sit) {
