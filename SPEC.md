@@ -1,6 +1,6 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.66
+> Versao: 2.67
 > Atualizado em: 2026-08-19
 
 ## 1. Visão Geral
@@ -283,6 +283,15 @@ O console no topo da página (`#mktTomadorInput`, `#mktCnpjInput`, botão "Consu
 
 A consulta roda sempre para as 10 seguradoras com API (`MKT_API_KEYS`), independente do filtro
 "portais"/"todas" estar ativo — as 10 já pertencem à lista de portal.
+
+### 4.3a Atualizar consulta sem cache
+
+O botão-ícone `#mktBtnAtualizar`, ao lado de "Consultar mercado", chama
+`consultarMercadoUI({ forceRefresh: true })`. Ele limpa apenas os 10 cards automáticos da aba
+ativa e envia `forceRefresh: true` na primeira chamada ao Worker; cards manuais não são
+alterados. O Worker ignora o cache Redis de resultado para esse pedido e remove o job parcial
+da Junto, se houver. Caso a Junto responda `202`, os polls seguintes enviam `false` para
+retomar o job novo em vez de reiniciá-lo.
 
 ### 4.4 Cards — status, origem e edição manual
 
@@ -1342,9 +1351,11 @@ Essas mensagens chegam via `r.status !== 'ok'` (HTTP não-2xx do lado da segurad
 
 Body:
 ```json
-{ "cnpj": "00000000000000", "seguradoras": ["avla","jns","junto","essor","sombrero","newe","mitsui","axa","now","fator"] }
+{ "cnpj": "00000000000000", "seguradoras": ["avla","jns","junto","essor","sombrero","newe","mitsui","axa","now","fator"], "forceRefresh": false }
 ```
 `seguradoras` é opcional — se omitido, consulta todas as 10.
+`forceRefresh` é opcional e padrão `false`. Quando `true`, ignora e remove o resultado
+cacheado do mesmo CNPJ antes de consultar novamente as seguradoras.
 
 Resposta:
 ```json

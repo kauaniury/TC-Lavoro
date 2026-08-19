@@ -4019,7 +4019,15 @@ function condensarModalidadesMercado(modalidades) {
   });
 }
 
-async function consultarMercadoUI() {
+function limparCardsAutomaticosMercado() {
+  MKT_SEGURADORAS.filter(seg => seg.apiKey).forEach(seg => {
+    populateMktCard(seg.key, { status: '', capTotal: '', modalidades: [], origem: 'manual', mensagem: '' });
+  });
+  saveMktTabState(_mktActiveTabId);
+}
+
+async function consultarMercadoUI(opts = {}) {
+  const forceRefresh = opts.forceRefresh === true;
   hideMktError();
   const cnpjInput = document.getElementById('mktCnpjInput');
   const cnpjDigits = onlyDigits(cnpjInput.value);
@@ -4029,19 +4037,23 @@ async function consultarMercadoUI() {
   }
 
   const btn = document.getElementById('mktBtnConsultar');
+  const btnAtualizar = document.getElementById('mktBtnAtualizar');
   const loading = document.getElementById('mktLoading');
   if (btn) btn.disabled = true;
-  setMktProgress({ percent: 2, message: 'Iniciando consulta de mercado…' });
+  if (btnAtualizar) btnAtualizar.disabled = true;
+  if (forceRefresh) limparCardsAutomaticosMercado();
+  setMktProgress({ percent: 2, message: forceRefresh ? 'Atualizando consulta de mercado…' : 'Iniciando consulta de mercado…' });
   if (loading) loading.hidden = false;
 
   try {
-    const data = await consultarLimitesSeguradoras(cnpjDigits, MKT_API_KEYS, setMktProgress);
+    const data = await consultarLimitesSeguradoras(cnpjDigits, MKT_API_KEYS, setMktProgress, forceRefresh);
     setMktProgress({ percent: 100, message: 'Consulta concluída.' });
     aplicarResultadosMercado(data);
   } catch (err) {
     showMktError('Erro ao consultar mercado: ' + err.message);
   } finally {
     if (btn) btn.disabled = false;
+    if (btnAtualizar) btnAtualizar.disabled = false;
     if (loading) loading.hidden = true;
   }
 }

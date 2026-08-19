@@ -1257,6 +1257,7 @@ async function handleLimitsQuery(request, env) {
   const body = await request.json();
   const cnpj = normalizeCnpj(body.cnpj);
   if (cnpj.length !== 14) throw new Error('Informe um CNPJ valido com 14 digitos.');
+  const forceRefresh = body.forceRefresh === true;
 
   const requested = Array.isArray(body.seguradoras) && body.seguradoras.length > 0
     ? body.seguradoras.filter(key => ALL_INSURER_KEYS.includes(key))
@@ -1264,8 +1265,10 @@ async function handleLimitsQuery(request, env) {
   if (requested.length === 0) throw new Error('Nenhuma seguradora valida informada.');
 
   const cacheKey = limitsResultCacheKey(cnpj, requested);
-  const cached = await redisGet(env, cacheKey);
-  if (cached) return jsonResponse({ ...cached, cache: 'hit' });
+  if (!forceRefresh) {
+    const cached = await redisGet(env, cacheKey);
+    if (cached) return jsonResponse({ ...cached, cache: 'hit' });
+  }
 
   // Não mantém uma requisição do Worker esperando: a chamada concorrente recebe
   // 202 e o navegador a repete. Assim a fila não gasta dezenas de subrequests
@@ -1281,8 +1284,13 @@ async function handleLimitsQuery(request, env) {
   }
 
   try {
-    const cachedAfterLock = await redisGet(env, cacheKey);
-    if (cachedAfterLock) return jsonResponse({ ...cachedAfterLock, cache: 'hit' });
+    if (forceRefresh) {
+      await redisCall(env, ['DEL', cacheKey]);
+      if (requested.includes('junto')) await redisCall(env, ['DEL', juntoJobKey(cnpj)]);
+    } else {
+      const cachedAfterLock = await redisGet(env, cacheKey);
+      if (cachedAfterLock) return jsonResponse({ ...cachedAfterLock, cache: 'hit' });
+    }
 
     const progress = await runLimitsQueryStep(env, cnpj, requested);
     if (!progress.completed) {

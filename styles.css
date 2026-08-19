@@ -6130,7 +6130,7 @@ details[open] .fl-clausula-chevron { transform: rotate(180deg); }
 }
 .mkt-console-fields {
   display: grid;
-  grid-template-columns: minmax(300px, 1.4fr) minmax(260px, 1fr) auto auto;
+  grid-template-columns: minmax(300px, 1.4fr) minmax(260px, 1fr) auto auto auto;
   gap: var(--space-4);
   align-items: end;
 }
@@ -6145,6 +6145,15 @@ details[open] .fl-clausula-chevron { transform: rotate(180deg); }
   white-space: nowrap;
 }
 .mkt-btn-consultar svg { width: 16px; height: 16px; }
+.mkt-btn-atualizar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+}
+.mkt-btn-atualizar svg { width: 18px; height: 18px; }
 .mkt-btn-salvar {
   display: inline-flex;
   align-items: center;
@@ -6164,7 +6173,7 @@ details[open] .fl-clausula-chevron { transform: rotate(180deg); }
 
 @media (max-width: 760px) {
   .mkt-console-fields { grid-template-columns: 1fr; }
-  .mkt-btn-consultar { width: 100%; }
+  .mkt-btn-consultar, .mkt-btn-atualizar { width: 100%; }
 }
 
 /* Segmentado leve "Seguradoras portais / Todas as seguradoras" — preferência
