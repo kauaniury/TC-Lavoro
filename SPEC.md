@@ -1,7 +1,7 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.63
-> Atualizado em: 2026-08-18
+> Versao: 2.64
+> Atualizado em: 2026-08-19
 
 ## 1. Visão Geral
 
@@ -237,7 +237,11 @@ O console no topo da página (`#mktTomadorInput`, `#mktCnpjInput`, botão "Consu
 2. Antes de preencher um card automático, `condensarModalidadesMercado` mantém apenas uma
    linha para cada combinação de categoria (parte anterior a `—`), limite e taxa iguais. Assim,
    por exemplo, várias submodalidades `TRADICIONAL — ...` com R$ 5.000.000,00 e 0,43% aparecem
-   como uma única modalidade **Tradicional**. Linhas manuais não são condensadas.
+   como uma única modalidade **Tradicional**. Quando a mesma categoria tiver condições
+   diferentes, o card preserva o qualificador comercial de cada condição — por exemplo,
+   **Tradicional — Executante Fornecedor, Executante Construtor, Executante Prestador de Serviços**,
+   **Judiciais — Trabalhista e Recursal** e **Judiciais — Execução Fiscal**. Linhas manuais não
+   são condensadas.
    Para normalizar retornos sem prefixo de JNS, Junto e Fator, `categoriaModalidadeMercado`
    reconhece Licitante/Concorrente, Construtor, Fornecedor, Prestador de Serviços, Executante,
    Adiantamento, Manutenção, Retenção, Garantia de Pagamento, Compra e Venda, Finep,
@@ -251,7 +255,8 @@ O console no topo da página (`#mktTomadorInput`, `#mktCnpjInput`, botão "Consu
    Nas seguradoras Onpoint, o `BranchName` da API participa do rótulo para distinguir
    **Tradicional Público** de **Tradicional Privado**. O grupo da API tem precedência sobre o
    nome da submodalidade: Estruturadas (mesmo quando a submodalidade contém “Executante”) e
-   Financeira não são classificadas como Tradicional; Recursais é classificada como Judicial.
+   Financeira não são classificadas como Tradicional; Recursais é classificada como Judicial,
+   inclusive se um retorno da Fator a trouxer sob o grupo genérico Tradicional.
 3. Para cada resultado, `normalizeLimiteResultado(r)` — **100% reaproveitada da antiga
    Consulta de Limites**, junto com os 4 normalizadores por seguradora
    (`normalizeLimiteJns`/`normalizeLimiteJunto`/`normalizeLimiteOnpoint`/

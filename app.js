@@ -3917,15 +3917,19 @@ function categoriaModalidadeMercado(label) {
     ? ' Público'
     : (/\bPRIVAD[OA]\b|SETOR\s+PRIVADO/.test(completa) ? ' Privado' : '');
 
+  // Judicial/recursal é uma linha autônoma mesmo quando algum conector a
+  // anexa a um grupo comercial genérico (caso da Fator). Já Trabalhista ou
+  // Previdenciária, sem "recursal", continua sendo cobertura contratual
+  // quando vier sob Executante/Fornecedor/Prestador.
+  if (/JUDICIAL|ARBITRAL|RECURSAL/.test(normalizada)) return 'Judiciais';
+  if (/JUDICIAL|ARBITRAL|RECURSAL/.test(completa)) return 'Judiciais';
+
   // Quando a API entrega grupo e submodalidade, o grupo tem precedência:
   // "Estruturadas — Executante Concessionário" não é Tradicional apenas por
   // conter a palavra Executante.
-  if (/JUDICIAL|ARBITRAL|RECURSAL/.test(normalizada)) return 'Judiciais';
   if (/ESTRUTURAD/.test(normalizada)) return 'Estruturadas' + setor;
   if (/FINANCEIR/.test(normalizada)) return 'Financeira' + setor;
   if (/TRADICIONAL/.test(normalizada)) return 'Tradicional' + setor;
-
-  if (/JUDICIAL|ARBITRAL|RECURSAL/.test(completa)) return 'Judiciais';
 
   // JNS, Junto e Fator nem sempre devolvem o grupo comercial no texto da
   // modalidade. Estes nomes compõem o portfólio de Garantia Tradicional;
@@ -3938,9 +3942,25 @@ function categoriaModalidadeMercado(label) {
   return categoriaOriginal || original;
 }
 
+// Mostra o motivo de haver duas condições para a mesma categoria, sem expor
+// cada submodalidade repetida. Ex.: "Judiciais — Trabalhista e Recursal".
+function qualificadorModalidadeMercado(label, categoria) {
+  const partes = String(label || '').trim().split(/\s+[—-]\s+/).filter(Boolean);
+  const principal = partes.shift() || '';
+  const detalhe = partes.join(' — ').trim();
+  const base = String(categoria || '').replace(/\s+(Público|Privado)$/i, '');
+
+  if (base === 'Judiciais') {
+    return detalhe || principal.replace(/^Judicia(?:l|is)\s*/i, '').trim();
+  }
+  if (base === 'Tradicional') {
+    return detalhe || principal.replace(/^Tradicional\s*/i, '').trim();
+  }
+  return '';
+}
+
 function condensarModalidadesMercado(modalidades) {
-  const exibidas = [];
-  const vistas = new Set();
+  const grupos = new Map();
   (modalidades || []).forEach(modalidade => {
     const labelOriginal = String(modalidade.label || '').trim();
     const categoria = categoriaModalidadeMercado(labelOriginal);
@@ -3951,12 +3971,35 @@ function condensarModalidadesMercado(modalidades) {
     // Sem valor e sem taxa não há condição comum comprovável: preserva a linha.
     const chave = limite || taxa
       ? [categoria.toLocaleUpperCase('pt-BR'), limite, taxa].join('|')
-      : null;
-    if (chave && vistas.has(chave)) return;
-    if (chave) vistas.add(chave);
-    exibidas.push({ label: categoria || labelOriginal, limite, taxa });
+      : `sem-condicao|${labelOriginal}|${grupos.size}`;
+    const grupo = grupos.get(chave) || {
+      categoria: categoria || labelOriginal,
+      limite,
+      taxa,
+      labelsOriginais: [],
+    };
+    grupo.labelsOriginais.push(labelOriginal);
+    grupos.set(chave, grupo);
   });
-  return exibidas;
+
+  // Um qualificador só é necessário quando há mais de uma condição (limite ou
+  // taxa) dentro da mesma categoria. Assim JNS segue com um único
+  // "Tradicional", enquanto Junto explica os dois Tradicionais/Judiciais.
+  const condicoesPorCategoria = new Map();
+  grupos.forEach(grupo => {
+    condicoesPorCategoria.set(grupo.categoria, (condicoesPorCategoria.get(grupo.categoria) || 0) + 1);
+  });
+
+  return Array.from(grupos.values()).map(grupo => {
+    let label = grupo.categoria;
+    if ((condicoesPorCategoria.get(grupo.categoria) || 0) > 1) {
+      const qualificadores = [...new Set(grupo.labelsOriginais
+        .map(original => qualificadorModalidadeMercado(original, grupo.categoria))
+        .filter(Boolean))];
+      if (qualificadores.length) label += ' — ' + qualificadores.join(', ');
+    }
+    return { label, limite: grupo.limite, taxa: grupo.taxa };
+  });
 }
 
 async function consultarMercadoUI() {
