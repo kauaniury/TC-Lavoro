@@ -3973,6 +3973,9 @@ function qualificadorModalidadeMercado(label, categoria) {
   if (base === 'Tradicional') {
     return detalhe || principal.replace(/^Tradicional\s*/i, '').trim();
   }
+  if (base === 'Financeira') {
+    return detalhe || principal.replace(/^Financeira\s*/i, '').trim();
+  }
   return '';
 }
 
@@ -4009,11 +4012,13 @@ function condensarModalidadesMercado(modalidades) {
 
   return Array.from(grupos.values()).map(grupo => {
     let label = grupo.categoria;
-    const isJudicial = String(grupo.categoria).replace(/\s+(Público|Privado)$/i, '') === 'Judiciais';
+    const categoriaBase = String(grupo.categoria).replace(/\s+(Público|Privado)$/i, '');
+    const isJudicial = categoriaBase === 'Judiciais';
+    const isFinanceira = categoriaBase === 'Financeira';
     const submodalidades = [...new Set(grupo.labelsOriginais
       .map(original => qualificadorModalidadeMercado(original, grupo.categoria))
       .filter(Boolean))];
-    if ((condicoesPorCategoria.get(grupo.categoria) || 0) > 1 || (isJudicial && submodalidades.length > 1)) {
+    if ((condicoesPorCategoria.get(grupo.categoria) || 0) > 1 || ((isJudicial || isFinanceira) && submodalidades.length)) {
       if (submodalidades.length) label += ' — ' + submodalidades.join(', ');
     }
     return { label, limite: grupo.limite, taxa: grupo.taxa };
@@ -5081,8 +5086,15 @@ function normalizeLimiteJunto(d) {
     (mod.submodalities || []).forEach(sub => {
       const valor = sub.limitAvailable ?? null;
       if (isZeroLimite(valor)) return;
+      const descricao = String(mod.description || '').trim();
+      const descricaoNormalizada = descricao.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
       modalidades.push({
-        label: [mod.description, String(sub.description || '').replace(/^_/, '')].filter(Boolean).join(' — '),
+        // As submodalidades da Junto repetem coberturas técnicas (como
+        // "Com Salvamento"). Para o mercado, exibe-se a modalidade principal
+        // e preservam-se o limite e a taxa devolvidos pela API.
+        label: /fianca\s+locatic/i.test(descricaoNormalizada)
+          ? 'Financeira — ' + descricao
+          : descricao,
         segurado: mod.isJudicial ? 'Judicial' : null,
         valor,
         taxa: sub.rate ?? null,

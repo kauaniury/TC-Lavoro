@@ -1,6 +1,6 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.68
+> Versao: 2.69
 > Atualizado em: 2026-08-19
 
 ## 1. Visão Geral
@@ -258,7 +258,10 @@ O console no topo da página (`#mktTomadorInput`, `#mktCnpjInput`, botão "Consu
    campos de submodalidade compatíveis antes da classificação. A deduplicação só ocorre quando
    categoria, limite e taxa coincidirem. Em **Judiciais**, quando duas ou mais submodalidades
    tiverem a mesma condição, o rótulo preserva seus nomes (ex.: **Judiciais — Civil, Recursal,
-   Trabalhista**) para não ocultar coberturas distintas.
+   Trabalhista**) para não ocultar coberturas distintas. Na Junto, as submodalidades técnicas
+   repetidas (como "Com Salvamento") não entram no rótulo: a UI usa a modalidade principal,
+   mantendo o respectivo limite e taxa. Fiança Locatícia da Junto é classificada como
+   **Financeira** e mantém a mesma condição devolvida pela API.
    Nas seguradoras Onpoint, o `BranchName` da API participa do rótulo para distinguir
    **Tradicional Público** de **Tradicional Privado**. O grupo da API tem precedência sobre o
    nome da submodalidade: Estruturadas (mesmo quando a submodalidade contém “Executante”) e
