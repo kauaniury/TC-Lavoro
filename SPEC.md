@@ -1,6 +1,6 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.64
+> Versao: 2.65
 > Atualizado em: 2026-08-19
 
 ## 1. Visão Geral
@@ -194,6 +194,11 @@ DARWIN, DAYCOVAL, ESSOR, EZZE, FAIRFAX, FAIRWAY, FATOR, FINANGUARD, HDI, JNS, JU
 LIBERTY, MAPFRE, MITISUI, NEWE, NOW SEGUROS, POTTENCIAL, SOMBRERO, SOMPO, SUDASEG, SWISS RE,
 THINKSEG, TOKIO, ZURICH. As 9 com `apiKey` são as mesmas já integradas na seção 10 — nenhuma
 API nova foi adicionada nesta versão. `MKT_API_KEYS` deriva as 9 chaves com `apiKey` não nulo.
+
+**Logos dos cards.** `MKT_LOGO_MAP` associa cada `key` do catálogo ao respectivo arquivo local
+em `assets/`. `mktLogoHtml()` usa esse mapa no cabeçalho de todos os 35 cards, inclusive os da
+aba "Todas as seguradoras"; se um arquivo falhar ao carregar, o logo é ocultado e o nome da
+seguradora permanece visível. Não há dependência externa para os logos.
 
 ### 4.1 Duas grades, uma só árvore de DOM
 

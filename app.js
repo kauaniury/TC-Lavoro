@@ -48,27 +48,44 @@ const MKT_SEGURADORAS = [
 const MKT_SEGURADORAS_BY_KEY = Object.fromEntries(MKT_SEGURADORAS.map(s => [s.key, s]));
 const MKT_API_KEYS = MKT_SEGURADORAS.filter(s => s.apiKey).map(s => s.apiKey);
 
-// Logos das seguradoras de portal. Cards sem entrada no mapa mostram apenas
-// o nome; o fallback local evita ícone quebrado caso algum ativo não carregue.
+// Logos das seguradoras. Cards sem entrada no mapa mostram apenas o nome; o
+// fallback local evita ícone quebrado caso algum ativo não carregue.
 const MKT_LOGO_MAP = {
   akad: 'assets/akad-logo.png',
+  allianz: 'assets/allianz-logo.jpg',
   alm: 'assets/alm-logo.png',
+  austral: 'assets/austral-logo.png',
   avla: 'assets/avla-logo.png',
   axa: 'assets/axa-logo.png',
   berkley: 'assets/berkley-logo.png',
+  btg: 'assets/btg-logo.png',
+  cesce: 'assets/cesce-logo.jpg',
+  chubb: 'assets/chubb logo.png',
+  darwin: 'assets/darwin-logo.jpg',
   daycoval: 'assets/daycoval-logo.jpg',
   essor: 'assets/essor-logo.png',
   ezze: 'assets/ezze-logo.png',
   fairfax: 'assets/fairfax-logo.png',
+  fairway: 'assets/fairway logo.png',
   fator: 'assets/fator.png',
+  finanguard: 'assets/finanguard-logo.png',
+  hdi: 'assets/hdi-logo.png',
   jns: 'assets/jns-logo.png',
   junto: 'assets/junto-logo.png',
+  kovr: 'assets/kovr-logo.jpeg',
+  liberty: 'assets/liberty-logo.png',
+  mapfre: 'assets/mapfre-logo.jpg',
   mitsui: 'assets/Mitisui-logo.png',
   newe: 'assets/Newe-logo.png',
   now: 'assets/now-logo.png',
   pottencial: 'assets/pottencial-logo.jpg',
   sombrero: 'assets/Sombrero-logo.png',
+  sompo: 'assets/sompo-logo.png',
+  sudaseg: 'assets/sudaseg logo.png',
+  swissre: 'assets/swiss re-logo.png',
+  thinkseg: 'assets/thinkseg-logo.png',
   tokio: 'assets/tokio-logo.jpg',
+  zurich: 'assets/zurich-logo.jpg',
 };
 
 function mktLogoHtml(key) {
