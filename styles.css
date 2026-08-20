@@ -1500,6 +1500,12 @@ tbody tr:hover td {
   border-color: var(--color-accent);
 }
 
+.badge-filial {
+  color: var(--color-accent-ink);
+  background: var(--color-accent-light);
+  border-color: var(--color-accent);
+}
+
 .bar-row {
   display: flex;
   align-items: center;
@@ -6312,6 +6318,7 @@ details[open] .fl-clausula-chevron { transform: rotate(180deg); }
 .mkt-status-select[data-status="aprovado"]        { border-color: var(--color-success); }
 .mkt-status-select[data-status="concorrente"]     { border-color: var(--color-warning); }
 .mkt-status-select[data-status="declinado"]       { border-color: var(--color-danger); }
+.mkt-status-select[data-status="filial"]          { border-color: var(--color-accent); }
 .mkt-status-select[data-status="erro_portal"]     { border-color: var(--color-purple); }
 .mkt-status-select[data-status="enviar_balancos"] { border-color: var(--color-accent); }
 

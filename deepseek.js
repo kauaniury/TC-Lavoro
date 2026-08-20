@@ -1249,7 +1249,7 @@ async function consultarLimitesSeguradoras(cnpj, seguradoras, onProgress, forceR
       if (Date.now() >= deadline) {
         throw new Error('A consulta de mercado continua em andamento. Aguarde alguns instantes e tente novamente.');
       }
-      await sleep(Math.max(1000, Number(pending.retryAfterMs) || 2500));
+      await sleep(Math.max(500, Number(pending.retryAfterMs) || 2500));
       continue;
     }
 

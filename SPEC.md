@@ -1,7 +1,7 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.69
-> Atualizado em: 2026-08-19
+> Versao: 2.71
+> Atualizado em: 2026-08-20
 
 ## 1. Visão Geral
 
@@ -273,9 +273,9 @@ O console no topo da página (`#mktTomadorInput`, `#mktCnpjInput`, botão "Consu
    `normalizeLimiteFator`) e `classifyErrorMessage` — nada dessa lógica fina de leitura de
    resposta por seguradora mudou; só o destino final mudou (card em vez de página própria).
 3. `mapNormStatusToMkt(statusKey)` traduz o `statusKey` antigo (`aprovado`/`nomeado`/
-   `sem_limite`/`bloqueado`/`sem_resposta`/`instavel`/`erro`) para o novo modelo de 5 status
+   `sem_limite`/`bloqueado`/`filial`/`sem_resposta`/`instavel`/`erro`) para o novo modelo de 6 status
    (4.4): `aprovado→aprovado`, `nomeado→concorrente`, `sem_limite→declinado`,
-   `bloqueado→declinado`, `sem_resposta→erro_portal`, `instavel→erro_portal`,
+   `bloqueado→declinado`, `filial→filial`, `sem_resposta→erro_portal`, `instavel→erro_portal`,
    `erro→erro_portal`.
 4. `populateMktCard(key, { status, capTotal, modalidades, origem: 'auto', mensagem })`
    preenche o card correspondente. `capTotal` é a soma dos limites das modalidades
@@ -295,8 +295,8 @@ O botão-ícone `#mktBtnAtualizar`, ao lado de "Consultar mercado", chama
 `consultarMercadoUI({ forceRefresh: true })`. Ele limpa apenas os 10 cards automáticos da aba
 ativa e envia `forceRefresh: true` na primeira chamada ao Worker; cards manuais não são
 alterados. O Worker ignora o cache Redis de resultado para esse pedido e remove o job parcial
-da Junto, se houver. Caso a Junto responda `202`, os polls seguintes enviam `false` para
-retomar o job novo em vez de reiniciá-lo.
+da consulta de mercado (inclusive o subjob da Junto), se houver. Os polls seguintes enviam
+`false` para retomar esse job novo em vez de reiniciá-lo.
 
 ### 4.4 Cards — status, origem e edição manual
 
@@ -310,7 +310,7 @@ Todo card (dos 35, com ou sem API) é editável. Campos por card:
 | Capacidade Total | `input#mktCap-{key}` | quando Aprovado, representa sempre o maior limite entre as modalidades; o total de mercado soma esse valor uma vez por seguradora |
 | Modalidades | `#mktModalList-{key}` | lista de `{label, limite, taxa}` — só quando Aprovado; `+ Adicionar modalidade` / remover por linha, mesmo componente `.tc-modal-row` do antigo formulário manual |
 
-**5 status** (`MKT_STATUS_CONFIG`), substituem os 4 antigos (`aprovado`/`declinado`/
+**6 status** (`MKT_STATUS_CONFIG`), substituem os 4 antigos (`aprovado`/`declinado`/
 `concorrente`/`bloqueado`) — `statusCcg` e `venc` (vencimento) foram **removidos por
 completo**, não existem mais em nenhum card nem no contrato de `rows[]`. Cada um tem uma cor
 fixa, tanto no filete do `<select>` (`.mkt-status-select[data-status="..."]`) quanto no badge
@@ -322,6 +322,7 @@ marca (ver 3.2a):
 | `aprovado` | Aprovado | verde (`--color-success`) |
 | `concorrente` | Concorrente | âmbar (`--color-warning`) |
 | `declinado` | Declinada | vermelho (`--color-danger`) |
+| `filial` | Filial | ciano/accent (`--color-accent`) |
 | `erro_portal` | Erro no portal | **roxo** (`--color-purple`, novo token — ver 3.2a) |
 | `enviar_balancos` | Enviar balanços para análise | ciano/accent (`--color-accent`) |
 
@@ -465,7 +466,7 @@ extras no `rows[]` final com `seguradoraKey: null`.
     {
       seguradora: string,             // label comercial (ex.: "AXA")
       seguradoraKey: string | null,   // NOVO — chave do catálogo (null = extra/legado, ver 4.5)
-      status: 'aprovado' | 'concorrente' | 'declinado' | 'erro_portal' | 'enviar_balancos',
+      status: 'aprovado' | 'concorrente' | 'declinado' | 'filial' | 'erro_portal' | 'enviar_balancos',
       limite: number,
       modalidade: string,             // 1ª modalidade (compat)
       valorModal: number,
@@ -491,7 +492,7 @@ informado entre as modalidades daquela seguradora. O dashboard, a tabela PNG e o
 
 **Leitura compatível de snapshots antigos** (ao reabrir, ver 4.8): o antigo status `bloqueado`
 (e qualquer valor desconhecido) é mapeado para `declinado` — `mapLegacyRowStatus(status)`.
-Não há equivalente exato para `bloqueado` no novo modelo de 5 status; `declinado` é a leitura
+Não há equivalente exato para `bloqueado` no novo modelo de 6 status; `declinado` é a leitura
 mais próxima de uma decisão de negócio de bloqueio.
 
 ### 4.7 Tabela/E-mail e XLSX — colunas atualizadas
@@ -1340,11 +1341,14 @@ Cada seguradora tem um formato de resposta próprio; `normalizeLimiteResultado(r
 | `normalizeLimiteJunto` | `junto` | `dados` é array de modalidades com `submodalities[]`, cada uma já enriquecida pelo Worker com `limitAvailable`/`rate` reais (ver 10.2). Lista vazia (ou só zerados) → `sem_limite`; senão `aprovado` com `valor`/`taxa` reais quando disponíveis |
 | `normalizeLimiteOnpoint` | `essor`, `sombrero`, `newe`, `mitsui`, `axa`, `now` | Aceita `dados.Response[0]` (envelope padrão) **ou** `dados` já desembrulhado pelo Worker; se `CanSetupAProposal` e `LimitsAndRates[]` presentes (após `.filter(Boolean)` e filtro de zerados) → `aprovado`; senão lê `Reasons[]`/`Errors[]` e classifica via `classifyErrorMessage` (`bloqueado`, `nomeado`, `instavel`, `sem_resposta` ou `sem_limite`) |
 | `normalizeLimiteFator` | `fator` | `cd_retorno !== 0` é sempre resposta de negócio (nunca erro técnico): `nm_retorno` é classificado via `classifyErrorMessage` — `nomeado` (mensagem original exibida, é acionável) se menciona corretor, senão `sem_limite` com a mensagem substituída pelo texto padrão `LIM_SEM_LIMITE_MSG` (o jargão bruto da Fator, ex. "tomador deve estar Aprovado e dentro da Data de Validade", não é repassado ao usuário). Quando `cd_retorno === 0`, parseia `DadosTomador[]` em modalidades (`NomeGrupoSubLimite`, `ValorLimiteDisponivel`, `ValorTaxa`), filtrando zerados; se a lista ficar vazia após o filtro, também usa `LIM_SEM_LIMITE_MSG` |
-| `normalizeLimiteAvla` | `avla` | Lê `nome` e `document` do tomador e converte `limites[]` em modalidades (`nome_modalidade`, `limite_disponivel`, `taxa`), filtrando limites zerados. Sem limite disponível, retorna `sem_limite` com a mensagem padrão. |
+| `normalizeLimiteAvla` | `avla` | Lê `nome` e `document` do tomador e converte `limites[]` em modalidades (`nome_modalidade`, `limite_disponivel`, `taxa`), filtrando limites zerados. Sem limite disponível, retorna `sem_limite` com a mensagem padrão. Em erro, o Worker extrai `errorMessageTranslated`: `LIMITS_NOT_FOUND` vira `sem_limite`; `Policyholder does not belong to the broker` vira `nomeado` (Concorrente) e preserva a mensagem para o botão “!”. |
 
 `classifyErrorMessage` reconhece, além do `"motor de crédito"`/`"problema ao rodar"` (família "instável"):
 - `"negado"` combinado com `"técnic[a/o]"` (JNS, ex.: `"Risco negado por questões técnicas."`) → `sem_limite` (cinza) — é decisão de negócio (risco negado), o "por questões técnicas" é jargão da própria JNS para negativa de crédito, não convite a tentar de novo;
 - `"corretor"` combinado com `"permiss"` (Junto, ex.: `"Corretor não possui permissão para visualizar o Tomador."`) → `nomeado` (âmbar) — mesma família de "nomeado com outro corretor" (tomador já registrado com outro corretor na seguradora), só que sem a palavra "nomeado" nessa formulação específica da Junto.
+- `"Cadastro de Filial indisponível via Portal JNS"` → `filial` (ciano), sem ser apresentado como erro técnico;
+- `"LIMITS_NOT_FOUND"`/`"não possui limite disponível"` (AVLA) → `sem_limite` (declinada), pois é resposta de negócio.
+- `"Policyholder does not belong to the broker"`/`"Tomador não pertence ao corretor"` (AVLA) → `nomeado` (Concorrente), pois o tomador não está associado ao corretor autenticado; a mensagem traduzida permanece disponível no retorno do card.
 
 Essas mensagens chegam via `r.status !== 'ok'` (HTTP não-2xx do lado da seguradora), mas são resposta de negócio, não falha técnica do Worker.
 
@@ -1379,7 +1383,7 @@ Resposta:
 
 | Seguradora(s) | Chave interna | Autenticação | Secrets |
 |---|---|---|---|
-| JNS Seguros | `jns` | login (`username`+`password`+`token`) → Bearer, com retry automático em `401` | `JNS_USERNAME`, `JNS_PASSWORD`, `JNS_TOKEN` |
+| JNS Seguros | `jns` | login (`username`+`password`+`token`) → Bearer, timeout de 60s por chamada, retry automático em `401` e uma repetição da consulta quando o motor de crédito indicar falha transitória | `JNS_USERNAME`, `JNS_PASSWORD`, `JNS_TOKEN` |
 | Junto Seguros | `junto` | `clientId`+`clientSecret` → `accessToken`; cadastra o tomador automaticamente se `policyholders/{cnpj}` ainda não existir | `JUNTO_CLIENT_ID`, `JUNTO_CLIENT_SECRET` |
 | Essor / Sombrero / NEWE / Mitsui Sumitomo / Now (via Onpoint) | `essor`, `sombrero`, `newe`, `mitsui`, `now` | header fixo `application-key-v2`, sem login | `ONPOINT_APPLICATION_KEY_V2`, `ONPOINT_BROKER_CNPJ` |
 | AXA (via Onpoint, rota dedicada `/axa/...`) | `axa` | mesma auth do Onpoint acima | idem |
@@ -1390,32 +1394,37 @@ Now Seguros usa a mesma credencial já cadastrada da Onpoint (`ONPOINT_APPLICATI
 
 **Regra crítica — a consulta roda inteiramente em fila (`for...of`), nunca em paralelo.** `handleLimitsQuery` consulta as seguradoras solicitadas uma de cada vez, na ordem recebida, aguardando cada `queryInsurer` terminar antes de iniciar a próxima. Isso evita sobrecarregar qualquer integração — em especial a Onpoint, que agrupa `essor`/`sombrero`/`newe`/`mitsui`/`axa`/`now` no mesmo endpoint e rejeita chamadas concorrentes para o mesmo CNPJ — mas agora vale para todas as 10 seguradoras, não só a família Onpoint. Como consequência, o tempo total de resposta escala linearmente com o número de seguradoras consultadas.
 
-**Fila e cache Redis por CNPJ.** Antes de iniciar as APIs, o Worker consulta
+**Fila, progresso e cache Redis por CNPJ.** Antes de iniciar as APIs, o Worker consulta
 `limits:result:{cnpj}:{seguradoras-ordenadas}` (TTL de 5 minutos). Em cache, devolve o mesmo
-resultado imediatamente. Sem cache, adquire `limits:query-lock:{cnpj}` com `SET NX PX` (TTL de
-6 minutos); uma requisição concorrente não consulta as seguradoras em duplicidade, responde
-`202` e o navegador refaz a tentativa após 2,5 segundos. O lock usa token aleatório e é
-liberado com `EVAL` condicionado ao mesmo token, impedindo uma execução antiga de apagar o lock
-de uma consulta nova. A fila é por CNPJ, para não bloquear tomadores diferentes.
+resultado imediatamente. Sem cache, persiste `limits:market-job:{cnpj}:{seguradoras-ordenadas}`
+(TTL de 10 minutos) com resultados parciais, cursor e a próxima seguradora. Cada invocação
+executa no máximo uma seguradora (ou um lote de taxas da Junto), devolve `202` com a próxima
+etapa real e o navegador repete após 600ms. Assim a tela mostra, por exemplo, “Consultando JNS:
+2 de 10” antes de aguardar a resposta mais lenta, em vez de permanecer em 2%. O lock geral
+`limits:query-lock:{cnpj}` continua com `SET NX PX` (TTL de 6 minutos), usa token aleatório e
+é liberado com `EVAL` condicionado ao mesmo token; ele evita duplicidade entre abas sem bloquear
+tomadores diferentes.
 
-**Junto em etapas (compatível com o limite gratuito).** A primeira invocação monta
-`limits:junto-job:{cnpj}` (TTL de 10 minutos) com as modalidades, os resultados das demais
-seguradoras e o cursor. As invocações seguintes executam somente quatro chamadas
+**Junto em etapas (compatível com o limite gratuito).** Ao chegar na etapa da Junto, a primeira
+invocação monta `limits:junto-job:{cnpj}` (TTL de 10 minutos) com as modalidades e o cursor.
+As invocações seguintes executam somente quatro chamadas
 `/modalities/{id}/rates` por vez (`JUNTO_RATE_BATCH_SIZE = 4`), persistem o cursor e devolvem
 `202` até terminar. Ao concluir, o Worker monta o resultado da Junto, remove o job e grava o
 cache consolidado. Dessa forma não há uma chamada por modalidade acumulada na mesma execução.
 
-**Progresso visual da consulta.** Todo `202` inclui opcionalmente
+**Progresso visual da consulta.** Todo `202` inclui obrigatoriamente
 `progress: { percent, message }`. O `consultarLimitesSeguradoras` em `deepseek.js` repassa
 esse estado ao callback da interface; na página de mercado, `setMktProgress` atualiza a barra
-`#mktProgressBar`, o percentual e a mensagem em `#mktLoading`. O percentual começa em 2%,
-vai a 20% após montar o job e avança conforme o cursor das modalidades da Junto, chegando a
-100% somente quando o resultado consolidado é aplicado aos cards.
+`#mktProgressBar`, o percentual e a mensagem em `#mktLoading`. O percentual começa em 5%,
+avança a cada seguradora concluída e, dentro da Junto, conforme o cursor das modalidades;
+chega a 100% somente quando o resultado consolidado é aplicado aos cards. O cliente respeita o
+intervalo de 600ms do Worker (mínimo 500ms) entre polls.
 
 ### 10.3a Tratamento de erro no Worker
 
-- `fetchWithTimeout(url, options, timeoutMs)` (padrão 20s, **45s no Onpoint**, **60s na Junto** — `LIMITS_FETCH_TIMEOUT_JUNTO_MS`, ver justificativa abaixo) envolve toda chamada externa com `AbortController`; ao abortar, lança `Error` com mensagem contendo "tempo limite" — o front-end reconhece essa string e classifica como aviso "Sem resposta", nunca como erro técnico vermelho (`classifyErrorMessage` em `app.js`).
-- `parseJsonSafe(response)` faz parse defensivo do corpo de erro (nunca estoura se a seguradora devolver texto puro em 5xx) e `extractErrorMessage(payload, fallback)` extrai a mensagem mais específica possível (`message`, `nm_retorno`, `Errors[]`, `errors{}` no formato ASP.NET, `title`, texto bruto).
+- `fetchWithTimeout(url, options, timeoutMs)` (padrão 20s, **45s no Onpoint**, **60s na JNS e na Junto** — `LIMITS_FETCH_TIMEOUT_JNS_MS`/`LIMITS_FETCH_TIMEOUT_JUNTO_MS`) envolve toda chamada externa com `AbortController`; ao abortar, lança `Error` com mensagem contendo "tempo limite" — o front-end reconhece essa string e classifica como aviso "Sem resposta", nunca como erro técnico vermelho (`classifyErrorMessage` em `app.js`).
+- `parseJsonSafe(response)` faz parse defensivo do corpo de erro (nunca estoura se a seguradora devolver texto puro em 5xx) e `extractErrorMessage(payload, fallback)` extrai a mensagem mais específica possível (`errorMessageTranslated` da AVLA, `message`, `nm_retorno`, `Errors[]`, `errors{}` no formato ASP.NET, `title`, texto bruto).
+- **JNS — retry do motor de crédito** (`queryJns`): após login/reautenticação, consulta `issuer?document={cnpj}`. Se a primeira resposta contiver exclusivamente a família transitória `"motor de crédito"`/`"problema ao rodar o motor"`, aguarda 1,2s e repete o mesmo endpoint uma única vez, preservando o token. O segundo resultado é definitivo; negativas de risco, resposta de filial e qualquer outro erro não são repetidos, evitando duplicidade e carga desnecessária.
 - **Junto — fluxo completo de limites** (`queryJunto`): autentica → `GET /policyholders/{cnpj}` + `GET /policyholders/{cnpj}/modalities` em paralelo → se qualquer uma falhar, tenta `POST /policyholders {federalId}` e aguarda 9000ms (propagação assíncrona documentada da Junto) antes de repetir as duas chamadas; se ainda falharem ambas, erro técnico. Para **cada modalidade** retornada por `/modalities`, busca `GET /policyholders/{cnpj}/modalities/{modalidade.id}/rates` usando **sempre o id de nível superior da modalidade** (nunca o id de uma submodalidade — esse endpoint é por modalidade, não por submodalidade; correção desta versão, antes usava `submodalityId ?? modalityId`). Uma falha pontual nessa chamada para uma modalidade não derruba as outras nem remove a modalidade do resultado (try/catch por modalidade — fica sem `limitAvailable`/`rate`, mas continua na lista). A resposta de `/rates` pode trazer mais de uma entrada (uma por submodalidade); `matchJuntoRateEntry` casa cada entrada com sua submodalidade pelo id (`submodalityId`/`subModalityId`/`id`) e, sem id para casar, cai para a posição ou para a única entrada disponível. Retorna o array de modalidades já enriquecido com `limitAvailable`/`rate` por `submodality`.
 - **Junto — timeout de 60s por chamada** (`LIMITS_FETCH_TIMEOUT_JUNTO_MS`): autenticação, cadastro, listagem de modalidades e cada `/rates` usam esse timeout individual. Os `/rates` não são acumulados no mesmo request: `runJuntoRateBatch` executa quatro por invocação e o Redis mantém o cursor, portanto a sequência completa pode levar várias invocações sem ultrapassar o limite de subrequests.
 - **Onpoint — retry de "consulta em andamento"** (`queryOnpointRequest`): a mensagem de erro é sempre extraída do corpo primeiro (via `extractErrorMessage`/`Errors[]`) e só depois classificada como retryable (`isOnpointInProgressMessage`) — **independente de a resposta ter vindo com HTTP 200 e `Errors[]` ou com status não-2xx** (a Onpoint foi observada retornando a mesma condição de "consulta em andamento" das duas formas). Havendo match, tenta de novo automaticamente (até 3 tentativas, 1500ms × tentativa); qualquer outro conteúdo de `Errors[]` (bloqueado, sem alçada, nomeado com outro corretor etc.) é erro de negócio, nunca retry, e segue como está para o front-end classificar como aviso. Ver 10.3b para o lock distribuído que precede essas chamadas.
@@ -1442,6 +1451,7 @@ Tokens de login (AVLA, JNS, Junto, Fator) são cacheados no Redis para evitar no
 | `limits:token:fator` | `expires_in` da resposta menos 30s de margem |
 | `limits:token:avla` | `expiresIn`/`expires_in` da resposta menos 30s; 10 min se a API não informar expiração |
 | `limits:result:{cnpj}:{seguradoras-ordenadas}` | 5 min — resposta consolidada da consulta de mercado |
+| `limits:market-job:{cnpj}:{seguradoras-ordenadas}` | 10 min — resultados parciais, cursor e próxima seguradora da consulta progressiva |
 | `limits:query-lock:{cnpj}` | 6 min — fila distribuída da consulta completa por CNPJ |
 | `limits:junto-job:{cnpj}` | 10 min — modalidades, cursor e resultados parciais da Junto |
 | `limits:onpoint-lock:{cnpj}` | 60s (`ONPOINT_LOCK_TTL_MS`) — proteção da família Onpoint, não cache de token; ver 10.3b |

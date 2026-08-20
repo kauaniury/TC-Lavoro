@@ -98,6 +98,7 @@ const MKT_STATUS_CONFIG = {
   aprovado:        { label: 'Aprovado',                     badge: 'badge-aprovado' },
   concorrente:     { label: 'Concorrente',                  badge: 'badge-concorrente' },
   declinado:       { label: 'Declinada',                     badge: 'badge-declinado' },
+  filial:          { label: 'Filial',                        badge: 'badge-filial' },
   erro_portal:     { label: 'Erro no portal',                badge: 'badge-erro-portal' },
   enviar_balancos: { label: 'Enviar balanços para análise',  badge: 'badge-enviar-balancos' },
 };
@@ -221,8 +222,8 @@ function generateDashboard() {
   generateButton.disabled = true;
   const { rows, tomador, cnpj } = parsedData;
 
-  // Sort: aprovado > concorrente > enviar_balancos > erro_portal > declinado
-  const order = { aprovado: 0, concorrente: 1, enviar_balancos: 2, erro_portal: 3, declinado: 4 };
+  // Sort: aprovado > concorrente > enviar_balancos > filial > erro_portal > declinado
+  const order = { aprovado: 0, concorrente: 1, enviar_balancos: 2, filial: 3, erro_portal: 4, declinado: 5 };
   rows.sort((a, b) => (order[a.status] ?? 5) - (order[b.status] ?? 5) || b.limite - a.limite);
 
   const aprovadas    = rows.filter(r => r.status === 'aprovado');
@@ -230,7 +231,8 @@ function generateDashboard() {
   const concorr      = rows.filter(r => r.status === 'concorrente');
   const erroPortal   = rows.filter(r => r.status === 'erro_portal');
   const enviarBalanc = rows.filter(r => r.status === 'enviar_balancos');
-  const semRetorno   = erroPortal.length + enviarBalanc.length;
+  const filiais      = rows.filter(r => r.status === 'filial');
+  const semRetorno   = erroPortal.length + enviarBalanc.length + filiais.length;
 
   const totalAprov = aprovadas.reduce((s, r) => s + r.limite, 0);
   const maxLimite  = aprovadas.length ? Math.max(...aprovadas.map(r => r.limite)) : 0;
@@ -335,9 +337,9 @@ function generateDashboard() {
 
   // Doughnut
   if (chartDoughnutInst) chartDoughnutInst.destroy();
-  const dGroups = [aprovadas, concorr, enviarBalanc, erroPortal, declinadas];
-  const dAllLabels = ['Aprovado','Concorrente','Enviar balanços para análise','Erro no portal','Declinada'];
-  const dAllColors = ['#16a34a','#b45309','#0a6c9c','#7c3aed','#dc2626'];
+  const dGroups = [aprovadas, concorr, enviarBalanc, filiais, erroPortal, declinadas];
+  const dAllLabels = ['Aprovado','Concorrente','Enviar balanços para análise','Filial','Erro no portal','Declinada'];
+  const dAllColors = ['#16a34a','#b45309','#0a6c9c','#0a6c9c','#7c3aed','#dc2626'];
   const dData = dGroups.map(g=>g.length).filter((_,i)=>dGroups[i].length>0);
   const dLabels = dAllLabels.filter((_,i)=>dGroups[i].length>0);
   const dColors = dAllColors.filter((_,i)=>dGroups[i].length>0);
@@ -3404,6 +3406,7 @@ function renderMktCardsGridSkeleton() {
           '<option value="aprovado">Aprovado</option>' +
           '<option value="concorrente">Concorrente</option>' +
           '<option value="declinado">Declinada</option>' +
+          '<option value="filial">Filial</option>' +
           '<option value="erro_portal">Erro no portal</option>' +
           '<option value="enviar_balancos">Enviar balanços para análise</option>' +
         '</select>' +
@@ -3790,6 +3793,7 @@ function addMktExtraWithData(data) {
         '<option value="aprovado"' + (data.status === 'aprovado' ? ' selected' : '') + '>Aprovado</option>' +
         '<option value="concorrente"' + (data.status === 'concorrente' ? ' selected' : '') + '>Concorrente</option>' +
         '<option value="declinado"' + (data.status === 'declinado' ? ' selected' : '') + '>Declinada</option>' +
+        '<option value="filial"' + (data.status === 'filial' ? ' selected' : '') + '>Filial</option>' +
         '<option value="erro_portal"' + (data.status === 'erro_portal' ? ' selected' : '') + '>Erro no portal</option>' +
         '<option value="enviar_balancos"' + (data.status === 'enviar_balancos' ? ' selected' : '') + '>Enviar balanços para análise</option>' +
       '</select></div>' +
@@ -3870,7 +3874,7 @@ function matchMktKeyByLabel(label) {
 
 // Snapshot antigo (pré-migração) trazia só 4 status: aprovado/declinado/
 // concorrente/bloqueado. "bloqueado" não tem equivalente exato no novo modelo
-// de 5 status — vira "declinado" (mais próximo semanticamente de uma decisão
+// de 6 status — vira "declinado" (mais próximo semanticamente de uma decisão
 // de negócio de bloqueio). Qualquer valor desconhecido também cai em
 // "declinado", nunca descarta a linha.
 function mapLegacyRowStatus(status) {
@@ -3911,6 +3915,7 @@ function mapNormStatusToMkt(statusKey) {
     nomeado: 'concorrente',
     sem_limite: 'declinado',
     bloqueado: 'declinado',
+    filial: 'filial',
     sem_resposta: 'erro_portal',
     instavel: 'erro_portal',
     erro: 'erro_portal',
@@ -4289,7 +4294,7 @@ function buildTcEmailTableHtml(data) {
   const aprovadas    = rows.filter(r => r.status === 'aprovado');
   const declinadas   = rows.filter(r => r.status === 'declinado');
   const concorr      = rows.filter(r => r.status === 'concorrente');
-  const semRetorno   = rows.filter(r => r.status === 'erro_portal' || r.status === 'enviar_balancos');
+  const semRetorno   = rows.filter(r => r.status === 'erro_portal' || r.status === 'enviar_balancos' || r.status === 'filial');
   const totalAprov  = aprovadas.reduce((s, r) => s + (r.limite || 0), 0);
   const maxLimite   = aprovadas.length ? Math.max(...aprovadas.map(r => r.limite || 0)) : 0;
   const maxSeg      = aprovadas.filter(r => (r.limite || 0) === maxLimite).map(r => r.seguradora).join(' · ');
@@ -4428,6 +4433,7 @@ function exportTcEmailTableXlsx() {
     aprovado:        { bg: 'DCFCE7', fg: '16A34A' },
     declinado:       { bg: 'FEE2E2', fg: 'DC2626' },
     concorrente:     { bg: 'FEF3C7', fg: 'B45309' },
+    filial:          { bg: 'D8F2FD', fg: '0A6C9C' },
     erro_portal:     { bg: 'EDE9FE', fg: '7C3AED' },
     enviar_balancos: { bg: 'D8F2FD', fg: '0A6C9C' },
   };
@@ -5019,6 +5025,11 @@ const LIM_SEM_LIMITE_MSG = 'Sem limite liberado ao tomador.';
 // de integração): "nomeado com outro corretor" > timeout > instabilidade > bloqueado > erro.
 function classifyErrorMessage(message) {
   const t = String(message || '').toLowerCase();
+  if (t.includes('cadastro de filial') || /\bfilial\b/.test(t)) return 'filial';
+  // AVLA: o tomador existe, mas não está associado ao corretor autenticado.
+  // É a mesma ação operacional de um tomador nomeado com outro corretor.
+  if (t.includes('policyholder does not belong to the broker') ||
+    (t.includes('tomador') && t.includes('pertence') && (t.includes('corretor') || t.includes('broker')))) return 'nomeado';
   // Precisa das duas partes juntas ("nomeado" + "corretor"/"broker") — uma mensagem de
   // bloqueio que apenas cita "corretora" (ex.: "bloqueado para esta corretora") não é
   // o mesmo aviso de negócio de tomador nomeado com outro corretor.
@@ -5030,6 +5041,7 @@ function classifyErrorMessage(message) {
   if (t.includes('tempo limite') || t.includes('timeout') || t.includes('respond')) return 'sem_resposta';
   if (['motor de crédito', 'motor de credito', 'problema ao rodar', 'instável', 'instavel', 'indisponív', 'indisponiv']
     .some(kw => t.includes(kw))) return 'instavel';
+  if (t.includes('limits_not_found') || t.includes('não possui limite') || t.includes('nao possui limite') || t.includes('does not have a limit available')) return 'sem_limite';
   // "Risco negado por questões técnicas" (JNS): é decisão de negócio (risco negado),
   // não instabilidade passageira do motor — o "por questões técnicas" aqui é o jargão
   // da própria JNS para negativa de crédito, não um convite a tentar de novo. Badge

@@ -68,6 +68,7 @@ const LIMITS_TOKEN_TTL_SECONDS = 60 * 25;
 // tomador por mais de uma pessoa em um intervalo curto.
 const LIMITS_RESULT_CACHE_TTL_SECONDS = 60 * 5;
 const LIMITS_QUERY_RETRY_AFTER_MS = 2500;
+const LIMITS_QUERY_STEP_RETRY_AFTER_MS = 600;
 const LIMITS_QUERY_LOCK_TTL_MS = 6 * 60 * 1000;
 const JUNTO_RATE_BATCH_SIZE = 4;
 const JUNTO_JOB_TTL_SECONDS = 60 * 10;
@@ -1286,6 +1287,7 @@ async function handleLimitsQuery(request, env) {
   try {
     if (forceRefresh) {
       await redisCall(env, ['DEL', cacheKey]);
+      await redisCall(env, ['DEL', limitsMarketJobKey(cnpj, requested)]);
       if (requested.includes('junto')) await redisCall(env, ['DEL', juntoJobKey(cnpj)]);
     } else {
       const cachedAfterLock = await redisGet(env, cacheKey);
@@ -1296,8 +1298,8 @@ async function handleLimitsQuery(request, env) {
     if (!progress.completed) {
       return jsonResponse({
         status: 'pending',
-        message: 'Consulta da Junto em andamento.',
-        retryAfterMs: LIMITS_QUERY_RETRY_AFTER_MS,
+        message: 'Consulta de mercado em andamento.',
+        retryAfterMs: LIMITS_QUERY_STEP_RETRY_AFTER_MS,
         progress: progress.progress,
       }, 202);
     }
@@ -1310,6 +1312,7 @@ async function handleLimitsQuery(request, env) {
       cache: 'miss',
     };
     await redisSet(env, cacheKey, response, LIMITS_RESULT_CACHE_TTL_SECONDS);
+    await redisCall(env, ['DEL', limitsMarketJobKey(cnpj, requested)]);
     return jsonResponse(response);
   } finally {
     try {
@@ -1326,86 +1329,120 @@ function juntoJobKey(cnpj) {
   return `limits:junto-job:${cnpj}`;
 }
 
+function limitsMarketJobKey(cnpj, requested) {
+  return `limits:market-job:${cnpj}:${requestedSignature(requested)}`;
+}
+
 function requestedSignature(requested) {
   return [...requested].sort().join(',');
 }
 
 async function runLimitsQueryStep(env, cnpj, requested) {
-  if (!requested.includes('junto')) {
-    const resultados = [];
-    for (const key of requested) resultados.push(await queryInsurer(env, cnpj, key));
-    return { completed: true, resultados };
-  }
-
   const signature = requestedSignature(requested);
-  let job = await redisGet(env, juntoJobKey(cnpj));
+  const marketJobKey = limitsMarketJobKey(cnpj, requested);
+  let job = await redisGet(env, marketJobKey);
   if (!job) {
-    const resultados = [];
-    for (const key of requested) {
-      if (key !== 'junto') resultados.push(await queryInsurer(env, cnpj, key));
-    }
-    let modalidades;
-    try {
-      modalidades = await loadJuntoModalities(env, cnpj);
-    } catch (err) {
-      const byKey = new Map(resultados.map(result => [result.seguradora, result]));
-      byKey.set('junto', {
-        seguradora: 'junto',
-        label: INSURER_LABELS.junto,
-        status: 'erro',
-        erro: err.message || 'Erro desconhecido',
-      });
-      return {
-        completed: true,
-        resultados: requested.map(key => byKey.get(key)).filter(Boolean),
-      };
-    }
     job = {
       signature,
-      resultados,
-      modalidades,
+      resultados: [],
       cursor: 0,
-      enriquecidas: [],
+      pendingKey: requested[0],
       createdAt: new Date().toISOString(),
     };
-    await redisSet(env, juntoJobKey(cnpj), job, JUNTO_JOB_TTL_SECONDS);
+    await redisSet(env, marketJobKey, job, JUNTO_JOB_TTL_SECONDS);
     return {
       completed: false,
-      progress: { percent: 20, message: 'Consultando modalidades da Junto…' },
+      progress: limitsQueryProgress(requested, 0),
     };
   }
 
   if (job.signature !== signature) {
-    // O lock geral é por CNPJ. Uma consulta com outra seleção deve aguardar o
-    // navegador concluir o job que já está associado a esse tomador.
-    return { completed: false };
+    return { completed: false, progress: { percent: 5, message: 'Aguardando a consulta em andamento…' } };
+  }
+
+  const key = job.pendingKey || requested[job.cursor];
+  if (key === 'junto') {
+    const juntoProgress = await runJuntoLimitsStep(env, cnpj, signature);
+    if (!juntoProgress.completed) {
+      await redisSet(env, marketJobKey, job, JUNTO_JOB_TTL_SECONDS);
+      const total = Math.max(1, juntoProgress.total || 1);
+      const fraction = juntoProgress.cursor ? juntoProgress.cursor / total : 0;
+      const base = Math.round(5 + (job.cursor / requested.length) * 90);
+      const span = Math.max(1, Math.round(90 / requested.length));
+      return {
+        completed: false,
+        progress: {
+          percent: Math.min(95, base + Math.round(fraction * span)),
+          message: juntoProgress.message,
+        },
+      };
+    }
+    job.resultados.push(juntoProgress.resultado);
+  } else {
+    job.resultados.push(await queryInsurer(env, cnpj, key));
+  }
+
+  job.cursor += 1;
+  if (job.cursor >= requested.length) {
+    const byKey = new Map(job.resultados.map(result => [result.seguradora, result]));
+    return {
+      completed: true,
+      resultados: requested.map(insurerKey => byKey.get(insurerKey)).filter(Boolean),
+    };
+  }
+
+  job.pendingKey = requested[job.cursor];
+  await redisSet(env, marketJobKey, job, JUNTO_JOB_TTL_SECONDS);
+  return {
+    completed: false,
+    progress: limitsQueryProgress(requested, job.cursor),
+  };
+}
+
+function limitsQueryProgress(requested, cursor) {
+  const total = Math.max(1, requested.length);
+  const key = requested[Math.min(cursor, requested.length - 1)];
+  return {
+    percent: Math.min(95, Math.round(5 + (cursor / total) * 90)),
+    message: `Consultando ${INSURER_LABELS[key] || key}: ${Math.min(cursor + 1, total)} de ${total}.`,
+  };
+}
+
+async function runJuntoLimitsStep(env, cnpj, signature) {
+  let job = await redisGet(env, juntoJobKey(cnpj));
+  if (!job) {
+    try {
+      const modalidades = await loadJuntoModalities(env, cnpj);
+      job = { signature, modalidades, cursor: 0, enriquecidas: [], createdAt: new Date().toISOString() };
+      await redisSet(env, juntoJobKey(cnpj), job, JUNTO_JOB_TTL_SECONDS);
+      return { completed: false, cursor: 0, total: modalidades.length, message: 'Consultando modalidades da Junto…' };
+    } catch (err) {
+      return {
+        completed: true,
+        resultado: { seguradora: 'junto', label: INSURER_LABELS.junto, status: 'erro', erro: err.message || 'Erro desconhecido' },
+      };
+    }
+  }
+
+  if (job.signature !== signature) {
+    return { completed: false, cursor: 0, total: 1, message: 'Aguardando consulta da Junto…' };
   }
 
   const completed = await runJuntoRateBatch(env, cnpj, job);
   if (!completed) {
     await redisSet(env, juntoJobKey(cnpj), job, JUNTO_JOB_TTL_SECONDS);
-    const total = Math.max(1, job.modalidades.length);
     return {
       completed: false,
-      progress: {
-        percent: Math.min(95, 20 + Math.round((job.cursor / total) * 75)),
-        message: `Consultando Junto: ${job.cursor} de ${job.modalidades.length} modalidades.`,
-      },
+      cursor: job.cursor,
+      total: job.modalidades.length,
+      message: `Consultando Junto: ${job.cursor} de ${job.modalidades.length} modalidades.`,
     };
   }
 
   await redisCall(env, ['DEL', juntoJobKey(cnpj)]);
-  const juntoResult = {
-    seguradora: 'junto',
-    label: INSURER_LABELS.junto,
-    status: 'ok',
-    dados: job.enriquecidas,
-  };
-  const byKey = new Map(job.resultados.map(result => [result.seguradora, result]));
-  byKey.set('junto', juntoResult);
   return {
     completed: true,
-    resultados: requested.map(key => byKey.get(key)).filter(Boolean),
+    resultado: { seguradora: 'junto', label: INSURER_LABELS.junto, status: 'ok', dados: job.enriquecidas },
   };
 }
 
@@ -1462,6 +1499,9 @@ function sleep(ms) {
 // Toda chamada externa usa timeout — ao abortar, a mensagem contem "tempo limite" para
 // o front-end classificar como aviso "Sem resposta", nunca como erro tecnico vermelho.
 const LIMITS_FETCH_TIMEOUT_MS = 20000;
+// A JNS pode demorar mais que o timeout padrão enquanto seu motor de crédito
+// processa o tomador. Login e consulta recebem até 60s por chamada.
+const LIMITS_FETCH_TIMEOUT_JNS_MS = 60000;
 // Junto tem o fluxo mais longo dos integrados (auth -> 2 GETs -> cadastro + espera fixa
 // de 9s -> repete os 2 GETs -> 1 GET de rates por modalidade) e ja foi observada
 // respondendo mais devagar que os 20s padrao nesse caminho — timeout proprio de 1 min
@@ -1493,6 +1533,8 @@ async function parseJsonSafe(response) {
 
 function extractErrorMessage(payload, fallback) {
   if (!payload) return fallback;
+  if (payload.errorMessageTranslated) return payload.errorMessageTranslated;
+  if (payload.error_message_translated) return payload.error_message_translated;
   if (Array.isArray(payload) && payload[0] && payload[0].message) return payload[0].message;
   if (payload.message) return payload.message;
   if (payload.nm_retorno) return payload.nm_retorno;
@@ -1509,6 +1551,18 @@ function extractErrorMessage(payload, fallback) {
 
 // -- JNS Seguros --
 
+// A JNS ocasionalmente devolve uma falha transitória enquanto o motor de
+// crédito inicializa a análise. Repetimos somente esse caso uma vez; negativas
+// de risco e respostas de negócio nunca entram em retry.
+const JNS_CREDIT_ENGINE_RETRY_DELAY_MS = 1200;
+
+function isJnsCreditEngineRetryableMessage(message) {
+  const text = String(message || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  return text.includes('motor de credito') || text.includes('problema ao rodar o motor');
+}
+
 async function getJnsToken(env, forceRefresh = false) {
   if (!forceRefresh) {
     const cached = await redisGet(env, 'limits:token:jns');
@@ -1523,7 +1577,7 @@ async function getJnsToken(env, forceRefresh = false) {
       password: env.JNS_PASSWORD,
       token: env.JNS_TOKEN,
     }),
-  });
+  }, LIMITS_FETCH_TIMEOUT_JNS_MS);
   if (!res.ok) throw new Error(extractErrorMessage(await parseJsonSafe(res), `JNS login error ${res.status}`));
 
   const data = await res.json();
@@ -1536,17 +1590,36 @@ async function getJnsToken(env, forceRefresh = false) {
 
 async function queryJns(env, cnpj) {
   let token = await getJnsToken(env);
-  let res = await fetchWithTimeout(`${JNS_BASE}/issuer?document=${cnpj}`, {
-    headers: { Authorization: `Bearer ${token}`, 'cache-control': 'no-cache' },
-  });
-
-  if (res.status === 401) {
-    token = await getJnsToken(env, true);
-    res = await fetchWithTimeout(`${JNS_BASE}/issuer?document=${cnpj}`, {
+  const requestIssuer = async () => {
+    let res = await fetchWithTimeout(`${JNS_BASE}/issuer?document=${cnpj}`, {
       headers: { Authorization: `Bearer ${token}`, 'cache-control': 'no-cache' },
-    });
+    }, LIMITS_FETCH_TIMEOUT_JNS_MS);
+    if (res.status === 401) {
+      token = await getJnsToken(env, true);
+      res = await fetchWithTimeout(`${JNS_BASE}/issuer?document=${cnpj}`, {
+        headers: { Authorization: `Bearer ${token}`, 'cache-control': 'no-cache' },
+      }, LIMITS_FETCH_TIMEOUT_JNS_MS);
+    }
+    return res;
+  };
+
+  let res = await requestIssuer();
+  if (!res.ok) {
+    const message = extractErrorMessage(await parseJsonSafe(res), `JNS issuer error ${res.status}`);
+    if (!isJnsCreditEngineRetryableMessage(message)) throw new Error(message);
+
+    await sleep(JNS_CREDIT_ENGINE_RETRY_DELAY_MS);
+    res = await requestIssuer();
+    if (!res.ok) throw new Error(extractErrorMessage(await parseJsonSafe(res), `JNS issuer error ${res.status}`));
+    return res.json();
   }
 
+  const data = await res.json();
+  if (!isJnsCreditEngineRetryableMessage(data && data.message)) return data;
+
+  // A mesma falha pode chegar com HTTP 200 e uma mensagem no corpo.
+  await sleep(JNS_CREDIT_ENGINE_RETRY_DELAY_MS);
+  res = await requestIssuer();
   if (!res.ok) throw new Error(extractErrorMessage(await parseJsonSafe(res), `JNS issuer error ${res.status}`));
   return res.json();
 }
