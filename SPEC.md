@@ -1052,6 +1052,32 @@ rotulos da escala antiga** - `REGULAR` para Moderada, `FRACA`/`CRITICA` para Rui
 analise pode estar em cache no Redis por ate 6h com o formato anterior. Os valores antigos nao
 voltam ao contrato: sao so aceitos na leitura.
 
+#### 6.4-ter Exportação do PDF — `downloadAfRelatorio(btn)`
+
+O botão "Exportar relatório" da Análise Financeira **não** usa `gerarPdf()`. Aquela função
+captura `#page-dashboard` fixo; com a Análise Financeira ativa, essa página está com
+`display: none` (`.page` inativa) e o `html2canvas` devolvia um canvas **0 × 0** — o PDF saía
+vazio ou o download não acontecia. Verificado em navegador: `#page-dashboard` com
+`offsetHeight = 0` e `html2canvas` retornando `0 x 0`.
+
+`downloadAfRelatorio(btn)` captura `#page-analise-financeira` e monta A4 retrato
+multi-página, no mesmo padrão de `downloadSgReport` / `downloadFlReport` /
+`downloadApoliceReport`. O nome do arquivo sai do nome da empresa.
+
+Duas coisas que ela faz antes de capturar, e desfaz depois:
+
+- **Abre todos os `<details>`** da página. Seção recolhida não entra na captura, e um PDF com
+  conteúdo escondido não serve para nada. O estado anterior de cada um é restaurado no
+  `finally`.
+- **Liga `body.pdf-generating`**, que agora também oculta `.ai-chat-sidebar` e
+  `.af-nova-analise-btn` (controles de tela, não conteúdo de relatório), força
+  `.af-split-layout` a uma coluna e dá `height: auto` a `#page-analise-financeira` — sem isso
+  a página, sendo flex e crescendo com a viewport, era cortada na captura.
+
+`gerarPdf()` e `downloadComparativo()` **não foram alterados**: o export do T&C Dashboard
+funciona e captura a página inteira de propósito, numa folha larga única (297 mm) com KPIs,
+gráficos e tabela. São dois formatos diferentes para dois relatórios diferentes.
+
 #### 6.4a Medidores — `AF_INDICADORES_CHAVE`
 
 Cinco indicadores (liquidez corrente, endividamento geral, margem líquida, ROE, capital de

@@ -1816,6 +1816,25 @@ body.pdf-generating #page-dashboard {
   height: auto !important;
 }
 
+/* Captura do relatorio de Analise Financeira (downloadAfRelatorio): o chat e o
+   botao "Nova analise" sao controles de tela, nao conteudo de relatorio — saem
+   da captura, e o corpo passa a uma coluna para o relatorio ocupar a largura. */
+body.pdf-generating .ai-chat-sidebar,
+body.pdf-generating .af-nova-analise-btn {
+  display: none !important;
+}
+
+body.pdf-generating .af-split-layout {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+/* A pagina do fluxo e flex e cresce com a viewport; na captura precisa ter a
+   altura do conteudo, senao o html2canvas corta o relatorio. */
+body.pdf-generating #page-analise-financeira {
+  flex: none !important;
+  height: auto !important;
+}
+
 body.pdf-generating .print-hero-logo {
   display: block !important;
 }

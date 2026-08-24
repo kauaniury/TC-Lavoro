@@ -389,6 +389,72 @@ async function downloadComparativo(btn) {
 }
 
 
+// Export do relatorio de Analise Financeira em A4 multi-pagina.
+//
+// Nao usa gerarPdf(): aquela funcao captura `#page-dashboard` fixo, e na
+// Analise Financeira essa pagina esta com display:none — o html2canvas
+// devolvia um canvas 0 x 0 e o PDF saia vazio. Aqui captura-se a pagina ativa
+// do fluxo, com o chat e os botoes de acao ocultos pela classe
+// `body.pdf-generating`.
+async function downloadAfRelatorio(btn) {
+  const saved = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Gerando PDF…'; }
+
+  const el = document.getElementById('page-analise-financeira');
+  if (!el) { if (btn) { btn.disabled = false; btn.innerHTML = saved; } return; }
+
+  // Secao recolhida nao aparece no PDF, e um PDF com conteudo escondido nao
+  // serve para nada: abre todas antes de capturar e restaura o estado depois.
+  const details = Array.from(el.querySelectorAll('details'));
+  const abertosAntes = details.map(d => d.open);
+  details.forEach(d => { d.open = true; });
+
+  document.body.classList.add('pdf-generating');
+  // Um frame para o layout reagir ao pdf-generating antes da captura.
+  await new Promise(r => setTimeout(r, 200));
+
+  try {
+    const canvas = await html2canvas(el, {
+      scale: 1.5,
+      useCORS: true,
+      allowTaint: false,
+      logging: false,
+      backgroundColor: '#ffffff',
+    });
+
+    if (!canvas.width || !canvas.height) throw new Error('Captura vazia do relatorio.');
+
+    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+    const { jsPDF } = window.jspdf;
+    const pageW = 210;
+    const pageH = 297;
+    const imgH = (canvas.height * pageW) / canvas.width;
+
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    let posY = 0;
+    let remaining = imgH;
+    pdf.addImage(imgData, 'JPEG', 0, posY, pageW, imgH);
+    remaining -= pageH;
+    while (remaining > 0) {
+      posY -= pageH;
+      pdf.addPage();
+      pdf.addImage(imgData, 'JPEG', 0, posY, pageW, imgH);
+      remaining -= pageH;
+    }
+
+    const bruto = (document.getElementById('afEmpresa') || {}).textContent || '';
+    const nome = bruto.replace(/[^a-zA-Z0-9\s\-_]/g, '').trim() || 'analise-financeira';
+    pdf.save(nome + '.pdf');
+  } catch (err) {
+    console.error('Erro ao gerar PDF da Analise Financeira:', err);
+    showFinancialError('Nao foi possivel gerar o PDF: ' + (err.message || 'erro desconhecido'));
+  } finally {
+    document.body.classList.remove('pdf-generating');
+    details.forEach((d, i) => { d.open = abertosAntes[i]; });
+    if (btn) { btn.disabled = false; btn.innerHTML = saved; }
+  }
+}
+
 let chartModalLimiteInst = null, chartModalTaxaInst = null;
 let searchSuggActive = -1;
 
