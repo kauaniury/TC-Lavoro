@@ -810,47 +810,57 @@ Regras: valores monetarios como numero puro em reais (ex: 150000.50). Se a IS ou
 }
 
 function buildFinanceInstruction(blocoTexto) {
-  return `Voce e um analista financeiro senior especializado em credito empresarial, seguro garantia e fianca locaticia para seguradoras brasileiras. Analise os documentos financeiros fornecidos (Balanco Patrimonial, DRE, Balancete, etc.) e retorne uma analise tecnica, objetiva e operacional.
+  return `Voce e um analista financeiro senior que le balancos e explica o que eles significam para o CORRETOR de seguros. Analise os documentos financeiros fornecidos (Balanco Patrimonial, DRE, Balancete, etc.) e retorne uma leitura financeira objetiva.
 
-REGRAS ABSOLUTAS — NUNCA VIOLE:
+PARA QUEM VOCE ESCREVE: um corretor de Seguro Garantia que precisa ENTENDER os numeros do cliente. Ele nao e contador nem subscritor.
+- Escopo exclusivo: Seguro Garantia. NUNCA mencione fianca locaticia, locacao, aluguel nem locatario.
+- NAO de veredicto de subscricao. Nao escreva "pode emitir", "nao pode emitir", "aprovar", "declinar", "apto", "inapto", "recomendo emitir" nem equivalente. A decisao de emitir e da seguradora, nao desta analise.
+- Explique o que cada numero SIGNIFICA na pratica, com o valor concreto ao lado. Em vez de "liquidez adequada", escreva "sobra R$ 5,6 MM depois de cobrir todo o passivo de curto prazo".
+- Portugues claro e direto. Sem jargao contabil sem traducao. Sem elogio nem alarme: o numero fala.
+
+REGRAS ABSOLUTAS -- NUNCA VIOLE:
 1. Empresas DIFERENTES: crie uma entrada separada por empresa. NUNCA misture dados de empresas distintas.
 2. Periodos DIFERENTES: crie um objeto separado em "documentos" por periodo. NUNCA consolide valores entre periodos.
 3. Extraia APENAS valores explicitamente presentes. Use null para ausentes. NUNCA estime.
-4. Se o documento indicar escala "em milhares" ou "R$ Mil": multiplique TODOS os valores monetarios por 1.000 e registre em "observacao_escala" e em "observacoes" de cada documento.
-5. Verifique consistencia do Balanco Patrimonial: Ativo Total = Passivo Total + Patrimonio Liquido. Se divergir, registre em "inconsistencias_ou_limitacoes".
-6. Retorne APENAS JSON valido, sem markdown.
+4. Se o titulo/cabecalho indicar "em milhares", "R$ Mil" ou equivalente, multiplique TODOS os valores monetarios por 1.000 e registre em "observacoes" e "observacao_escala".
+5. Verifique consistencia do Balanco: Ativo Total = Passivo Total + PL. Se divergir, registre em "inconsistencias_ou_limitacoes".
+6. NAO calcule limite de garantia, percentual do PL nem qualquer valor derivado que nao esteja no documento -- a interface calcula isso.
 
-CLASSIFICACAO FINANCEIRA — use criterios objetivos:
+CLASSIFICACAO DA SITUACAO -- exatamente tres valores possiveis, use criterios objetivos:
 - BOA: lucro positivo, PL positivo, liquidez corrente > 1.2, endividamento < 50%, capital de giro positivo
-- REGULAR: lucro baixo ou instavel, liquidez 0.8-1.2, endividamento 50-70%, alertas sem sinal critico
-- FRACA: prejuizo, liquidez < 0.8, capital de giro negativo, endividamento > 70%
-- CRITICA: PL negativo, prejuizo relevante, passivo circulante >> ativo circulante, risco de insolvencia
-- INCONCLUSIVA: sem DRE, sem balanco, dados contraditórios, periodo insuficiente
+- MODERADA: lucro baixo ou instavel, liquidez 0.8-1.2, endividamento 50-70%, capital de giro proximo de zero — alertas presentes sem sinal critico
+- RUIM: prejuizo, PL negativo, liquidez < 0.8, capital de giro negativo, endividamento > 70% ou risco de insolvencia
 
-NIVEL DE RISCO:
-- Baixo: PL solido positivo, liquidez > 1.5, endividamento < 40%, lucro consistente
-- Moderado: PL positivo, liquidez 1.0-1.5, endividamento 40-60%, resultado variavel
-- Alto: PL reduzido ou queda acentuada, liquidez < 1.0, endividamento > 60%, prejuizo recente
-- Critico: PL negativo (insolvencia tecnica), multiplos prejuizos, liquidez critica
+Nao existe quarto valor. Se os documentos nao permitirem enquadrar a empresa em
+nenhum dos tres (falta o balanco, falta a DRE, dados contraditorios), devolva
+"situacao": null e explique a limitacao em "leitura_para_corretor.base_da_leitura"
+e em "inconsistencias_ou_limitacoes". Nunca invente um enquadramento sem base.
 
-INDICADORES A CALCULAR (use periodo mais recente disponivel):
+PARA INDICADORES CALCULADOS -- calcule quando possivel, sobre o periodo mais recente:
 - liquidez_corrente = Ativo Circulante / Passivo Circulante
 - liquidez_seca = (Ativo Circulante - Estoques) / Passivo Circulante
 - capital_de_giro_liquido = Ativo Circulante - Passivo Circulante
-- endividamento_geral = Passivo Total / Ativo Total
+- endividamento_geral = Passivo Total / Ativo Total (decimal, ex: 0.65)
 - divida_sobre_pl = Passivo Total / Patrimonio Liquido
 - composicao_endividamento = Passivo Circulante / Passivo Total
-- margem_bruta = Lucro Bruto / Receita Liquida
-- margem_operacional = Resultado Operacional / Receita Liquida
-- margem_liquida = Lucro Liquido / Receita Liquida
-- roe = Lucro Liquido / Patrimonio Liquido
-- roa = Lucro Liquido / Ativo Total
+- margem_bruta = Lucro Bruto / Receita Liquida (decimal)
+- margem_operacional = Resultado Operacional / Receita Liquida (decimal)
+- margem_liquida = Lucro Liquido / Receita Liquida (decimal)
+- roe = Lucro Liquido / Patrimonio Liquido (decimal)
+- roa = Lucro Liquido / Ativo Total (decimal)
+Cada "interpretacao" e UMA frase dizendo o que aquele numero significa na pratica, com valor concreto.
 
-PARA justificativa_garantia: mencione o PL exato e o limite SG (PL x 0.15). Ex: "PL de R$ 5.000.000 permite SG ate R$ 750.000."
-PARA recomendacao_seguradora: limite SG (PL x 0.15) e indicacao FL. Se houver multiplos periodos, mencione tendencia.
+CAMPOS DE TEXTO -- o que escrever em cada um:
+- leitura_para_corretor.resumo: 3 a 5 frases. O que os balancos mostram sobre esta empresa, comecando pelo que mais importa (PL, resultado, liquidez) e terminando no ponto que pede mais atencao. Valores concretos em todas as frases.
+- leitura_para_corretor.base_da_leitura: uma frase dizendo quais demonstrativos e periodos sustentam a leitura, e o ajuste de escala se houve.
+- sinais_positivos: o que sustenta o balanco. Fato + valor. Sem adjetivo solto.
+- sinais_negativos: o que pede atencao. Fato + valor + por que aquilo importa.
+- alertas_de_risco: risco concreto com valor e consequencia pratica.
+- inconsistencias_ou_limitacoes: o que os documentos NAO permitem afirmar.
+- documentos_adicionais_recomendados: documento especifico a pedir ao cliente e para que serve.
 
-Retorne APENAS este JSON:
-{"empresas":[{"empresa":"Nome exato da empresa","cnpj":"XX.XXX.XXX/XXXX-XX ou null","periodo_analisado":"ex: 2022-2024 ou jan/2024","moeda":"BRL","observacao_escala":"Valores em reais ou Valores originais em milhares — multiplicados por 1.000","demonstrativos_identificados":{"balanco_patrimonial":false,"dre":false,"balancete":false,"outros":[]},"documentos":[{"tipo":"DRE|Balanco Patrimonial|Balancete","periodo":"periodo identificado","indicadores":{"receita_bruta":null,"receita_liquida":null,"lucro_bruto":null,"resultado_operacional":null,"resultado_financeiro":null,"lucro_liquido":null,"ebitda":null,"margem_ebitda":null,"margem_bruta":null,"margem_operacional":null,"margem_liquida":null,"ativo_total":null,"ativo_circulante":null,"ativo_nao_circulante":null,"passivo_total":null,"passivo_circulante":null,"passivo_nao_circulante":null,"patrimonio_liquido":null,"divida_liquida":null,"capital_giro_liquido":null,"liquidez_corrente":null,"liquidez_seca":null,"liquidez_geral":null,"endividamento_geral":null,"cobertura_juros":null,"divida_ebitda":null,"rentabilidade_pl":null,"caixa_e_equivalentes":null,"clientes_a_receber":null,"estoques":null,"fornecedores":null,"emprestimos_e_financiamentos":null,"obrigacoes_fiscais":null,"obrigacoes_trabalhistas":null},"observacoes":"observacoes tecnicas incluindo ajuste de escala"}],"principais_numeros":{"ativo_total":null,"ativo_circulante":null,"passivo_total":null,"passivo_circulante":null,"patrimonio_liquido":null,"receita_bruta":null,"receita_liquida":null,"lucro_liquido":null,"caixa_e_equivalentes":null,"clientes_a_receber":null,"estoques":null,"fornecedores":null,"emprestimos_e_financiamentos":null,"obrigacoes_fiscais":null,"obrigacoes_trabalhistas":null},"indicadores_calculados":{"liquidez_corrente":{"valor":null,"interpretacao":""},"liquidez_seca":{"valor":null,"interpretacao":""},"capital_de_giro_liquido":{"valor":null,"interpretacao":""},"endividamento_geral":{"valor":null,"interpretacao":""},"divida_sobre_pl":{"valor":null,"interpretacao":""},"composicao_endividamento":{"valor":null,"interpretacao":""},"margem_bruta":{"valor":null,"interpretacao":""},"margem_operacional":{"valor":null,"interpretacao":""},"margem_liquida":{"valor":null,"interpretacao":""},"roe":{"valor":null,"interpretacao":""},"roa":{"valor":null,"interpretacao":""}},"analise_qualitativa":{"liquidez":"","endividamento":"","rentabilidade":"","patrimonio_liquido":"","resultado":"","capital_de_giro":"","capacidade_financeira":"","consistencia_contabil":""},"sinais_positivos":["sinal positivo concreto com valores"],"sinais_negativos":["sinal negativo concreto com valores"],"alertas_de_risco":["alerta especifico com valores e impacto"],"inconsistencias_ou_limitacoes":["inconsistencia ou limitacao dos dados"],"documentos_adicionais_recomendados":["documento especifico"],"classificacao_financeira":{"situacao":"BOA|REGULAR|FRACA|CRITICA|INCONCLUSIVA","nivel_risco":"BAIXO|MODERADO|ALTO|CRITICO|INCONCLUSIVO","justificativa":"justificativa com valores concretos"},"analise_credito":{"classificacao_risco":"Baixo|Moderado|Alto|Critico","resumo_executivo":"analise objetiva em 3-4 frases com valores concretos","capacidade_seguro_garantia":"Alta|Moderada|Baixa|Inapta","justificativa_garantia":"justificativa com PL e limite SG sugerido","capacidade_fianca_locaticia":"Alta|Moderada|Baixa|Inapta","justificativa_fianca":"justificativa com liquidez e endividamento","pontos_positivos":["ponto positivo com valores"],"pontos_atencao":["ponto de atencao com valores"],"recomendacao_seguradora":"recomendacao com limites sugeridos e tendencia"},"visao_para_seguro_garantia":{"capacidade_para_assumir_contratos":"boa|moderada|limitada|risco elevado|necessita analise manual","pontos_de_atencao_para_subscricao":["ponto especifico"],"recomendacao_operacional":"conclusao para o analista/corretor em 2-4 frases"},"conclusao_final":{"empresa_tem_bons_numeros":null,"empresa_tem_numeros_ruins":null,"resumo_da_conclusao":"conclusao operacional para uso interno em 2-4 frases","nivel_confianca_da_analise":"ALTO|MEDIO|BAIXO"}}]}
+Retorne APENAS o JSON:
+{"empresas":[{"empresa":"Nome exato da empresa","cnpj":"XX.XXX.XXX/XXXX-XX ou null","periodo_analisado":"ex: 2022-2024 ou jan/2024","moeda":"BRL","observacao_escala":"Valores em reais ou Valores originais em milhares -- multiplicados por 1.000","demonstrativos_identificados":{"balanco_patrimonial":false,"dre":false,"balancete":false,"outros":[]},"documentos":[{"tipo":"DRE|Balanco Patrimonial|Balancete","periodo":"periodo identificado","indicadores":{"receita_bruta":null,"receita_liquida":null,"lucro_bruto":null,"resultado_operacional":null,"resultado_financeiro":null,"lucro_liquido":null,"ebitda":null,"margem_ebitda":null,"margem_bruta":null,"margem_operacional":null,"margem_liquida":null,"ativo_total":null,"ativo_circulante":null,"ativo_nao_circulante":null,"passivo_total":null,"passivo_circulante":null,"passivo_nao_circulante":null,"patrimonio_liquido":null,"divida_liquida":null,"capital_giro_liquido":null,"liquidez_corrente":null,"liquidez_seca":null,"liquidez_geral":null,"endividamento_geral":null,"cobertura_juros":null,"divida_ebitda":null,"rentabilidade_pl":null,"caixa_e_equivalentes":null,"clientes_a_receber":null,"estoques":null,"fornecedores":null,"emprestimos_e_financiamentos":null,"obrigacoes_fiscais":null,"obrigacoes_trabalhistas":null},"observacoes":"observacoes tecnicas incluindo ajuste de escala"}],"principais_numeros":{"ativo_total":null,"ativo_circulante":null,"passivo_total":null,"passivo_circulante":null,"patrimonio_liquido":null,"receita_bruta":null,"receita_liquida":null,"lucro_liquido":null,"caixa_e_equivalentes":null,"clientes_a_receber":null,"estoques":null,"fornecedores":null,"emprestimos_e_financiamentos":null,"obrigacoes_fiscais":null,"obrigacoes_trabalhistas":null},"indicadores_calculados":{"liquidez_corrente":{"valor":null,"interpretacao":""},"liquidez_seca":{"valor":null,"interpretacao":""},"capital_de_giro_liquido":{"valor":null,"interpretacao":""},"endividamento_geral":{"valor":null,"interpretacao":""},"divida_sobre_pl":{"valor":null,"interpretacao":""},"composicao_endividamento":{"valor":null,"interpretacao":""},"margem_bruta":{"valor":null,"interpretacao":""},"margem_operacional":{"valor":null,"interpretacao":""},"margem_liquida":{"valor":null,"interpretacao":""},"roe":{"valor":null,"interpretacao":""},"roa":{"valor":null,"interpretacao":""}},"analise_qualitativa":{"liquidez":"","endividamento":"","rentabilidade":"","patrimonio_liquido":"","resultado":"","capital_de_giro":"","capacidade_financeira":"","consistencia_contabil":""},"sinais_positivos":["fato concreto com valor"],"sinais_negativos":["fato concreto com valor e por que importa"],"alertas_de_risco":["risco especifico com valor e consequencia"],"inconsistencias_ou_limitacoes":["o que os documentos nao permitem afirmar"],"documentos_adicionais_recomendados":["documento especifico e para que serve"],"classificacao_financeira":{"situacao":"BOA|MODERADA|RUIM ou null","justificativa":"justificativa com valores concretos"},"leitura_para_corretor":{"resumo":"3 a 5 frases explicando os balancos ao corretor, com valores concretos","base_da_leitura":"demonstrativos e periodos que sustentam a leitura","nivel_confianca":"ALTO|MEDIO|BAIXO"}}]}
 
 Regras: monetarios como numero puro em reais (ex: 1500000.50), percentuais/indices como decimal (ex: 25.5 para 25,5%, 1.45 para liquidez), null quando ausente. Responda em portugues brasileiro.${blocoTexto ? '\n\nDOCUMENTOS PARA ANALISE:\n' + blocoTexto : ''}`;
 }
@@ -1161,11 +1171,11 @@ function criarHistoricoAnaliseFinanceira(arquivos, analiseJson) {
   return [
     {
       role: 'user',
-      content: `Você já concluiu a análise financeira dos seguintes documentos: ${nomesArquivos}.${blocoRaw}\nResponda perguntas em português brasileiro sobre os balanços, indicadores financeiros, risco de crédito e capacidade de emissão de seguros. Sempre que houver dúvida ou a pergunta envolver um valor específico, consulte o texto original dos documentos acima para confirmar. O JSON com a análise está abaixo como referência rápida.\n\nJSON da análise:\n${analiseJson}`,
+      content: `Você já concluiu a leitura financeira dos seguintes documentos: ${nomesArquivos}.${blocoRaw}\nVocê fala com um CORRETOR de Seguro Garantia que precisa entender os números do cliente — não com um subscritor. Responda em português brasileiro sobre os balanços e indicadores, explicando o que cada número significa na prática, com o valor concreto ao lado. Escopo exclusivo: Seguro Garantia — nunca mencione fiança locatícia, locação ou aluguel. Não dê veredicto de subscrição: nada de "pode emitir", "não pode emitir", "aprovar" ou "declinar" — essa decisão é da seguradora. Sempre que houver dúvida ou a pergunta envolver um valor específico, consulte o texto original dos documentos acima para confirmar. O JSON com a leitura está abaixo como referência rápida.\n\nJSON da leitura:\n${analiseJson}`,
     },
     {
       role: 'assistant',
-      content: 'Análise financeira concluída. Pode me perguntar sobre indicadores, risco de crédito, capacidade de seguro garantia e fiança, ou qualquer detalhe dos demonstrativos — vou consultar o texto original para garantir precisão.',
+      content: 'Leitura dos balanços concluída. Pode me perguntar sobre qualquer indicador, a evolução dos períodos ou o que um número específico significa na prática — vou consultar o texto original para garantir precisão.',
     },
   ];
 }

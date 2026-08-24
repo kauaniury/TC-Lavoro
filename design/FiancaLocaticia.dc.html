@@ -1,0 +1,212 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Libre+Baskerville:wght@700&display=swap">
+  <style>
+    body { margin: 0; background: #f4f7fa; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #12212e; -webkit-font-smoothing: antialiased; }
+    a { color: #0a6c9c; } a:hover { color: #0b3b54; }
+    .lv-eyebrow { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.14em; }
+    .lv-sec { font-family: 'Libre Baskerville', Georgia, serif; font-size: 13.5px; font-weight: 700; color: #0b3b54; }
+    .lv-lbl { font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #6a7d90; }
+    .lv-mono { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    .lv-fonte { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 4px; background: #f1f5f9; border: 1px solid #dfe7ee; font-size: 10.5px; color: #6a7d90; font-style: italic; }
+    .lv-cell { display: flex; flex-direction: column; gap: 3px; padding: 11px 14px; border-right: 1px solid #dfe7ee; border-bottom: 1px solid #dfe7ee; }
+  </style>
+</helmet>
+
+<div style="width: 1100px; background: #f4f7fa; padding: 24px;">
+<div style="background: #ffffff; border: 1px solid #dfe7ee; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 12px rgba(11, 59, 84, 0.09), 0 2px 4px rgba(11, 59, 84, 0.05);">
+
+  <!-- MASTHEAD -->
+  <div style="position: relative; display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; padding: 22px 30px; background: radial-gradient(120% 160% at 100% 0%, rgba(0, 184, 240, 0.22) 0%, rgba(0, 184, 240, 0) 60%), linear-gradient(135deg, #0b3b54 0%, #114e6e 100%);">
+    <div style="flex: 1; min-width: 0;">
+      <p class="lv-eyebrow" style="color: #00b8f0; margin: 0 0 7px;">Fiança Locatícia · Análise para Emissão</p>
+      <h1 style="font-family: 'Libre Baskerville', Georgia, serif; font-size: 22px; font-weight: 700; color: #ffffff; margin: 0; line-height: 1.3;">TECNO SERVIÇOS LTDA</h1>
+      <p style="margin: 7px 0 0; font-size: 12px; color: rgba(255,255,255,0.72);">Sala comercial 52, Av. Paulista 1000 — Bela Vista, São Paulo/SP</p>
+    </div>
+    <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 9px; flex-shrink: 0;">
+      <span style="display: inline-flex; align-items: center; gap: 7px; padding: 7px 16px; border-radius: 9999px; background: #fef3c7; color: #b45309; border: 2px solid #fcd34d; font-size: 11.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; white-space: nowrap;">
+        <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13" aria-hidden="true"><path d="M7 3v4.4M7 10.2h.01" stroke-linecap="round"/><circle cx="7" cy="7" r="5.6"/></svg>
+        Emitir com ressalvas
+      </span>
+      <p style="margin: 0; font-size: 11px; color: rgba(255,255,255,0.58);">Gerado em 24 de agosto de 2026</p>
+    </div>
+    <div style="position: absolute; bottom: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #00b8f0 0%, #0093c4 100%);"></div>
+  </div>
+
+  <!-- STRIP -->
+  <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 12px 30px; background: #e4eff7; border-bottom: 1px solid #dfe7ee; flex-wrap: wrap;">
+    <div style="display: flex; align-items: baseline; gap: 9px;">
+      <span class="lv-lbl">Modalidade solicitada</span>
+      <span style="font-size: 13.5px; font-weight: 600; color: #0b3b54;">Locação Comercial</span>
+      <span style="font-size: 10.5px; color: #6a7d90;">informada na abertura, não extraída do documento</span>
+    </div>
+    <span style="display: inline-flex; align-items: center; padding: 3px 11px; border-radius: 9999px; background: #ffffff; border: 1px solid #c6d3de; font-size: 10.5px; font-weight: 500; color: #46586b;">contrato-locacao-comercial.pdf</span>
+  </div>
+
+  <!-- EMISSÃO: IS destaque + campos -->
+  <div style="display: grid; grid-template-columns: 300px minmax(0, 1fr); border-bottom: 1px solid #dfe7ee;">
+    <div style="padding: 22px 26px; background: linear-gradient(160deg, #d8f2fd 0%, #eef8fd 100%); border-right: 1px solid #dfe7ee;">
+      <p class="lv-lbl" style="margin: 0 0 6px;">IS · Valor da Garantia</p>
+      <p class="lv-mono" style="margin: 0 0 8px; font-size: 26px; font-weight: 700; color: #0b3b54; letter-spacing: -0.02em; line-height: 1.1;">R$ 262.080,00</p>
+      <span class="lv-fonte">↳ Cláusula 12ª, pág. 7</span>
+      <div style="margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(11,59,84,0.12); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;">
+        <div>
+          <p class="lv-lbl" style="margin: 0 0 3px;">Aluguel</p>
+          <p class="lv-mono" style="margin: 0; font-size: 14px; font-weight: 700; color: #0b3b54;">R$ 18.500</p>
+        </div>
+        <div>
+          <p class="lv-lbl" style="margin: 0 0 3px;">Encargos</p>
+          <p class="lv-mono" style="margin: 0; font-size: 14px; font-weight: 700; color: #0b3b54;">R$ 4.180</p>
+        </div>
+      </div>
+      <p style="margin: 10px 0 0; font-size: 10.5px; line-height: 1.5; color: #46586b;">Encargos equivalem a 22,6% do aluguel — condomínio R$ 3.200 + IPTU R$ 980.</p>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));">
+      <div class="lv-cell">
+        <span class="lv-lbl">Início da vigência</span>
+        <span class="lv-mono" style="font-size: 14px; font-weight: 600;">01/09/2026</span>
+        <span class="lv-fonte" style="width: fit-content;">↳ Cláusula 3ª</span>
+      </div>
+      <div class="lv-cell">
+        <span class="lv-lbl">Fim da vigência</span>
+        <span class="lv-mono" style="font-size: 14px; font-weight: 600;">31/08/2029</span>
+        <span class="lv-fonte" style="width: fit-content;">↳ Cláusula 3ª</span>
+      </div>
+      <div class="lv-cell" style="border-right: 0; background: #fffbeb;">
+        <span class="lv-lbl" style="color: #92400e;">Prazo total</span>
+        <span style="font-size: 14px; font-weight: 700; color: #b45309;">36 meses</span>
+        <span style="font-size: 10px; color: #92400e;">acima do padrão de 30</span>
+      </div>
+      <div class="lv-cell">
+        <span class="lv-lbl">Índice de reajuste</span>
+        <span style="font-size: 13px; font-weight: 500;">IGP-M/FGV, anual</span>
+        <span class="lv-fonte" style="width: fit-content;">↳ Cláusula 6ª</span>
+      </div>
+      <div class="lv-cell">
+        <span class="lv-lbl">Sub-rogação</span>
+        <span style="display: inline-flex; align-items: center; gap: 5px; font-size: 13px; font-weight: 600; color: #15803d;"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.2" width="11" height="11"><path d="M2.5 6.2l2.3 2.3L9.5 3.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Prevista</span>
+        <span class="lv-fonte" style="width: fit-content;">↳ Cláusula 12ª, §3º</span>
+      </div>
+      <div class="lv-cell" style="border-right: 0;">
+        <span class="lv-lbl">Multa por rescisão</span>
+        <span style="font-size: 13px; font-weight: 500;">3 aluguéis, proporcional</span>
+        <span class="lv-fonte" style="width: fit-content;">↳ Cláusula 15ª</span>
+      </div>
+      <div class="lv-cell" style="border-bottom: 0;">
+        <span class="lv-lbl">Finalidade</span>
+        <span style="font-size: 13px; font-weight: 500;">Escritório administrativo</span>
+        <span class="lv-fonte" style="width: fit-content;">↳ Cláusula 2ª</span>
+      </div>
+      <div class="lv-cell" style="border-bottom: 0;">
+        <span class="lv-lbl">Foro de eleição</span>
+        <span style="font-size: 13px; font-weight: 500;">São Paulo/SP</span>
+        <span class="lv-fonte" style="width: fit-content;">↳ Cláusula 20ª</span>
+      </div>
+      <div class="lv-cell" style="border-right: 0; border-bottom: 0;">
+        <span class="lv-lbl">Obras de adequação</span>
+        <span style="font-size: 13px; font-weight: 600; color: #b45309;">Autorizadas ao locatário</span>
+        <span class="lv-fonte" style="width: fit-content;">↳ Cláusula 9ª</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- PARTES -->
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-bottom: 1px solid #dfe7ee;">
+    <div style="padding: 16px 30px; border-right: 1px solid #dfe7ee;">
+      <p class="lv-lbl" style="margin: 0 0 5px;">Tomador (Locatário)</p>
+      <p style="margin: 0 0 6px; font-size: 14px; font-weight: 600; color: #12212e;">TECNO SERVIÇOS LTDA</p>
+      <span class="lv-fonte">↳ Qualificação das partes, pág. 1</span>
+    </div>
+    <div style="padding: 16px 30px;">
+      <p class="lv-lbl" style="margin: 0 0 5px;">Segurado / Beneficiário (Locador)</p>
+      <p style="margin: 0 0 6px; font-size: 14px; font-weight: 600; color: #12212e;">PAULISTA EMPREENDIMENTOS IMOBILIÁRIOS S/A</p>
+      <span class="lv-fonte">↳ Qualificação das partes, pág. 1</span>
+    </div>
+  </div>
+
+  <!-- COBERTURAS DA APÓLICE -->
+  <div style="padding: 18px 30px; border-bottom: 1px solid #dfe7ee;">
+    <div style="display: flex; align-items: center; gap: 9px; margin-bottom: 11px;">
+      <svg viewBox="0 0 18 18" fill="none" stroke="#0a6c9c" stroke-width="1.7" width="16" height="16" aria-hidden="true"><path d="M9 2L3 5v5c0 4 2.7 6.8 6 7.2 3.3-.4 6-3.2 6-7.2V5L9 2z" stroke-linejoin="round"/></svg>
+      <h2 class="lv-sec" style="margin: 0;">Coberturas que a apólice precisa conter</h2>
+      <span style="font-size: 10.5px; color: #9bacbd;">com evidência no contrato</span>
+    </div>
+    <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+      <span style="display: inline-flex; align-items: center; gap: 5px; padding: 4px 11px; border-radius: 9999px; background: #dcfce7; border: 1px solid #86efac; color: #15803d; font-size: 11.5px; font-weight: 600;"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" width="10" height="10"><path d="M2.5 6.2l2.3 2.3L9.5 3.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Aluguel</span>
+      <span style="display: inline-flex; align-items: center; gap: 5px; padding: 4px 11px; border-radius: 9999px; background: #dcfce7; border: 1px solid #86efac; color: #15803d; font-size: 11.5px; font-weight: 600;"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" width="10" height="10"><path d="M2.5 6.2l2.3 2.3L9.5 3.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Condomínio</span>
+      <span style="display: inline-flex; align-items: center; gap: 5px; padding: 4px 11px; border-radius: 9999px; background: #dcfce7; border: 1px solid #86efac; color: #15803d; font-size: 11.5px; font-weight: 600;"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" width="10" height="10"><path d="M2.5 6.2l2.3 2.3L9.5 3.8" stroke-linecap="round" stroke-linejoin="round"/></svg>IPTU</span>
+      <span style="display: inline-flex; align-items: center; gap: 5px; padding: 4px 11px; border-radius: 9999px; background: #dcfce7; border: 1px solid #86efac; color: #15803d; font-size: 11.5px; font-weight: 600;"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" width="10" height="10"><path d="M2.5 6.2l2.3 2.3L9.5 3.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Danos ao imóvel</span>
+      <span style="display: inline-flex; align-items: center; gap: 5px; padding: 4px 11px; border-radius: 9999px; background: #dcfce7; border: 1px solid #86efac; color: #15803d; font-size: 11.5px; font-weight: 600;"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" width="10" height="10"><path d="M2.5 6.2l2.3 2.3L9.5 3.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Pintura interna</span>
+      <span style="display: inline-flex; align-items: center; padding: 4px 11px; border-radius: 9999px; background: #f3f4f6; border: 1px solid #d1d5db; color: #6b7280; font-size: 11.5px; font-weight: 500;">Multa por rescisão — não localizada</span>
+      <span style="display: inline-flex; align-items: center; padding: 4px 11px; border-radius: 9999px; background: #f3f4f6; border: 1px solid #d1d5db; color: #6b7280; font-size: 11.5px; font-weight: 500;">Encargos legais — não localizada</span>
+    </div>
+  </div>
+
+  <!-- CLÁUSULAS CRÍTICAS -->
+  <div style="padding: 18px 30px; border-bottom: 1px solid #dfe7ee;">
+    <div style="display: flex; align-items: center; gap: 9px; margin-bottom: 12px;">
+      <svg viewBox="0 0 18 18" fill="none" stroke="#0a6c9c" stroke-width="1.7" width="16" height="16" aria-hidden="true"><rect x="3.5" y="2" width="11" height="14" rx="1.4"/><path d="M6.3 6h5.4M6.3 9h5.4M6.3 12h3" stroke-linecap="round"/></svg>
+      <h2 class="lv-sec" style="margin: 0;">Cláusulas que mudam a exposição</h2>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 9px;">
+      <div style="border: 1px solid #fca5a5; border-radius: 8px; overflow: hidden;">
+        <div style="display: flex; align-items: center; gap: 10px; padding: 9px 14px; background: #fee2e2;">
+          <span style="display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 4px; background: #dc2626; color: #ffffff; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;">Alto</span>
+          <span style="font-size: 13px; font-weight: 600; color: #7f1d1d;">Prazo de locação de 36 meses</span>
+          <span class="lv-fonte" style="margin-left: auto; background: rgba(255,255,255,0.6);">↳ Cláusula 3ª, pág. 2</span>
+        </div>
+        <p style="margin: 0; padding: 11px 14px; font-size: 12.5px; line-height: 1.6; color: #12212e;">Vigência de 36 meses, acima do padrão de 30 meses adotado pelas seguradoras para fiança comercial. Exige aprovação específica ou renovação intermediária da apólice.</p>
+      </div>
+      <div style="border: 1px solid #fcd34d; border-radius: 8px; overflow: hidden;">
+        <div style="display: flex; align-items: center; gap: 10px; padding: 9px 14px; background: #fef3c7;">
+          <span style="display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 4px; background: #b45309; color: #ffffff; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;">Médio</span>
+          <span style="font-size: 13px; font-weight: 600; color: #78350f;">Reajuste anual pelo IGP-M</span>
+          <span class="lv-fonte" style="margin-left: auto; background: rgba(255,255,255,0.6);">↳ Cláusula 6ª, pág. 4</span>
+        </div>
+        <p style="margin: 0; padding: 11px 14px; font-size: 12.5px; line-height: 1.6; color: #12212e;">O reajuste anual eleva progressivamente a exposição da seguradora ao longo da vigência, sem previsão de recomposição automática da IS.</p>
+      </div>
+      <div style="border: 1px solid #fcd34d; border-radius: 8px; overflow: hidden;">
+        <div style="display: flex; align-items: center; gap: 10px; padding: 9px 14px; background: #fef3c7;">
+          <span style="display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 4px; background: #b45309; color: #ffffff; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;">Médio</span>
+          <span style="font-size: 13px; font-weight: 600; color: #78350f;">Obras de adequação por conta do locatário</span>
+          <span class="lv-fonte" style="margin-left: auto; background: rgba(255,255,255,0.6);">↳ Cláusula 9ª, pág. 5</span>
+        </div>
+        <p style="margin: 0; padding: 11px 14px; font-size: 12.5px; line-height: 1.6; color: #12212e;">O locatário está autorizado a realizar obras de adequação, o que amplia a exposição da cobertura de danos ao imóvel.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- PARECER -->
+  <div style="padding: 20px 30px; background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%); border-top: 3px solid #b45309;">
+    <div style="display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 24px; align-items: start;">
+      <div>
+        <p class="lv-lbl" style="margin: 0 0 5px; color: #92400e;">Parecer</p>
+        <p style="margin: 0 0 9px; font-family: 'Libre Baskerville', Georgia, serif; font-size: 16px; font-weight: 700; color: #92400e;">Emitir com ressalvas</p>
+        <p style="margin: 0; font-size: 13px; line-height: 1.6; color: #451a03;">Contrato bem estruturado, com sub-rogação prevista e multa rescisória definida. A ressalva principal é o prazo de 36 meses, acima do padrão de 30, que exige aprovação específica ou renovação intermediária.</p>
+      </div>
+      <div style="background: rgba(255,255,255,0.7); border: 1px solid #fcd34d; border-radius: 8px; padding: 12px 14px;">
+        <p class="lv-lbl" style="margin: 0 0 8px; color: #92400e;">Condições para emissão</p>
+        <ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 7px;">
+          <li style="display: grid; grid-template-columns: 12px minmax(0, 1fr); gap: 7px; font-size: 11.5px; line-height: 1.5; color: #451a03;"><span style="color: #b45309;">1</span><span>Aprovação do prazo de 36 meses ou emissão com renovação em 30</span></li>
+          <li style="display: grid; grid-template-columns: 12px minmax(0, 1fr); gap: 7px; font-size: 11.5px; line-height: 1.5; color: #451a03;"><span style="color: #b45309;">2</span><span>Confirmação da IS frente aos encargos reajustáveis</span></li>
+          <li style="display: grid; grid-template-columns: 12px minmax(0, 1fr); gap: 7px; font-size: 11.5px; line-height: 1.5; color: #451a03;"><span style="color: #b45309;">3</span><span>Vistoria prévia documentando o imóvel antes das obras</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":1148,"height":1500}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

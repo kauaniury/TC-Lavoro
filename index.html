@@ -69,11 +69,6 @@
   </nav>
 </aside>
 
-<button type="button" class="btn-secondary btn-download topbar-download" id="btnDownloadTop" onclick="downloadComparativo()" aria-label="Exportar relatório em PDF" hidden>
-  <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 1v9M5 7l3 3 3-3M2 12v1a1 1 0 001 1h10a1 1 0 001-1v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"/></svg>
-  Exportar relatório
-</button>
-
 <div class="app-content">
 <!-- ── Página: Consulta de Mercado por CNPJ (Relatório T&C) ── -->
 <main class="page page-mkt active" id="page-mkt" aria-label="Consulta de mercado por CNPJ">
@@ -223,6 +218,10 @@
         <p class="hero-cnpj" id="dCnpj">CNPJ -</p>
       </div>
       <div class="hero-right hero-meta">
+        <button type="button" class="btn-download hero-download-btn" onclick="downloadComparativo(this)" aria-label="Exportar relatório em PDF">
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 1v9M5 7l3 3 3-3M2 12v1a1 1 0 001 1h10a1 1 0 001-1v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"/></svg>
+          Exportar relatório
+        </button>
         <img src="assets/img/Lavoro-logo_branca.png" alt="Lavoro Seguros" class="print-hero-logo" aria-hidden="true">
         <p class="hero-date" id="dDate"></p>
       </div>
@@ -392,6 +391,10 @@
         <h1 class="hero-title" id="afEmpresa">—</h1>
       </div>
       <div class="hero-right hero-meta">
+        <button type="button" class="btn-download hero-download-btn" onclick="downloadComparativo(this)" aria-label="Exportar relatório em PDF">
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 1v9M5 7l3 3 3-3M2 12v1a1 1 0 001 1h10a1 1 0 001-1v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="square"/></svg>
+          Exportar relatório
+        </button>
         <img src="assets/img/Lavoro-logo_branca.png" alt="Lavoro Seguros" class="print-hero-logo" aria-hidden="true">
         <p class="hero-cnpj" id="afPeriodo">—</p>
         <p class="hero-date" id="afDataGeracao"></p>

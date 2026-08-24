@@ -1,7 +1,7 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.71
-> Atualizado em: 2026-08-20
+> Versao: 2.73
+> Atualizado em: 2026-08-24
 
 ## 1. Visão Geral
 
@@ -10,7 +10,7 @@ Aplicação web estática da **Lavoro Seguros** com cinco fluxos independentes:
 | Fluxo | Entrada | Saída |
 |---|---|---|
 | T&C — Consulta de Mercado por CNPJ | CNPJ do tomador (consulta automática) + preenchimento manual | Dashboard executivo com limites, comparativos e exportação PDF; consolida seguradoras automáticas (AVLA, JNS, Junto, Onpoint/Essor/Sombrero/NEWE/Mitsui/Now, AXA, Fator) e manuais na mesma análise |
-| Análise Financeira IA | DRE, Balanço, Balancete, CSV, PDF e imagem | JSON consolidado multiempresa/multiperíodo renderizado em cards |
+| Análise Financeira IA | DRE, Balanço, Balancete, CSV, PDF e imagem | Leitura de balanços **para o corretor**, escopo exclusivo Seguro Garantia e sem veredicto de emissão: diagnóstico consolidado, medidores contra faixa de referência e evolução por período (ver seção 6) |
 | Seguro Garantia IA | Edital, contrato, aditivos, apostilamentos, PDF/imagem/planilhas | Relatório técnico estruturado (primeira resposta) + chat conversacional + exportação PDF |
 | Fiança Locatícia IA | Contrato de locação, aditivos, laudos, PDF/imagem/planilhas | JSON contratual renderizado em tela |
 | Análise de Apólice IA | Apólice, endossos, condições particulares, PDF/imagem/planilhas | JSON objetivo com dados essenciais da apólice renderizado em relatório |
@@ -31,11 +31,14 @@ A navegação principal é uma sidebar fixa à esquerda (`.sidebar`, `index.html
 - Recolhida por padrão (`--sidebar-width-collapsed`, 68px): mostra só os ícones de cada fluxo.
 - Expande em overlay (`--sidebar-width-expanded`, 256px) em `:hover` ou `:focus-within` (o foco-dentro mantém aberta para navegação via teclado mesmo sem mouse sobre o elemento), revelando o logo completo e o rótulo de cada item — não empurra o conteúdo, que sempre reserva `margin-left: var(--sidebar-width-collapsed)` via `.app-content`.
 - Cada botão (`.sidebar-item`) mantém os mesmos atributos `data-page`/`data-pages`/`onclick="switchTab(...)"` de antes; `switchTab()` alterna `.active`/`aria-current` em `.sidebar-item` (não mais `.topbar-tab`).
-- O botão "Exportar relatório" (`#btnDownloadTop`, usado pelo T&C Dashboard e pela Análise Financeira) deixou de viver dentro da barra de navegação — agora é um botão flutuante (`position: fixed`, canto superior direito), já que sua visibilidade é alternada por dois fluxos diferentes via JS e não pertence a nenhuma página específica.
-  - **Dono declarado** (`_downloadTopOwner` + `setDownloadTopOwner(pagina)` / `syncDownloadTopVisibility()` em `app.js`): o botão só aparece na página que o gerou (`dashboard` ou `analise-financeira`). `switchTab()` chama `syncDownloadTopVisibility()` a cada navegação. Antes ele permanecia visível ao trocar de aba e cobria a topbar dos fluxos de IA.
-  - Alinhamento: o `right` acompanha a coluna de conteúdo (`max(var(--page-gutter), (100vw − sidebar − content-max-width)/2 + gutter)`), então em telas largas ele encosta na borda do conteúdo, não na da janela.
-  - Em ≤768px ele deixou de ser `display:none` (não havia como exportar no celular) e passou a flutuar no canto inferior direito, longe do FAB do menu.
-  - **Correção — fundo transparente sobre o hero escuro:** `.btn-download` (regra genérica, mesma especificidade de `.topbar-download`) também define `background`, e por vir depois no arquivo vencia o empate — o botão ficava com fundo transparente, mostrando só a borda ao rolar a página sobre o hero escuro do T&C Dashboard. Corrigido com uma segunda regra `.topbar-download { background: var(--color-surface); }` posicionada depois de `.btn-download` no arquivo, restaurando o fundo opaco sem usar `!important` nem afetar `.btn-download:hover` (que tem especificidade maior por causa do pseudo-seletor e continua funcionando normalmente).
+- **Botão "Exportar relatório" — reescrito na 2.72, deixou de flutuar.** Até a 2.71 era um único nó `#btnDownloadTop` fora de qualquer página, em `position: fixed` no canto superior direito, com um sistema de "dono declarado" (`_downloadTopOwner` + `setDownloadTopOwner(pagina)` / `syncDownloadTopVisibility()`) que alternava sua visibilidade conforme a página ativa. Isso o fazia ficar sempre colado na mesma posição da tela ao rolar a página (verdadeiramente flutuante), inclusive colidindo visualmente com o cabeçalho da Análise Financeira. Removido por completo — nada disso existe mais em `app.js`.
+  - Agora existem **dois botões inline**, um em cada hero que o usa (`class="btn-download hero-download-btn"`, sem id compartilhado), cada um chamando `onclick="downloadComparativo(this)"`: um dentro de `.hero-right.hero-meta` do hero do T&C Dashboard (`#page-dashboard`), outro dentro de `.hero-right.hero-meta` do `#afHero` (Análise Financeira), como primeiro filho da coluna — antes do logo de impressão, do texto de data/período e (na Análise Financeira) do botão "Nova análise".
+  - `downloadComparativo(btn)` recebe o próprio elemento clicado (em vez de buscar por id fixo) para mostrar o estado "Gerando PDF…" e restaurar o rótulo original ao final — funciona identicamente para os dois botões.
+  - **Visibilidade voltou a ser responsabilidade de cada página**, sem JS dedicado: o botão do T&C Dashboard só é visível quando `#page-dashboard` está `.active` (só acontece depois de `generateDashboard()` popular o hero); o da Análise Financeira herda o `hidden` do próprio `#afHero`, já controlado por `renderAnaliseFinanceira()`/`resetAnaliseFinanceira()`. Não há mais necessidade de um "dono" central — cada hero já sabe quando deve aparecer.
+  - **Comportamento de scroll — pedido explícito do usuário:** o botão agora rola junto com a página (fica no topo da coluna direita do hero, mas em fluxo normal), em vez de ficar fixo na tela conforme o usuário sobe/desce a página.
+  - CSS renomeado de `.topbar-download` para `.hero-download-btn`: perdeu toda a regra de `position: fixed`/`top`/`right`/`z-index` e o override específico de mobile (`bottom`/`right` fixos no rodapé); ganhou apenas `margin-bottom` (espaço até o próximo item da coluna) e manteve o fundo opaco.
+  - **Fundo opaco sobre o hero escuro (mantido):** `.btn-download` (regra genérica, mesma especificidade de `.hero-download-btn`) também define `background`, e por vir depois no arquivo venceria o empate — o botão ficaria com fundo transparente, mostrando só a borda sobre o hero escuro. Continua corrigido com uma segunda regra `.hero-download-btn { background: var(--color-surface); }` posicionada depois de `.btn-download` no arquivo, sem usar `!important` nem afetar `.btn-download:hover`.
+  - As regras que ocultavam `.topbar-download` durante exportação de PDF/impressão (`body.pdf-generating`, `@media print`) foram removidas por serem redundantes: o seletor `.btn-download` (presente nos dois botões) já cobre a ocultação sozinho.
 - `--topbar-height` foi zerado em `variables.css` (mantido só porque várias fórmulas de sticky-offset ainda somam esse token) — não representa mais uma barra horizontal.
 - Durante captura de PDF (`body.pdf-generating`) e impressão, `.sidebar` fica oculta e `.app-content` perde a margem reservada, evitando espaço em branco à esquerda no conteúdo exportado.
 
@@ -91,12 +94,32 @@ TC Lavoro/
 │   │   ├── variables.css
 │   │   └── base.css
 │   └── img/
+├── design/                        # canvas de design dos relatorios IA (2.73)
+│   ├── Main.dc.html               # artboard: Analise Financeira
+│   ├── SeguroGarantia.dc.html
+│   ├── FiancaLocaticia.dc.html
+│   ├── AnaliseApolice.dc.html
+│   ├── canvas.json                # layout dos artboards + notas
+│   └── relatorios-ia-lavoro.html  # canvas publicado (gerado; nao editar a mao)
 └── workers/
     ├── deepseek-memory-worker.js
     ├── wrangler.toml
     └── migrations/
         └── 0001_create_tc_tables.sql
 ```
+
+### 2.1 `design/` — canvas de design dos relatórios IA
+
+Arquivos-fonte do canvas de design publicado na 2.73, usado para desenhar a apresentação dos
+quatro relatórios de IA antes de implementar. Cada `.dc.html` é um artboard; `canvas.json`
+define posição e notas. `relatorios-ia-lavoro.html` é **gerado** a partir deles — nunca editar
+à mão: altere o `.dc.html` e gere de novo. Está no `.gitignore` (2,3 MB de build
+artifact); o entregável canônico é o canvas publicado:
+<https://claude.ai/code/artifact/8d9476f7-def1-498f-91c1-0f03cebcd4ce>
+
+Nada em `design/` é carregado pela aplicação em tempo de execução. É material de projeto, não
+código de produção — os valores ali (paleta, tipografia, espaçamentos) são cópias literais de
+`assets/css/variables.css` e precisam ser reconciliados à mão se os tokens mudarem.
 
 ## 3. Regras Críticas
 
@@ -857,6 +880,39 @@ Defesa técnica complementar: a sanitização (front-end **e** Worker) remove qu
 
 ## 6. Fluxo 2 — Análise Financeira IA
 
+**Reescrita na 2.73.** O fluxo deixou de ser uma "análise de crédito para seguradora" e
+passou a ser uma **leitura de balanços para o corretor**. Três mudanças de fundo, todas
+pedidas explicitamente:
+
+1. **Escopo exclusivo Seguro Garantia.** Fiança Locatícia saiu por completo do fluxo —
+   `capacidade_fianca_locaticia` e `justificativa_fianca` foram removidos do contrato, e os
+   prompts (Worker e fallback legado) proíbem mencionar fiança, locação, aluguel ou locatário.
+2. **Sem veredicto de subscrição.** Não há mais "pode emitir / não pode emitir", "apto /
+   inapto" nem "Recomendação para Emissão". A decisão de emitir é da seguradora; o relatório
+   explica os números. Os prompts listam esses termos como proibidos.
+3. **Público-alvo é o corretor, não o subscritor.** Cada indicador vem com uma frase dizendo o
+   que significa na prática, com o valor concreto ao lado ("sobra R$ 5,6 MM depois de cobrir
+   todo o passivo de curto prazo" em vez de "liquidez adequada").
+
+### 6.0 Divisão de trabalho — o que a IA faz e o que o front-end calcula
+
+Regra estrutural nova na 2.73, e a razão pela qual o contrato JSON **encolheu** em vez de
+crescer: **aritmética e regra de negócio fixa não são pedidas à IA.**
+
+| Cálculo | Onde | Por quê |
+|---|---|---|
+| Capacidade de garantia (15% do PL) | `app.js`, `AF_PCT_PL_GARANTIA` | multiplicação simples; a IA errava a conta e o valor tinha de bater com o PL exibido |
+| Faixas de referência dos indicadores (bom/atenção/crítico) | `app.js`, `AF_INDICADORES_CHAVE` | é política da corretora, não leitura de documento — muda sem redeploy do Worker |
+| Série de evolução por período | `app.js`, `afSerieDeDocumentos()` | derivada de `documentos[]`, que a IA já preenche |
+| Prazo total em meses (Fiança, ver 8.x) | `app.js`, `buildFlPrazoTotalHtml()` | aritmética de calendário |
+| Taxa do prêmio sobre a IS (Apólice, ver 9.x) | `app.js`, `apTaxaSobreIs()` | divisão simples |
+
+O prompt de síntese traz a regra explícita: *"NAO calcule limite de garantia, percentual do PL
+nem qualquer valor derivado que nao esteja no documento — a interface calcula isso."*
+
+À IA fica só o que exige ler o documento: valores extraídos, indicadores contábeis calculados
+sobre esses valores, e o texto interpretativo.
+
 ### 6.1 Entrada
 
 - máximo de 6 arquivos (`MAX_FINANCIAL_FILES`)
@@ -865,14 +921,6 @@ Defesa técnica complementar: a sanitização (front-end **e** Worker) remove qu
 ### 6.1a Regra crítica de escala — "em milhares"
 
 O prompt de chunk (`analise-financeira`) detecta se o documento indica escala em milhares no título/cabeçalho (`"em milhares"`, `"R$ Mil"`, `"Em R$ Mil"`, etc.) e registra `"escala":"milhares"` na nota. O prompt de síntese final multiplica todos os valores monetários desse documento por 1.000 antes de incluir no JSON final e registra o ajuste em `"observacoes"`.
-
-### 6.1b Renderização — Indicadores Financeiros
-
-`buildDocumentoCard` renderiza somente indicadores com valor disponível como tabela simples de 2 colunas (label | valor):
-- Valores ausentes (`null`, `undefined`, string vazia, `"null"`, `"N/A"`, `"não informado"`) não aparecem na tabela
-- Indicadores que não costumam existir no documento, como EBITDA em balanços, ficam ocultos quando não extraídos
-- Valores negativos recebem `.af-kpi-row--neg` em vermelho
-- A tabela financeira usa visual simplificado, sem linhas apagadas e sem destaque visual por prioridade
 
 ### 6.2 Função pública
 
@@ -885,58 +933,188 @@ Comportamento:
 - tenta análise em lotes com job Redis
 - se o Worker novo não estiver publicado, faz fallback para o fluxo legado
 
-### 6.3 JSON Final Esperado
+`criarHistoricoAnaliseFinanceira(arquivos, analiseJson)` semeia o chat com as mesmas três
+regras de escopo do prompt (só Seguro Garantia, sem veredicto, público corretor).
+
+### 6.3 JSON Final Esperado — 2.73
 
 ```json
 {
   "empresas": [
     {
-      "empresa": "Nome da empresa",
-      "cnpj": "XX.XXX.XXX/XXXX-XX",
+      "empresa": "Nome exato da empresa",
+      "cnpj": "XX.XXX.XXX/XXXX-XX | null",
+      "periodo_analisado": "2022-2024",
+      "moeda": "BRL",
+      "observacao_escala": "Valores originais em milhares — multiplicados por 1.000",
+      "demonstrativos_identificados": { "balanco_patrimonial": false, "dre": false, "balancete": false, "outros": [] },
       "documentos": [
-        {
-          "tipo": "DRE | Balanço Patrimonial | Balancete",
-          "periodo": "2023",
-          "indicadores": {
-            "receita_bruta": null,
-            "receita_liquida": null,
-            "lucro_bruto": null,
-            "lucro_liquido": null,
-            "ebitda": null,
-            "margem_ebitda": null,
-            "margem_liquida": null,
-            "ativo_total": null,
-            "ativo_circulante": null,
-            "passivo_total": null,
-            "passivo_circulante": null,
-            "patrimonio_liquido": null,
-            "divida_liquida": null,
-            "capital_giro_liquido": null,
-            "liquidez_corrente": null,
-            "liquidez_geral": null,
-            "endividamento_geral": null,
-            "cobertura_juros": null,
-            "divida_ebitda": null,
-            "rentabilidade_pl": null
-          },
-          "observacoes": "string"
-        }
+        { "tipo": "DRE | Balanço Patrimonial | Balancete", "periodo": "2024", "indicadores": { "...": null }, "observacoes": "string" }
       ],
-      "analise_credito": {
-        "classificacao_risco": "Baixo | Moderado | Alto | Crítico",
-        "resumo_executivo": "string",
-        "capacidade_seguro_garantia": "Alta | Moderada | Baixa | Inapta",
-        "justificativa_garantia": "string",
-        "capacidade_fianca_locaticia": "Alta | Moderada | Baixa | Inapta",
-        "justificativa_fianca": "string",
-        "pontos_positivos": ["string"],
-        "pontos_atencao": ["string"],
-        "recomendacao_seguradora": "string"
+      "principais_numeros": { "ativo_total": null, "patrimonio_liquido": null, "...": null },
+      "indicadores_calculados": {
+        "liquidez_corrente":        { "valor": null, "interpretacao": "uma frase com valor concreto" },
+        "liquidez_seca":            { "valor": null, "interpretacao": "" },
+        "capital_de_giro_liquido":  { "valor": null, "interpretacao": "" },
+        "endividamento_geral":      { "valor": null, "interpretacao": "" },
+        "divida_sobre_pl":          { "valor": null, "interpretacao": "" },
+        "composicao_endividamento": { "valor": null, "interpretacao": "" },
+        "margem_bruta":             { "valor": null, "interpretacao": "" },
+        "margem_operacional":       { "valor": null, "interpretacao": "" },
+        "margem_liquida":           { "valor": null, "interpretacao": "" },
+        "roe":                      { "valor": null, "interpretacao": "" },
+        "roa":                      { "valor": null, "interpretacao": "" }
+      },
+      "analise_qualitativa": { "liquidez": "", "endividamento": "", "rentabilidade": "", "patrimonio_liquido": "", "resultado": "", "capital_de_giro": "", "capacidade_financeira": "", "consistencia_contabil": "" },
+      "sinais_positivos": ["fato concreto com valor"],
+      "sinais_negativos": ["fato concreto com valor e por que importa"],
+      "alertas_de_risco": ["risco específico com valor e consequência"],
+      "inconsistencias_ou_limitacoes": ["o que os documentos não permitem afirmar"],
+      "documentos_adicionais_recomendados": ["documento específico e para que serve"],
+      "classificacao_financeira": { "situacao": "BOA|MODERADA|RUIM | null", "justificativa": "string" },
+      "leitura_para_corretor": {
+        "resumo": "3 a 5 frases explicando os balanços ao corretor, com valores concretos",
+        "base_da_leitura": "demonstrativos e períodos que sustentam a leitura",
+        "nivel_confianca": "ALTO|MEDIO|BAIXO"
       }
     }
   ]
 }
 ```
+
+**Campos REMOVIDOS na 2.73** — não existem mais em nenhum prompt nem renderizador:
+
+| Removido | Por quê |
+|---|---|
+| `analise_credito` (objeto inteiro) | carregava `capacidade_fianca_locaticia`, `justificativa_fianca` (fora de escopo) e `recomendacao_seguradora` (veredicto de emissão) |
+| `visao_para_seguro_garantia` | `capacidade_para_assumir_contratos` era veredicto de subscrição disfarçado |
+| `conclusao_final` | `empresa_tem_bons_numeros` / `empresa_tem_numeros_ruins` eram flags de veredicto |
+
+**Campo NOVO:** `leitura_para_corretor` — substitui os três acima. Consolida num só lugar o que
+antes era dito quatro vezes (banner de classificação + resumo executivo + visão para SG +
+conclusão operacional diziam a mesma coisa em palavras diferentes).
+
+### 6.4 Renderização — `buildEmpresaCard(emp, idx)`
+
+Uma seção por empresa (`.af-empresa`), na ordem abaixo. Toda string passa por `esc()`;
+monetários por `fmtBRL()` ou `fmtBRLCompacto()`.
+
+| Ordem | Bloco | Função | Fonte dos dados |
+|---|---|---|---|
+| 1 | Cabeçalho (nome, CNPJ, exercícios, escala) | inline | `empresa`, `cnpj`, `periodo_analisado`, `moeda`, `observacao_escala` |
+| 2 | **Diagnóstico consolidado** + capacidade de garantia | `buildAfDiagnosticoHtml` | `classificacao_financeira`, `leitura_para_corretor`, `principais_numeros.patrimonio_liquido` |
+| 3 | **Medidores dos indicadores-chave** | `buildAfMedidoresHtml` | `indicadores_calculados` + faixas de `AF_INDICADORES_CHAVE` |
+| 4 | **Evolução por período** (small multiples) | `buildAfEvolucaoHtml` | derivada de `documentos[]` |
+| 5 | Sinais em duas colunas | `buildAfSinaisHtml` | `sinais_positivos`, `sinais_negativos` |
+| 6 | Alertas de risco | `buildAfAlertasHtml` | `alertas_de_risco` |
+| 7 | Para fechar a leitura | `buildAfPendenciasHtml` | `inconsistencias_ou_limitacoes` + `documentos_adicionais_recomendados` |
+| 8 | Leitura detalhada por dimensão (colapsável) | `buildAfQualitativaHtml` | `analise_qualitativa` |
+| 9 | Indicadores por documento (colapsável) | `buildAfDetalheDocumentosHtml` | `documentos[]` + `AF_KPIS_CONFIG` |
+
+Funções removidas de `app.js`: `capacidadeClass`, `riscoClass`, `buildDocumentoCard`,
+`buildAfClassificacaoHtml`, `buildAfPrincipaisNumerosHtml`, `buildAfIndicadoresCalcHtml`,
+`buildAfListaCard`, `buildAfVisaoSgHtml`, `buildAfConclusaoHtml`. Preservadas:
+`AF_KPIS_CONFIG`, `fmtIndicador`, `hasIndicadorValue`,
+`classificacaoFinanceiraClass`. Novas: `fmtBRLCompacto`, `afPctParaPontos`,
+`afValorNormalizado`, `afNivelDoValor`, `afDominioDoIndicador`, `afFaixasEmPercentual`,
+`afFormataIndicador`, `afFormataTick`, `afOrdenaPeriodos`, `afSerieDeDocumentos`,
+`buildAfSparkline`, `buildAfDiagnosticoHtml`, `buildAfMedidoresHtml`, `buildAfEvolucaoHtml`,
+`buildAfAlertasHtml`, `buildAfPendenciasHtml`, `buildAfDetalheDocumentosHtml`,
+`classificacaoFinanceiraLabel`.
+
+#### 6.4-bis Situacao financeira - escala de tres (2.73)
+
+O cabecalho de diagnostico exibe **um unico chip**: `Situacao Boa`, `Situacao Moderada` ou
+`Situacao Ruim`.
+
+Antes eram duas escalas de cinco degraus em dois chips lado a lado - `situacao`
+(BOA/REGULAR/FRACA/CRITICA/INCONCLUSIVA) e `nivel_risco`
+(BAIXO/MODERADO/ALTO/CRITICO/INCONCLUSIVO) - dizendo quase a mesma coisa com palavras
+diferentes. **`nivel_risco` foi removido do contrato** e a escala de situacao caiu para tres
+valores, a pedido.
+
+| Valor | Cor | Criterio no prompt |
+|---|---|---|
+| `BOA` | verde | lucro e PL positivos, liquidez > 1.2, endividamento < 50%, capital de giro positivo |
+| `MODERADA` | ambar | lucro baixo ou instavel, liquidez 0.8-1.2, endividamento 50-70%, alertas sem sinal critico |
+| `RUIM` | vermelho | prejuizo, PL negativo, liquidez < 0.8, capital de giro negativo, endividamento > 70% |
+
+**Nao existe quarto valor, e nao existe valor de "inconclusivo".** Quando os documentos nao
+permitem enquadrar a empresa (falta o balanco, falta a DRE, dados contraditorios), o prompt
+manda devolver `situacao: null` - e `buildAfDiagnosticoHtml` simplesmente **nao renderiza o
+chip**. A limitacao aparece em `leitura_para_corretor.base_da_leitura` e em
+`inconsistencias_ou_limitacoes`, que e onde ela e util. Forcar um enquadramento sem base seria
+pior que nao dizer nada.
+
+`classificacaoFinanceiraClass(sit)` devolve `''` para valor nao reconhecido, e
+`classificacaoFinanceiraLabel(sit)` devolve o rotulo normalizado. Ambas **continuam lendo os
+rotulos da escala antiga** - `REGULAR` para Moderada, `FRACA`/`CRITICA` para Ruim - porque uma
+analise pode estar em cache no Redis por ate 6h com o formato anterior. Os valores antigos nao
+voltam ao contrato: sao so aceitos na leitura.
+
+#### 6.4a Medidores — `AF_INDICADORES_CHAVE`
+
+Cinco indicadores (liquidez corrente, endividamento geral, margem líquida, ROE, capital de
+giro) desenhados como barra de faixas com uma marca na posição do valor da empresa. Cada
+entrada declara `dominio` (escala desenhada), `faixas` (fronteiras **em espaço de valor**, em
+ordem crescente, cada uma com `nivel: bom|atencao|critico`) e `format` (`dec`/`pct`/`brl`).
+
+- **Percentuais aceitam as duas formas.** `afPctParaPontos()` trata valor ≤ 1.5 como decimal
+  (0.603 → 60,3%) e acima disso como pontos já convertidos — nenhum índice real de razão passa
+  de 1.5, e a IA alterna entre as duas formas.
+- **Capital de giro usa `dominioRelativo: true`**: sendo monetário, nenhuma faixa absoluta
+  serve a uma empresa de R$ 5 MM e a outra de R$ 500 MM, então a escala é derivada do próprio
+  valor. Tem **duas faixas apenas** — crítico abaixo de zero, bom a partir de zero. A versão
+  inicial tinha uma terceira faixa de "atenção" em 15% do domínio, o que produzia fronteiras
+  sem sentido (`-R$ 700 mil` como limite de atenção): zero é a única referência com
+  significado universal para capital de giro, e qualquer corte positivo seria regra de negócio
+  inventada.
+- **A leitura não depende da cor.** As fronteiras internas são rotuladas com o número real
+  (`.af-gauge-tick`), o valor aparece em mono ao lado e o nível vem escrito no chip
+  (`Bom`/`Atenção`/`Crítico`). Requisito de acessibilidade: verde e vermelho adjacentes numa
+  barra de 8px não são distinguíveis por parte dos leitores.
+- **As faixas usam os tokens claros** (`--color-success-border`, `--color-warning-border`,
+  `--color-danger-border`), não os saturados. A 8px de altura, `#dc2626` e `#b45309` lado a
+  lado ficam indistinguíveis (o âmbar lê como marrom); os tons claros separam bem e deixam a
+  marca navy do valor sobressair. Vale a regra geral: fill saturado é para marca pequena e
+  acento, nunca para bloco.
+
+#### 6.4b Evolução — painéis com escala própria
+
+`buildAfEvolucaoHtml` monta **um painel por grandeza** (receita líquida, lucro líquido,
+patrimônio líquido), cada um com sparkline SVG de escala independente, delta do último salto e
+o valor final rotulado.
+
+**Nunca num eixo comum.** Receita de R$ 88,7 MM e lucro de R$ 4,12 MM no mesmo eixo achatariam
+a linha do lucro contra o zero. Painéis separados com escala própria são a leitura honesta.
+`afSerieDeDocumentos()` deduplica por período (um mesmo ano pode aparecer no Balanço e na DRE —
+vale o primeiro documento que traz o indicador) e `afOrdenaPeriodos()` ordena pelo ano extraído
+do texto livre do período, usando a ordem de aparição como desempate. Um painel só é
+renderizado com **2 pontos ou mais**.
+
+Só o ponto final é rotulado; os intermediários ficam como marcas. Rotular todo ponto vira
+ruído.
+
+#### 6.4c Tabela por documento — colunas são documentos
+
+`buildAfDetalheDocumentosHtml` inverte a orientação antiga: **uma coluna por documento** e uma
+linha por indicador, então a mesma linha atravessa os períodos na horizontal — que é como se
+compara. Antes era um card por documento lado a lado, o que obrigava a saltar entre cards para
+comparar o mesmo indicador. Célula com `—` significa que o indicador não existe naquele tipo
+de demonstrativo (EBITDA num Balanço, por exemplo), não que a extração falhou; há nota fixa
+dizendo isso.
+
+#### 6.4d Estilos
+
+Novo bloco em `styles.css` sob o comentário "Análise Financeira — leitura de balanços para o
+corretor", usando somente tokens de `assets/css/variables.css`. Exceção documentada: o
+respiro lateral do relatório é `--af-gutter: 28px`, **token local declarado em `.af-empresa`** e
+herdado pelas seções internas — a escala global não tem um passo de 28px (`--space-6` é 24px,
+`--space-8` é 32px) e criar `--space-7` para um uso só poluiria a escala.
+
+103 regras `.af-*` órfãs foram removidas junto (as dos blocos que deixaram de existir). As
+regras `.af-qa-*` **não** foram tocadas: já estavam órfãs antes desta versão, desde que o chat
+migrou para `.ai-chat-*` / `.ai-sidebar-*`.
 
 ## 7. Fluxo 3 — Seguro Garantia IA
 
@@ -1083,6 +1261,30 @@ Funções e classes adicionadas nesta versão: `separarModalidadesPorEscopo`, `b
 - `.sg-modalidade-emission-head` com gradiente, filete ciano à esquerda e título em serifada.
 - Em ≤480px a linha de dado empilha rótulo e valor.
 
+### 7.2e Linhas de dado compactadas (2.73) — compartilhado com Fiança Locatícia
+
+`.sg-dado-right` era `flex-direction: column`, então o chip de fonte documental caía **sempre**
+numa linha abaixo do valor — cada linha de dado gastava ~64px de altura mesmo quando o valor
+era uma data ou um índice curto. Agora é `flex-wrap: wrap` com `align-items: baseline`: o chip
+de fonte fica ao lado do valor quando cabe e só quebra para baixo em valores longos (objeto da
+apólice, descrição de cláusula). O padding vertical caiu de `--space-4` para `--space-3`.
+Resultado: a maioria das linhas passou a ~44px, sem perder nenhuma informação.
+
+Exceção deliberada: `.sg-dado-item--destaque` (a linha da IS) mantém o empilhamento vertical —
+o valor monetário grande em mono ao lado de um chip pequeno ficaria desequilibrado.
+
+Como `buildDadoItem` (Fiança) e `buildEmissaoFieldRow` (Seguro Garantia) são funções idênticas
+que produzem o mesmo markup, a mudança de CSS valeu para os dois fluxos de uma vez.
+
+#### 7.2f Coberturas — o que NÃO é exigido também aparece
+
+`buildSgCoberturasHtml` passou a renderizar, em cinza neutro
+(`.sg-cobertura-badge--negada`), as coberturas cujo campo veio **`false` explícito** no JSON,
+com o rótulo "— não exigida". Antes só as `true` apareciam, e o corretor não tinha como
+distinguir "o edital dispensou esta cobertura" de "o edital é silente / a IA não achou". O
+filtro é `cob[key] === false` estrito: `undefined`/`null` continuam fora, porque aí a IA de
+fato não se pronunciou. As exigidas ganharam ícone de check.
+
 ### 7.3 Arquitetura de renderização
 
 A primeira mensagem da IA no chat é renderizada como **card de emissão** (`div.sg-report-wrapper`). Mensagens subsequentes usam o layout de balão padrão (`sg-chat-msg--user` / `sg-chat-msg--ai`).
@@ -1151,6 +1353,18 @@ Agora, a análise inicial tenta o fluxo em lotes; o chat posterior conversa sobr
 Mesma estrutura do Seguro Garantia (ver 7.0a), com ids `flModalidade`, `flModalidadeOutraWrap`, `flModalidadeOutra`, `flConsideracoes`, `flConsideracoesCounter`, `flDemandaError` e botão `#btnAnalyzeFianca`. O select é populado por `FL_MODALIDADES_CATALOGO` (Locação Residencial, Comercial, Não Residencial, por Pessoa Jurídica, Imóvel em Construção / Built to Suit, Outra modalidade). `resetFiancaLocaticia` limpa todos esses campos, `flContextoDemanda`, chat e relatório.
 
 O prompt especializado de Fiança considera, além da modalidade, o checklist de coberturas descrito em 5.7.1 — cobertura não é modalidade e nenhuma cobertura entra como contratada sem evidência documental. O relatório (`buildFlReportHtml`) mostra "Modalidade solicitada" e as considerações via `buildDemandaContextoHtml(flContextoDemanda)`.
+
+### 8.0b Prazo total calculado (2.73)
+
+`buildFlPrazoTotalHtml(dados)` insere uma linha **Prazo Total** logo depois de "Fim da
+Vigência", com o número de meses derivado das duas datas (`flParseDataBR` +
+divisão por 30,4375 dias). Não é pedido à IA: é aritmética de calendário (ver 6.0).
+
+`FL_PRAZO_PADRAO_MESES = 30` é o padrão de mercado para fiança locatícia. Acima dele a linha
+recebe `.sg-dado-item--alerta` (filete âmbar à esquerda, mesma família visual do
+`--destaque` monetário mas em cor de aviso) e a nota "acima do padrão de 30 meses — costuma
+exigir aprovação específica". Dentro do padrão, a nota é neutra. A linha não aparece quando
+falta uma das datas ou quando o fim é anterior ao início.
 
 ### 8.1 Função pública
 
@@ -1272,6 +1486,17 @@ Comportamento:
 ```
 
 O `tomador` (Tomador/Locatário) pode ser `null` em apólices sem tomador; o `segurado` (Segurado/Locador) quase sempre existe. `tomador_documento` e `segurado_documento` armazenam CNPJ ou CPF. `premio` é o prêmio da apólice. Cada item de `coberturas` pode trazer o `limite`/IS específico da cobertura.
+
+### 9.2a Taxa do prêmio sobre a IS (2.73)
+
+`apTaxaSobreIs(dados)` calcula `premio / importancia_segurada` e a linha do Prêmio na tabela
+passa a exibir o percentual numa segunda linha (`.ap-dado-extra`, em neutro). É o número que o
+corretor de fato compara entre cotações — o prêmio isolado não diz nada sem a IS ao lado.
+
+Calculado no front-end, não pedido à IA (ver 6.0). Fica em neutro e **sem coluna de fonte
+documental** justamente porque é valor derivado, não extraído: confundi-lo com dado do
+documento seria pior que não mostrar. Só aparece quando IS e prêmio são ambos numéricos e
+positivos.
 
 ### 9.3 Renderização
 

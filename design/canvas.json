@@ -1,0 +1,69 @@
+{
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1148,
+      "h": 1620,
+      "title": "Análise Financeira · Balanços"
+    },
+    {
+      "file": "SeguroGarantia.dc.html",
+      "x": 1268,
+      "y": 0,
+      "w": 1148,
+      "h": 1230,
+      "title": "Seguro Garantia · Emissão"
+    },
+    {
+      "file": "FiancaLocaticia.dc.html",
+      "x": 2536,
+      "y": 0,
+      "w": 1148,
+      "h": 1240,
+      "title": "Fiança Locatícia"
+    },
+    {
+      "file": "AnaliseApolice.dc.html",
+      "x": 3804,
+      "y": 0,
+      "w": 1148,
+      "h": 1050,
+      "title": "Análise de Apólice"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "brief-af",
+      "x": 0,
+      "y": -210,
+      "w": 400,
+      "text": "ANÁLISE FINANCEIRA — a mudança de fundo.\n\n· Fiança Locatícia removida: leitura 100% Seguro Garantia.\n· Sem veredicto de emitir / não emitir — o corretor lê os números, não uma decisão de subscrição.\n· Os 4 blocos redundantes (classificação, resumo executivo, visão SG, conclusão) viraram UM cabeçalho de diagnóstico.\n· Indicadores agora são medidores contra faixa de referência, com as fronteiras rotuladas em número."
+    },
+    {
+      "id": "brief-sg",
+      "x": 1268,
+      "y": -210,
+      "w": 400,
+      "text": "SEGURO GARANTIA — refinamento.\n\n· IS em bloco próprio, com base de cálculo logo abaixo.\n· Linhas de dado caíram de ~64px para ~44px: fonte documental virou chip na mesma linha.\n· Coberturas mostram também o que NÃO é exigido, em cinza — antes só apareciam as exigidas.\n· Alertas e pendências lado a lado."
+    },
+    {
+      "id": "brief-fl",
+      "x": 2536,
+      "y": -210,
+      "w": 400,
+      "text": "FIANÇA LOCATÍCIA — mesma linguagem do Seguro Garantia.\n\n· Dados de emissão: de 7 linhas altas para uma grade 3×3 densa.\n· Prazo total calculado e destacado quando passa do padrão de 30 meses.\n· Cláusulas críticas com faixa de impacto colorida no cabeçalho.\n· Coberturas não localizadas ficam visíveis em cinza."
+    },
+    {
+      "id": "brief-ap",
+      "x": 3804,
+      "y": -210,
+      "w": 400,
+      "text": "ANÁLISE DE APÓLICE — hierarquia.\n\n· IS, prêmio e vigência sobem para uma faixa de destaque: são o que se lê primeiro.\n· Prêmio ganha o % sobre a IS calculado.\n· Coberturas viraram tabela com coluna de limite.\n· Cláusulas e exclusões lado a lado; prazo fatal de comunicação de sinistro marcado em âmbar."
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  }
+}

@@ -280,18 +280,6 @@
   color: var(--color-text);
 }
 
-/* Botão flutuante de exportação (T&C Dashboard e Análise Financeira).
-   O `right` acompanha a coluna de conteúdo: em telas largas ele encosta na borda
-   do conteúdo, não na borda da janela — assim fica alinhado com os cards. */
-.topbar-download {
-  position: fixed;
-  top: var(--space-5);
-  right: max(var(--page-gutter), calc((100vw - var(--sidebar-width-collapsed) - var(--content-max-width)) / 2 + var(--page-gutter)));
-  z-index: var(--z-sticky);
-  background: var(--color-surface);
-  box-shadow: var(--shadow-md);
-}
-
 .page {
   flex: 1;
   display: none;
@@ -376,12 +364,18 @@
   background: var(--color-accent-light);
 }
 
-/* Reforça o fundo opaco do botão flutuante de exportar: .btn-download (acima)
-   também define background e, tendo a mesma especificidade, venceria por
-   vir depois no arquivo — deixava o botão transparente (só a borda visível,
-   texto/ícone somem) ao rolar a página sobre o hero escuro do dashboard. */
-.topbar-download {
+/* Botão "Exportar relatório" dentro do hero (T&C Dashboard e Análise
+   Financeira). Antes era um botão flutuante em position:fixed por cima da
+   página inteira; agora vive dentro do `.hero-meta` de cada fluxo, no topo da
+   coluna direita, e rola junto com o resto da página como qualquer outro
+   elemento — não fica mais "grudado" na tela ao descer/subir o scroll.
+   .btn-download (acima) também define background e, tendo a mesma
+   especificidade, venceria por vir depois no arquivo — deixaria o botão
+   transparente (só a borda visível, texto/ícone somem) sobre o hero escuro. */
+.hero-download-btn {
+  margin-bottom: var(--space-3);
   background: var(--color-surface);
+  box-shadow: var(--shadow-md);
 }
 
 .btn-download svg {
@@ -1707,15 +1701,6 @@ tbody tr:hover td {
     overflow: hidden;
   }
 
-  /* O botão continua acessível no mobile — antes sumia e não havia como exportar */
-  .topbar-download {
-    top: auto;
-    bottom: var(--space-5);
-    right: var(--space-5);
-    padding: var(--space-3) var(--space-4);
-    box-shadow: var(--shadow-lg);
-  }
-
   .upload-card-body {
     padding: var(--space-5);
   }
@@ -1812,7 +1797,6 @@ body.pdf-generating .sidebar,
 body.pdf-generating .search-bar-wrap,
 body.pdf-generating .search-empty,
 body.pdf-generating .btn-download,
-body.pdf-generating .topbar-download,
 body.pdf-generating .table-toolbar,
 body.pdf-generating .footer,
 body.pdf-generating .app-footer,
@@ -1871,7 +1855,6 @@ body.pdf-generating.has-comparison .comparison-section {
   .search-bar-wrap,
   .search-empty,
   .btn-download,
-  .topbar-download,
   .table-toolbar,
   .tc-save-bar-wrap {
     display: none !important;
@@ -2392,24 +2375,6 @@ body.pdf-generating.has-comparison .comparison-section {
   font-weight: var(--weight-semibold);
 }
 
-.af-risco-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 4px 14px;
-  border-radius: var(--radius-full);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
-}
-
-.af-risco-badge--baixo   { background: var(--color-success-bg); color: var(--color-success); }
-.af-risco-badge--moderado { background: var(--color-warning-bg); color: var(--color-warning); }
-.af-risco-badge--alto    { background: var(--color-danger-bg); color: var(--color-danger); }
-.af-risco-badge--critico { background: #581c1c; color: #fca5a5; }
-
-.af-kpi-grid {
-  grid-template-columns: repeat(4, 1fr) !important;
-}
-
 @media (max-width: 1024px) {
   .af-kpi-grid { grid-template-columns: repeat(3, 1fr) !important; }
 }
@@ -2425,162 +2390,15 @@ body.pdf-generating.has-comparison .comparison-section {
   gap: var(--space-5);
 }
 
-.af-resumo-card,
-.af-recomendacao-card,
-.af-pontos-card {
-  padding: var(--space-6);
-}
-
-.af-card-label {
-  font-size: var(--text-xs);
-  font-weight: var(--weight-bold);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--color-text-muted);
-  margin-bottom: var(--space-3);
-}
-
-.af-resumo-text,
-.af-recomendacao-text {
-  font-size: var(--text-md);
-  color: var(--color-text);
-  line-height: var(--leading-relaxed);
-}
-
-.af-pontos-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-5);
-}
-
 @media (max-width: 768px) {
   .af-pontos-grid { grid-template-columns: 1fr; }
 }
-
-.af-pontos-card--pos {
-  border-top: 3px solid var(--color-success);
-}
-
-.af-pontos-card--pos .af-card-label {
-  color: var(--color-success);
-}
-
-.af-pontos-card--atencao {
-  border-top: 3px solid var(--color-warning);
-}
-
-.af-pontos-card--atencao .af-card-label {
-  color: var(--color-warning);
-}
-
-.af-recomendacao-card {
-  border-top: 3px solid var(--color-accent);
-  background: #f7fafc;
-}
-
-.af-recomendacao-card .af-card-label {
-  color: var(--color-accent-ink);
-}
-
-.af-pontos-list {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.af-pontos-list li {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
-  font-size: var(--text-sm);
-  color: var(--color-text);
-  line-height: var(--leading-normal);
-}
-
-.af-pontos-list li::before {
-  content: '';
-  flex-shrink: 0;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  margin-top: 6px;
-}
-
-.af-pontos-card--pos .af-pontos-list li::before {
-  background: var(--color-success);
-}
-
-.af-pontos-card--atencao .af-pontos-list li::before {
-  background: var(--color-warning);
-}
-
-/* ── Multi-empresa layout ── */
-.af-empresa-section {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  padding: var(--space-6);
-  background: var(--color-surface);
-  margin-bottom: var(--space-8);
-}
-
-.af-empresa-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-4);
-  margin-bottom: var(--space-6);
-  padding-bottom: var(--space-5);
-  border-bottom: 1px solid var(--color-border);
-  flex-wrap: wrap;
-}
-
-.af-empresa-identity { flex: 1; min-width: 0; }
 
 .af-empresa-nome {
   font-family: var(--font-heading);
   font-size: var(--text-xl);
   color: var(--color-text);
   margin: 0 0 var(--space-1);
-}
-
-.af-empresa-cnpj {
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
-  font-family: var(--font-mono);
-}
-
-.af-subsection-title {
-  font-size: var(--text-base);
-  font-weight: var(--weight-bold);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--color-text-muted);
-  margin: var(--space-5) 0 var(--space-3);
-}
-
-/* Documents grid */
-.af-docs-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: var(--space-4);
-  margin-bottom: var(--space-2);
-}
-
-.af-doc-card {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  background: var(--color-surface-muted);
-}
-
-.af-doc-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-3) var(--space-4);
-  background: var(--color-primary);
-  gap: var(--space-2);
 }
 
 .af-doc-tipo {
@@ -2591,100 +2409,9 @@ body.pdf-generating.has-comparison .comparison-section {
   letter-spacing: 0.05em;
 }
 
-.af-doc-periodo {
-  font-size: var(--text-xs);
-  color: rgba(255,255,255,0.7);
-  font-family: var(--font-mono);
-}
-
-.af-kpi-label {
-  font-size: var(--text-xs);
-  color: var(--color-text-secondary);
-  flex: 1;
-}
-
-.af-kpi-value {
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
-  color: var(--color-text);
-  white-space: nowrap;
-}
-
-.af-doc-obs {
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
-  padding: var(--space-2) var(--space-4) var(--space-3);
-  border-top: 1px solid var(--color-border);
-  font-style: italic;
-}
-
-/* Credit analysis card */
-.af-credito-card {
-  padding: var(--space-5);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-5);
-}
-
-/* Insurance capacity */
-.af-capacidades-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-4);
-}
-
 @media (max-width: 600px) {
   .af-capacidades-row { grid-template-columns: 1fr; }
 }
-
-.af-cap-item {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  padding: var(--space-4);
-  border-radius: var(--radius-lg);
-  border-left: 4px solid var(--color-border);
-  background: var(--color-surface-muted);
-}
-
-.af-cap--alta     { border-left-color: var(--color-success); background: var(--color-success-bg); }
-.af-cap--moderada { border-left-color: var(--color-warning); background: var(--color-warning-bg); }
-.af-cap--baixa    { border-left-color: var(--color-danger);  background: var(--color-danger-bg); }
-.af-cap--inapta   { border-left-color: #581c1c; background: #fef2f2; }
-
-.af-cap-label {
-  font-size: var(--text-xs);
-  font-weight: var(--weight-bold);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--color-text-muted);
-}
-
-.af-cap-valor {
-  font-size: var(--text-md);
-  font-weight: var(--weight-bold);
-  color: var(--color-text);
-}
-
-.af-cap-just {
-  font-size: var(--text-xs);
-  color: var(--color-text-secondary);
-  line-height: 1.4;
-}
-
-.af-resumo-block,
-.af-recomendacao-block {
-  padding: var(--space-4);
-  border-radius: var(--radius-md);
-  background: var(--color-surface-muted);
-}
-
-.af-recomendacao-block {
-  background: #f7fafc;
-  border-left: 4px solid var(--color-accent);
-}
-
-.af-recomendacao-block .af-card-label { color: var(--color-accent-ink); }
 
 .af-no-data {
   font-size: var(--text-sm);
@@ -2699,176 +2426,11 @@ body.pdf-generating.has-comparison .comparison-section {
   margin-top: 2px;
 }
 
-.af-subsection-title {
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
-  color: var(--color-text);
-  margin: var(--space-5) 0 var(--space-3);
-  padding-bottom: var(--space-2);
-  border-bottom: 1px solid var(--color-border);
-}
-
-.af-subsection-title--sm {
-  font-size: 11px;
-  font-weight: var(--weight-bold);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--color-text-muted);
-  margin: 0 0 var(--space-2);
-  padding-bottom: var(--space-1);
-  border-bottom: 1px solid var(--color-border);
-}
-
-/* ── AF Classificação Financeira Banner ─────────────────────────────────────── */
-.af-classif-banner {
-  border-radius: var(--radius-md);
-  padding: var(--space-3) var(--space-4);
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-  margin-bottom: var(--space-4);
-}
-
-.af-classif-situacao {
-  font-weight: var(--weight-bold);
-  font-size: var(--text-sm);
-  flex-shrink: 0;
-}
-
-.af-classif-just {
-  font-size: var(--text-sm);
-  line-height: 1.5;
-  flex: 1;
-  min-width: 200px;
-}
-
 .af-classif--boa {
   background: color-mix(in srgb, #16a34a 10%, transparent);
   border: 1px solid color-mix(in srgb, #16a34a 25%, transparent);
   color: #14532d;
 }
-.af-classif--regular {
-  background: color-mix(in srgb, #2563eb 10%, transparent);
-  border: 1px solid color-mix(in srgb, #2563eb 25%, transparent);
-  color: #1e3a8a;
-}
-.af-classif--fraca {
-  background: color-mix(in srgb, #d97706 10%, transparent);
-  border: 1px solid color-mix(in srgb, #d97706 25%, transparent);
-  color: #92400e;
-}
-.af-classif--critica {
-  background: color-mix(in srgb, #dc2626 10%, transparent);
-  border: 1px solid color-mix(in srgb, #dc2626 25%, transparent);
-  color: #7f1d1d;
-}
-.af-classif--inconclusiva {
-  background: var(--color-surface-muted);
-  border: 1px solid var(--color-border);
-  color: var(--color-text-muted);
-}
-
-/* ── AF Principais Números ──────────────────────────────────────────────────── */
-.af-principais-card,
-.af-indicadores-calc-card,
-.af-qualitativa-card,
-.af-lista-generica-card,
-.af-visao-sg-card,
-.af-conclusao-final-card {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-4);
-  margin-top: var(--space-4);
-  background: var(--color-surface);
-}
-
-.af-principais-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: var(--space-2) var(--space-3);
-  margin-top: var(--space-2);
-}
-
-.af-principal-item {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: var(--space-2) var(--space-2);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface-muted);
-}
-
-.af-principal-item--neg .af-principal-valor {
-  color: #dc2626;
-}
-
-.af-principal-label {
-  font-size: 10px;
-  font-weight: var(--weight-semibold);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--color-text-muted);
-}
-
-.af-principal-valor {
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
-  color: var(--color-text);
-  font-variant-numeric: tabular-nums;
-}
-
-/* ── AF Indicadores Calculados ──────────────────────────────────────────────── */
-.af-ind-calc-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: var(--space-2);
-  margin-top: var(--space-2);
-}
-
-.af-ind-calc-item {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-}
-
-.af-ind-calc-item--neg .af-ind-calc-valor {
-  color: #dc2626;
-}
-
-.af-ind-calc-label {
-  font-size: 10px;
-  font-weight: var(--weight-semibold);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--color-text-muted);
-}
-
-.af-ind-calc-valor {
-  font-size: var(--text-sm);
-  font-weight: var(--weight-bold);
-  color: var(--color-text);
-  font-variant-numeric: tabular-nums;
-}
-
-.af-ind-calc-interp {
-  font-size: 10px;
-  color: var(--color-text-secondary);
-  line-height: 1.4;
-  margin-top: 2px;
-}
-
-/* ── AF Análise Qualitativa ─────────────────────────────────────────────────── */
-.af-qualitativa-grid {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
-}
-
 .af-qual-item {
   display: grid;
   grid-template-columns: 160px 1fr;
@@ -2907,137 +2469,6 @@ body.pdf-generating.has-comparison .comparison-section {
   margin-top: var(--space-2);
   padding: 0;
 }
-
-.af-alerta-item--risk {
-  font-size: var(--text-sm);
-  color: #b45309;
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
-  line-height: 1.5;
-}
-
-.af-alerta-item--risk::before {
-  content: '⚠';
-  flex-shrink: 0;
-  font-size: 12px;
-}
-
-.af-incons-item {
-  font-size: var(--text-sm);
-  color: #7c3aed;
-  line-height: 1.5;
-}
-
-.af-docs-adicionais-item {
-  font-size: var(--text-sm);
-  color: #1d4ed8;
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
-  line-height: 1.5;
-}
-
-.af-docs-adicionais-item::before {
-  content: '→';
-  flex-shrink: 0;
-}
-
-/* ── AF Visão para Seguro Garantia ──────────────────────────────────────────── */
-.af-visao-sg-card {
-  border-left: 4px solid var(--color-border);
-}
-
-.af-visao-sg-card.af-vsg--boa      { border-left-color: #16a34a; }
-.af-visao-sg-card.af-vsg--moderada { border-left-color: #2563eb; }
-.af-visao-sg-card.af-vsg--limitada { border-left-color: #d97706; }
-.af-visao-sg-card.af-vsg--risco    { border-left-color: #dc2626; }
-
-.af-vsg-capacidade {
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
-  color: var(--color-text);
-  text-transform: capitalize;
-  margin: var(--space-1) 0;
-}
-
-.af-vsg-pontos {
-  font-size: var(--text-sm);
-  color: var(--color-text-secondary);
-  padding-left: var(--space-4);
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin: var(--space-1) 0;
-}
-
-.af-vsg-recomendacao {
-  font-size: var(--text-sm);
-  color: var(--color-text);
-  line-height: 1.6;
-  margin: var(--space-2) 0 0;
-  padding-top: var(--space-2);
-  border-top: 1px solid var(--color-border);
-}
-
-/* ── AF Conclusão Final ─────────────────────────────────────────────────────── */
-.af-conclusao-final-card {
-  border-top: 3px solid var(--color-primary);
-}
-
-.af-conc-body {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.af-conc-flags {
-  display: flex;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-  margin-bottom: var(--space-1);
-}
-
-.af-conc-flag {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px var(--space-2);
-  border-radius: var(--radius-full);
-  font-size: 11px;
-  font-weight: var(--weight-medium);
-}
-
-.af-conc-flag--sim {
-  background: color-mix(in srgb, #16a34a 12%, transparent);
-  color: #16a34a;
-  border: 1px solid color-mix(in srgb, #16a34a 25%, transparent);
-}
-
-.af-conc-flag--nao {
-  background: color-mix(in srgb, #dc2626 12%, transparent);
-  color: #dc2626;
-  border: 1px solid color-mix(in srgb, #dc2626 25%, transparent);
-}
-
-.af-conc-texto {
-  font-size: var(--text-sm);
-  color: var(--color-text);
-  line-height: 1.6;
-  margin: 0;
-}
-
-.af-conc-nivel {
-  font-size: 11px;
-  font-weight: var(--weight-semibold);
-  padding: 2px var(--space-2);
-  border-radius: var(--radius-full);
-  display: inline-block;
-  align-self: flex-start;
-}
-
-.af-conc--alto  { background: color-mix(in srgb, #16a34a 12%, transparent); color: #16a34a; border: 1px solid color-mix(in srgb, #16a34a 25%, transparent); }
-.af-conc--medio { background: color-mix(in srgb, #d97706 12%, transparent); color: #d97706; border: 1px solid color-mix(in srgb, #d97706 25%, transparent); }
-.af-conc--baixo { background: color-mix(in srgb, #dc2626 12%, transparent); color: #dc2626; border: 1px solid color-mix(in srgb, #dc2626 25%, transparent); }
 
 @media (max-width: 640px) {
   .af-principais-grid   { grid-template-columns: 1fr 1fr; }
@@ -3260,7 +2691,7 @@ body.pdf-generating.has-comparison .comparison-section {
   grid-template-columns: minmax(140px, 210px) 1fr;
   align-items: start;
   gap: var(--space-4);
-  padding: var(--space-4) var(--space-5);
+  padding: var(--space-3) var(--space-5);
   border-bottom: 1px solid var(--color-border);
   transition: background 0.15s ease;
 }
@@ -3285,9 +2716,9 @@ body.pdf-generating.has-comparison .comparison-section {
 .sg-dado-right {
   min-width: 0;
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-2);
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
 }
 
 .sg-dado-valor {
@@ -3305,6 +2736,32 @@ body.pdf-generating.has-comparison .comparison-section {
 
 .sg-dado-item--destaque:hover {
   background: linear-gradient(90deg, var(--color-accent-light) 0%, var(--color-surface-muted) 70%);
+}
+
+/* Linha de dado que carrega um desvio do padrao de mercado (ex.: prazo de
+   locacao acima de 30 meses). Filete ambar a esquerda, mesma familia visual do
+   --destaque monetario mas com cor de aviso. */
+.sg-dado-item--alerta {
+  background: linear-gradient(90deg, var(--color-warning-bg) 0%, transparent 70%);
+  box-shadow: inset 3px 0 0 var(--color-warning);
+}
+
+.sg-dado-nota,
+.sg-dado-nota-alerta {
+  font-size: var(--text-xs);
+}
+
+.sg-dado-nota { color: var(--color-text-muted); }
+
+.sg-dado-nota-alerta {
+  color: var(--color-warning);
+  font-weight: var(--weight-semibold);
+}
+
+.sg-dado-item--destaque .sg-dado-right {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
 }
 
 .sg-dado-item--destaque .sg-dado-valor {
@@ -4193,6 +3650,15 @@ body.pdf-generating.has-comparison .comparison-section {
   background: color-mix(in srgb, var(--color-primary) 10%, transparent);
   color: var(--color-primary);
   border-color: color-mix(in srgb, var(--color-primary) 20%, transparent);
+}
+
+/* Cobertura que o documento dispensou explicitamente: fica visivel, mas em
+   neutro, para nao competir com as exigidas em verde. */
+.sg-cobertura-badge--negada {
+  background: var(--color-neutral-bg);
+  color: var(--color-neutral);
+  border-color: var(--color-neutral-border);
+  font-weight: var(--weight-normal);
 }
 
 /* ── SG Badges genéricos ────────────────────────────────────────────────────── */
@@ -5603,121 +5069,6 @@ body.pdf-generating.has-comparison .comparison-section {
   box-shadow: none;
 }
 
-.af-doc-header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  background: var(--color-surface-muted);
-  border-bottom: 1px solid var(--color-border);
-}
-
-.af-doc-tipo-badge {
-  font-size: var(--text-xs);
-  font-weight: var(--weight-semibold);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--color-primary);
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  padding: 0;
-}
-
-.af-doc-periodo {
-  font-size: var(--text-xs);
-  font-weight: var(--weight-medium);
-  color: var(--color-text-muted);
-  margin-left: auto;
-}
-
-.af-kpis-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: var(--text-sm);
-}
-
-.af-kpis-table tbody tr {
-  border-bottom: 1px solid var(--color-border);
-}
-.af-kpis-table tbody tr:last-child { border-bottom: 0; }
-
-.af-kpis-table td {
-  padding: var(--space-2) var(--space-4);
-  vertical-align: middle;
-}
-
-.af-kpi-label {
-  color: var(--color-text-secondary);
-  font-size: var(--text-sm);
-  width: 55%;
-}
-
-.af-kpi-value {
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
-  color: var(--color-text);
-  text-align: right;
-}
-
-.af-kpi-row--neg .af-kpi-value { color: var(--color-danger) !important; }
-
-.af-kpis-divider {
-  font-size: 10px;
-  font-weight: var(--weight-semibold);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--color-text-muted);
-  padding: var(--space-2) var(--space-4);
-  background: var(--color-surface-muted);
-  border-top: 1px solid var(--color-border);
-  border-bottom: 1px solid var(--color-border);
-}
-
-.af-kpis-table--demais {
-  opacity: 0.8;
-}
-
-.af-doc-obs {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
-  background: var(--color-surface-muted);
-  border-top: 1px solid var(--color-border);
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
-  line-height: var(--leading-normal);
-}
-.af-doc-obs svg {
-  flex-shrink: 0;
-  margin-top: 1px;
-  color: var(--color-text-muted);
-}
-
-/* Capacity chips */
-.af-cap-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 6px;
-}
-
-.af-cap-chip {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 3px 10px;
-  border-radius: 99px;
-  white-space: nowrap;
-}
-.af-cap-chip.af-cap--alta     { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
-.af-cap-chip.af-cap--moderada { background: #fef9c3; color: #854d0e; border: 1px solid #fde047; }
-.af-cap-chip.af-cap--baixa    { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
-.af-cap-chip.af-cap--inapta   { background: #fef2f2; color: #7f1d1d; border: 1px solid #fecaca; }
-
 /* ═══════════════════════════════════════════════════════════════════════════
    FIANÇA LOCATÍCIA — Redesign completo
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -6614,7 +5965,6 @@ body.mkt-focus-active { overflow: hidden; }
 }
 .tc-salvo-btn-remover:hover { color: #dc2626; border-color: #dc2626; background: rgba(220, 38, 38, 0.06); }
 
-
 /* ── T&C — componentes de card reaproveitados pela grade de mercado (seção 4) ── */
 .tc-form-group {
   display: flex;
@@ -6921,8 +6271,6 @@ body.mkt-focus-active { overflow: hidden; }
   color: var(--color-primary);
   background: var(--color-accent-light);
 }
-
-
 
 .tc-email-capture-host {
   position: fixed;
@@ -7252,4 +6600,673 @@ body.mkt-focus-active { overflow: hidden; }
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
   }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Análise Financeira — leitura de balanços para o corretor
+   Escopo exclusivo Seguro Garantia, sem veredicto de subscrição (ver SPEC 6).
+   Só tokens de assets/css/variables.css.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.af-empresa {
+  /* Respiro lateral do relatorio, herdado por todas as secoes internas.
+     Local ao fluxo: nao ha --space-7 na escala global de variables.css. */
+  --af-gutter: 28px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+  margin-bottom: var(--space-8);
+}
+
+.af-empresa-head {
+  padding: var(--space-6) var(--af-gutter) var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.af-empresa-nome {
+  font-family: var(--font-heading);
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
+  color: var(--color-primary);
+  line-height: var(--leading-tight);
+}
+
+.af-empresa-meta {
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+/* ── Cabeçalho de diagnóstico: consolida os 4 blocos redundantes de antes ── */
+
+.af-diagnostico {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.af-diag-main {
+  padding: var(--space-6) var(--af-gutter);
+}
+
+.af-diag-chips {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-3);
+}
+
+.af-diag-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 14px;
+  border-radius: var(--radius-full);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  background: var(--color-neutral-bg);
+  color: var(--color-text-secondary);
+}
+
+/* As modalizadoras de situação e de risco reaproveitam as cores semânticas já
+   existentes; aqui elas pintam o chip, não mais o banner que foi removido. */
+.af-diag-chip.af-classif--boa      { background: var(--color-success-bg); color: var(--color-success); }
+.af-diag-chip.af-classif--moderada { background: var(--color-warning-bg); color: var(--color-warning); }
+.af-diag-chip.af-classif--ruim     { background: var(--color-danger-bg);  color: var(--color-danger); }
+
+.af-diag-confianca {
+  font-size: var(--text-xs);
+  color: var(--color-text-faint);
+}
+
+.af-diag-resumo {
+  font-size: var(--text-md);
+  line-height: var(--leading-normal);
+  color: var(--color-text);
+  text-wrap: pretty;
+}
+
+.af-diag-base {
+  margin-top: var(--space-3);
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--color-border);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  color: var(--color-text-muted);
+}
+
+.af-diag-label {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-2);
+}
+
+/* Capacidade de garantia: 15% do PL, calculado no front-end — a IA não faz
+   aritmética (ver comentário em app.js). */
+.af-capacidade {
+  padding: var(--space-6) var(--af-gutter);
+  background: linear-gradient(160deg, var(--color-surface-soft) 0%, var(--color-background) 100%);
+  border-left: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.af-capacidade-valor {
+  font-size: var(--text-3xl);
+  font-weight: var(--weight-bold);
+  color: var(--color-primary);
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.af-capacidade-vazio {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-faint);
+}
+
+.af-capacidade-nota {
+  margin-top: var(--space-3);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+  color: var(--color-text-secondary);
+}
+
+/* ── Blocos de seção ── */
+
+.af-block {
+  padding: var(--space-5) var(--af-gutter) var(--space-6);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.af-block-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-accent-ink);
+}
+
+.af-block-title {
+  font-family: var(--font-heading);
+  font-size: 13.5px;
+  font-weight: var(--weight-bold);
+  color: var(--color-primary);
+}
+
+.af-block-sub {
+  margin: var(--space-1) 0 var(--space-4) 26px;
+  font-size: var(--text-xs);
+  color: var(--color-text-faint);
+}
+
+/* ── Medidores: valor da empresa contra a faixa de referência ──
+   As faixas usam os tons *-border (claros) e não os saturados: a 8px de altura
+   vermelho/âmbar/verde saturados ficam indistinguíveis entre si. A leitura não
+   depende da cor — as fronteiras são rotuladas em número sob a barra. */
+
+.af-gauge-row {
+  display: grid;
+  grid-template-columns: 186px 158px minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: center;
+  padding: 13px 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.af-gauge-row:last-child {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.af-gauge-label {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.af-gauge-formula {
+  margin-top: 2px;
+  font-size: 10.5px;
+  color: var(--color-text-faint);
+}
+
+.af-gauge-valor {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.af-gauge-num {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+  color: var(--color-text);
+}
+
+/* Monetario e mais largo em mono que um indice: reduz um passo para o chip de
+   nivel continuar na mesma linha em vez de cair para baixo do valor. */
+.af-gauge-num--brl {
+  font-size: var(--text-lg);
+}
+
+.af-gauge-nivel {
+  display: inline-flex;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  font-weight: var(--weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.af-gauge-nivel--bom     { background: var(--color-success-bg); color: var(--color-success); }
+.af-gauge-nivel--atencao { background: var(--color-warning-bg); color: var(--color-warning); }
+.af-gauge-nivel--critico { background: var(--color-danger-bg);  color: var(--color-danger); }
+
+.af-gauge-track {
+  position: relative;
+  height: 18px;
+}
+
+.af-gauge-bands {
+  display: flex;
+  gap: 2px;                 /* respiro de superfície entre faixas, sem borda */
+  height: 8px;
+  margin-top: 5px;
+}
+
+.af-gauge-band--bom     { background: var(--color-success-border); }
+.af-gauge-band--atencao { background: var(--color-warning-border); }
+.af-gauge-band--critico { background: var(--color-danger-border); }
+
+.af-gauge-marker {
+  position: absolute;
+  top: 0;
+  width: 3px;
+  height: 18px;
+  border-radius: 2px;
+  background: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--color-surface);
+  transform: translateX(-50%);
+}
+
+.af-gauge-ticks {
+  position: relative;
+  height: 12px;
+  margin-top: 2px;
+}
+
+.af-gauge-tick {
+  position: absolute;
+  transform: translateX(-50%);
+  font-size: 9px;
+  color: var(--color-text-faint);
+  white-space: nowrap;
+}
+
+.af-gauge-interp {
+  margin-top: 2px;
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  color: var(--color-text-secondary);
+}
+
+/* ── Evolução: um painel por grandeza, escala própria em cada um ── */
+
+.af-evo-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.af-evo-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 14px 16px 12px;
+  background: var(--color-surface);
+}
+
+.af-evo-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: 10px;
+}
+
+.af-evo-label {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.af-delta {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  font-weight: var(--weight-bold);
+  white-space: nowrap;
+}
+
+.af-delta--pos { background: var(--color-success-bg); color: var(--color-success); }
+.af-delta--neg { background: var(--color-danger-bg);  color: var(--color-danger); }
+
+.af-spark { display: block; overflow: visible; }
+.af-spark-base { stroke: var(--color-border); stroke-width: 1; }
+.af-spark-area { fill: var(--color-accent-light); opacity: 0.55; }
+.af-spark-line { fill: none; stroke: var(--color-primary); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.af-spark-dot  { fill: var(--color-primary); }
+.af-spark-last { fill: var(--color-accent); stroke: var(--color-surface); stroke-width: 2; }
+
+.af-evo-foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.af-evo-periodo {
+  font-size: 10px;
+  color: var(--color-text-faint);
+}
+
+.af-evo-valor {
+  font-size: var(--text-md);
+  font-weight: var(--weight-bold);
+  color: var(--color-primary);
+}
+
+/* ── Sinais: duas colunas ── */
+
+.af-sinais {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-bottom: 1px solid var(--color-border);
+}
+
+.af-sinais-col {
+  padding: var(--space-5) var(--af-gutter) var(--space-6);
+}
+
+.af-sinais-col--pos {
+  border-right: 1px solid var(--color-border);
+}
+
+.af-sinais-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.af-sinais-col--pos .af-sinais-head,
+.af-sinais-col--pos .af-block-title { color: var(--color-success); }
+
+.af-sinais-col--neg .af-sinais-head,
+.af-sinais-col--neg .af-block-title { color: var(--color-warning); }
+
+.af-sinais-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.af-sinais-list li {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  color: var(--color-text);
+}
+
+.af-sinal-marca { font-weight: var(--weight-bold); }
+.af-sinais-col--pos .af-sinal-marca { color: var(--color-success); }
+.af-sinais-col--neg .af-sinal-marca { color: var(--color-warning); }
+
+/* ── Alertas de risco ── */
+
+.af-block--alertas .af-block-head { color: var(--color-danger); }
+.af-block--alertas .af-block-title { color: var(--color-danger); }
+
+.af-alertas-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.af-alertas-list li {
+  padding: 10px var(--space-3) 10px 30px;
+  position: relative;
+  background: var(--color-danger-bg);
+  border: 1px solid var(--color-danger-border);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  color: var(--color-text);
+}
+
+.af-alertas-list li::before {
+  content: "!";
+  position: absolute;
+  left: 13px;
+  top: 10px;
+  font-weight: var(--weight-bold);
+  color: var(--color-danger);
+}
+
+/* ── Para fechar a leitura ── */
+
+.af-block--pendencias {
+  background: var(--color-surface-muted);
+}
+
+.af-pend-sub {
+  margin: var(--space-3) 0 var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.af-pend-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.af-pend-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 11px 13px;
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  color: var(--color-text);
+}
+
+.af-pend-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.af-pend-list li {
+  position: relative;
+  padding-left: var(--space-4);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  color: var(--color-text-secondary);
+}
+
+.af-pend-list li::before {
+  content: "—";
+  position: absolute;
+  left: 0;
+  color: var(--color-text-faint);
+}
+
+/* ── Blocos colapsáveis (qualitativa + tabela por documento) ── */
+
+.af-details {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.af-details:last-child { border-bottom: 0; }
+
+.af-details-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--af-gutter);
+  cursor: pointer;
+  list-style: none;
+  color: var(--color-text-muted);
+  transition: var(--transition-fast);
+}
+
+.af-details-summary::-webkit-details-marker { display: none; }
+
+.af-details-summary:hover { background: var(--color-surface-muted); }
+
+.af-details[open] .af-details-summary svg { transform: rotate(180deg); }
+
+.af-details-summary svg { transition: transform 0.15s ease; flex-shrink: 0; }
+
+.af-details-title {
+  font-family: var(--font-heading);
+  font-size: 13.5px;
+  font-weight: var(--weight-bold);
+  color: var(--color-text-secondary);
+}
+
+.af-details-meta {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  color: var(--color-text-faint);
+}
+
+.af-details-body {
+  padding: 0 var(--af-gutter) var(--space-6);
+}
+
+/* ── Análise qualitativa por dimensão ── */
+
+.af-qual-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3) var(--space-6);
+}
+
+/* ── Tabela de indicadores por documento: uma coluna por documento, para o
+   mesmo indicador ser comparável entre períodos na horizontal. ── */
+
+.af-doc-table-wrap {
+  overflow-x: auto;
+}
+
+.af-doc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.af-doc-th {
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+  text-align: right;
+  vertical-align: bottom;
+  white-space: nowrap;
+}
+
+.af-doc-th--corner {
+  text-align: left;
+  border-radius: var(--radius-sm) 0 0 0;
+}
+
+.af-doc-th:last-child { border-radius: 0 var(--radius-sm) 0 0; }
+
+.af-doc-th-tipo {
+  display: block;
+  font-size: 10px;
+  font-weight: var(--weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.af-doc-th-periodo {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-normal);
+  color: var(--color-accent-light);
+}
+
+.af-doc-rowlabel {
+  padding: 7px var(--space-3);
+  text-align: left;
+  font-weight: var(--weight-normal);
+  color: var(--color-text-secondary);
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.af-doc-td {
+  padding: 7px var(--space-3);
+  text-align: right;
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.af-doc-table tbody tr:nth-child(even) .af-doc-rowlabel,
+.af-doc-table tbody tr:nth-child(even) .af-doc-td {
+  background: #f8fbfd;
+}
+
+.af-doc-td--vazio { color: var(--color-text-faint); }
+.af-doc-td--neg   { color: var(--color-danger); }
+
+.af-doc-obs-list {
+  list-style: none;
+  margin-top: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.af-doc-obs-list li {
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+  color: var(--color-text-secondary);
+}
+
+.af-doc-nota {
+  margin-top: var(--space-2);
+  font-size: var(--text-xs);
+  font-style: italic;
+  color: var(--color-text-faint);
+}
+
+/* ── Responsivo ── */
+
+@media (max-width: 1024px) {
+  .af-diagnostico { grid-template-columns: 1fr; }
+  .af-capacidade { border-left: 0; border-top: 1px solid var(--color-border); }
+  .af-evo-grid { grid-template-columns: 1fr; }
+  .af-pend-grid { grid-template-columns: 1fr; }
+  .af-qual-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 768px) {
+  .af-gauge-row {
+    grid-template-columns: 1fr;
+    gap: var(--space-2);
+  }
+
+  .af-sinais { grid-template-columns: 1fr; }
+
+  .af-sinais-col--pos {
+    border-right: 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .af-empresa-head,
+  .af-diag-main,
+  .af-capacidade,
+  .af-block,
+  .af-sinais-col,
+  .af-details-summary,
+  .af-details-body {
+    padding-left: var(--page-gutter);
+    padding-right: var(--page-gutter);
+  }
+}
+
+/* Valor derivado ao lado do extraido (ex.: o premio com a taxa sobre a IS).
+   Fica numa segunda linha, em neutro, para nao ser confundido com dado do
+   documento — nao tem fonte documental porque foi calculado. */
+.ap-dado-extra {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-normal);
+  color: var(--color-text-muted);
 }

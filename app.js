@@ -136,31 +136,11 @@ document.addEventListener('keydown', e => {
 });
 
 // â"€â"€ Tab switching
-// Botão flutuante "Exportar relatório": é compartilhado por dois fluxos (T&C
-// Dashboard e Análise Financeira) e vive fora das páginas, em position:fixed.
-// Sem dono declarado ele continuava visível ao navegar para outra aba e cobria a
-// topbar dos fluxos de IA. Agora só aparece na página que o gerou.
-let _downloadTopOwner = null;
-
-function setDownloadTopOwner(pagina) {
-  _downloadTopOwner = pagina;
-  syncDownloadTopVisibility();
-}
-
-function syncDownloadTopVisibility() {
-  const btn = document.getElementById('btnDownloadTop');
-  if (!btn) return;
-  const paginaAtiva = document.querySelector('.page.active');
-  const idAtivo = paginaAtiva ? paginaAtiva.id.replace(/^page-/, '') : null;
-  btn.hidden = !_downloadTopOwner || _downloadTopOwner !== idAtivo;
-}
-
 function switchTab(tab) {
   closeMobileSidebar();
   closeMktCardFocus();
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-' + tab).classList.add('active');
-  syncDownloadTopVisibility();
   document.querySelectorAll('.sidebar-item').forEach(t => {
     const pages = (t.dataset.pages || t.dataset.page || '').split(' ');
     const isActive = pages.includes(tab);
@@ -359,7 +339,6 @@ function generateDashboard() {
   buildModalIndex(aprovadas);
 
   // Switch to dashboard tab
-  setDownloadTopOwner('dashboard');
   generateButton.classList.remove('is-loading');
   generateButton.disabled = false;
   switchTab('dashboard');
@@ -394,8 +373,7 @@ async function gerarPdf(filename) {
 }
 
 // Download full dashboard (tabela + comparativo se ativo) — 1 página
-async function downloadComparativo() {
-  const btn = document.getElementById('btnDownloadTop');
+async function downloadComparativo(btn) {
   const saved = btn ? btn.innerHTML : '';
   if (btn) { btn.disabled = true; btn.textContent = 'Gerando PDF…'; }
 
@@ -1770,15 +1748,22 @@ function buildSgCoberturasHtml(cob) {
   ];
   const ativas = mapa.filter(m => cob[m.key] === true);
   const outras = Array.isArray(cob.outras) ? cob.outras.filter(o => o) : [];
+  // Cobertura explicitamente NAO exigida tambem e informacao operacional: sem
+  // ela o corretor nao sabe se o edital e silente ou se dispensou a cobertura.
+  // So entra quando o campo veio `false` de verdade (nunca undefined/null).
+  const negadas = mapa.filter(m => cob[m.key] === false);
 
-  if (!ativas.length && !outras.length) return '';
+  if (!ativas.length && !outras.length && !negadas.length) return '';
+
+  const check = '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" width="10" height="10" aria-hidden="true"><path d="M2.5 6.2l2.3 2.3L9.5 3.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
   return `
     <div class="sg-coberturas-card">
       <p class="sg-section-mini-title">Coberturas / Cláusulas Exigidas</p>
       <div class="sg-coberturas-grid">
-        ${ativas.map(m => `<span class="sg-cobertura-badge">${esc(m.label)}</span>`).join('')}
-        ${outras.map(o => `<span class="sg-cobertura-badge sg-cobertura-badge--outra">${esc(o)}</span>`).join('')}
+        ${ativas.map(m => `<span class="sg-cobertura-badge">${check}${esc(m.label)}</span>`).join('')}
+        ${outras.map(o => `<span class="sg-cobertura-badge sg-cobertura-badge--outra">${check}${esc(o)}</span>`).join('')}
+        ${negadas.map(m => `<span class="sg-cobertura-badge sg-cobertura-badge--negada">${esc(m.label)} — não exigida</span>`).join('')}
       </div>
     </div>`;
 }
@@ -2348,6 +2333,40 @@ function buildParecerHTML(parecer) {
 }
 
 // ── Fiança Locatícia: report HTML builder ──────────────────────────────────
+// Prazo total da locacao em meses, derivado das duas datas de vigencia. Calculo
+// no front-end e nao no prompt: e aritmetica de calendario, nao leitura de
+// documento. O padrao de mercado para fianca locaticia e 30 meses — acima disso
+// a apolice costuma exigir aprovacao especifica, entao a linha ganha destaque.
+const FL_PRAZO_PADRAO_MESES = 30;
+
+function flParseDataBR(txt) {
+  const m = String(txt || '').match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  if (!m) return null;
+  const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function buildFlPrazoTotalHtml(dados) {
+  const ini = flParseDataBR(dados.vigencia_inicio && dados.vigencia_inicio.valor);
+  const fim = flParseDataBR(dados.vigencia_fim && dados.vigencia_fim.valor);
+  if (!ini || !fim || fim <= ini) return '';
+
+  const meses = Math.round((fim - ini) / (1000 * 60 * 60 * 24 * 30.4375));
+  if (!meses) return '';
+  const acima = meses > FL_PRAZO_PADRAO_MESES;
+
+  return `
+    <div class="sg-dado-item${acima ? ' sg-dado-item--alerta' : ''}">
+      <span class="sg-dado-label">Prazo Total</span>
+      <div class="sg-dado-right">
+        <span class="sg-dado-valor"><strong>${meses} meses</strong></span>
+        ${acima
+          ? `<span class="sg-dado-nota-alerta">acima do padrão de ${FL_PRAZO_PADRAO_MESES} meses — costuma exigir aprovação específica</span>`
+          : `<span class="sg-dado-nota">dentro do padrão de ${FL_PRAZO_PADRAO_MESES} meses</span>`}
+      </div>
+    </div>`;
+}
+
 function buildFlReportHtml(data, locatario, imovel, dateStr) {
   const dados = data.dados_gerais || {};
   const clausulas = data.clausulas_criticas || [];
@@ -2375,7 +2394,11 @@ function buildFlReportHtml(data, locatario, imovel, dateStr) {
     { key: 'valor_aluguel',   label: 'Valor do Aluguel',        format: 'brl' },
   ];
   const emissaoHtml = emissaoCfg
-    .map(cfg => buildDadoItem(cfg.label, dados[cfg.key], cfg.format))
+    .map(cfg => {
+      const linha = buildDadoItem(cfg.label, dados[cfg.key], cfg.format);
+      // O prazo total entra logo apos o fim da vigencia, que e de onde ele sai.
+      return cfg.key === 'vigencia_fim' ? linha + buildFlPrazoTotalHtml(dados) : linha;
+    })
     .filter(Boolean).join('');
 
   // Objeto da apólice
@@ -2688,7 +2711,10 @@ function buildApoliceReportHtml(data, title) {
   const now = new Date();
   const dateStr = now.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
 
-  const dadosRows = APOLICE_DADOS_CONFIG.map(cfg => buildApoliceDadoRow(cfg, dados[cfg.key])).join('');
+  const taxaIs = apTaxaSobreIs(dados);
+  const dadosRows = APOLICE_DADOS_CONFIG
+    .map(cfg => buildApoliceDadoRow(cfg, dados[cfg.key], cfg.key === 'premio' ? taxaIs : ''))
+    .join('');
   const coberturasHtml = buildApoliceList(data.coberturas, 'Nenhuma cobertura localizada.');
   const clausulasHtml = buildApoliceList(data.clausulas, 'Nenhuma cláusula localizada.');
   const excluidosHtml = buildApoliceList(data.riscos_excluidos, 'Nenhum risco excluído localizado.');
@@ -2747,7 +2773,7 @@ function buildApoliceReportHtml(data, title) {
     </div>`;
 }
 
-function buildApoliceDadoRow(cfg, item) {
+function buildApoliceDadoRow(cfg, item, extra) {
   const rawVal = item && typeof item === 'object' ? item.valor : item;
   const fonte = item && typeof item === 'object' ? item.fonte : '';
   let display = 'Não localizado';
@@ -2756,9 +2782,19 @@ function buildApoliceDadoRow(cfg, item) {
   }
   return `<tr>
     <td class="fl-dados-label">${esc(cfg.label)}</td>
-    <td class="fl-dados-value">${esc(display)}</td>
+    <td class="fl-dados-value">${esc(display)}${extra ? `<span class="ap-dado-extra">${esc(extra)}</span>` : ''}</td>
     <td class="fl-dados-fonte"><em>${fonte ? esc(fonte) : '—'}</em></td>
   </tr>`;
+}
+
+// Taxa do premio sobre a IS: o numero que o corretor de fato compara entre
+// cotacoes. Sai de divisao simples, entao e calculado aqui e nao pedido a IA.
+function apTaxaSobreIs(dados) {
+  const is = Number(dados.importancia_segurada && dados.importancia_segurada.valor);
+  const premio = Number(dados.premio && dados.premio.valor);
+  if (!Number.isFinite(is) || !Number.isFinite(premio) || is <= 0 || premio <= 0) return '';
+  const pct = (premio / is) * 100;
+  return pct.toFixed(pct < 1 ? 2 : 1).replace('.', ',') + '% da IS';
 }
 
 function buildApoliceList(items, emptyText) {
@@ -4719,7 +4755,6 @@ function resetAnaliseFinanceira() {
   document.getElementById('afQaMessages').innerHTML = '';
   _clearChatFiles('af');
   hideFinancialError();
-  setDownloadTopOwner(null);
 }
 
 // -- Render financial analysis result (multi-company structure)
@@ -4744,8 +4779,6 @@ function renderAnaliseFinanceira(data) {
 
   const container = document.getElementById('afEmpresasContainer');
   container.innerHTML = empresas.map((emp, idx) => buildEmpresaCard(emp, idx)).join('');
-
-  setDownloadTopOwner('analise-financeira');
 
   // Init Q&A chat history with JSON context
   afChatHistory = criarHistoricoAnaliseFinanceira(financialFiles, JSON.stringify(data));
@@ -4848,162 +4881,503 @@ function hasIndicadorValue(val) {
   return true;
 }
 
-function riscoClass(risco) {
-  const r = (risco || '').toLowerCase();
-  if (r.includes('baixo'))    return 'af-risco-badge--baixo';
-  if (r.includes('moderado')) return 'af-risco-badge--moderado';
-  if (r.includes('cr'))       return 'af-risco-badge--critico';
-  if (r.includes('alto'))     return 'af-risco-badge--alto';
-  return '';
+// ── Análise Financeira — leitura de balanços para o CORRETOR ─────────────────
+// Escopo exclusivo Seguro Garantia (Fiança Locatícia saiu do fluxo) e sem
+// veredicto de subscrição: o relatório explica os números, não decide emissão.
+//
+// Regra de divisão de trabalho: tudo que é ARITMÉTICA ou REGRA DE NEGÓCIO fixa
+// é calculado aqui, não pedido à IA — capacidade de garantia (15% do PL), faixas
+// de referência dos indicadores e a série de evolução por período. A IA entrega
+// só o que exige leitura do documento: valores extraídos e texto interpretativo.
+
+const AF_PCT_PL_GARANTIA = 0.15;
+
+// Faixas de referência dos indicadores-chave. `dominio` é a escala desenhada da
+// barra; `faixas` são as fronteiras em ordem crescente de valor, cada uma com o
+// julgamento daquele trecho. `melhor: 'alto'` = valor maior é melhor.
+const AF_INDICADORES_CHAVE = [
+  {
+    key: 'liquidez_corrente', label: 'Liquidez Corrente', formula: 'Ativo circ. ÷ Passivo circ.',
+    format: 'dec', melhor: 'alto', dominio: [0, 2.5],
+    faixas: [{ ate: 0.8, nivel: 'critico' }, { ate: 1.2, nivel: 'atencao' }, { ate: 2.5, nivel: 'bom' }],
+  },
+  {
+    key: 'endividamento_geral', label: 'Endividamento Geral', formula: 'Passivo total ÷ Ativo total',
+    format: 'pct', melhor: 'baixo', dominio: [0, 100],
+    faixas: [{ ate: 50, nivel: 'bom' }, { ate: 70, nivel: 'atencao' }, { ate: 100, nivel: 'critico' }],
+  },
+  {
+    key: 'margem_liquida', label: 'Margem Líquida', formula: 'Lucro líq. ÷ Receita líq.',
+    format: 'pct', melhor: 'alto', dominio: [0, 15],
+    faixas: [{ ate: 2, nivel: 'critico' }, { ate: 8, nivel: 'atencao' }, { ate: 15, nivel: 'bom' }],
+  },
+  {
+    key: 'roe', label: 'ROE · Retorno sobre PL', formula: 'Lucro líq. ÷ Patrimônio líq.',
+    format: 'pct', melhor: 'alto', dominio: [0, 30],
+    faixas: [{ ate: 5, nivel: 'critico' }, { ate: 15, nivel: 'atencao' }, { ate: 30, nivel: 'bom' }],
+  },
+  {
+    // Monetario: a escala da barra e derivada do proprio valor da empresa
+    // (`dominioRelativo`), porque nao existe faixa absoluta que sirva a uma
+    // empresa de R$ 5 MM e a uma de R$ 500 MM. A unica fronteira com
+    // significado universal e ZERO — abaixo dela o ativo circulante nao cobre
+    // o passivo circulante. Nao ha faixa de "atencao": qualquer corte positivo
+    // seria uma regra de negocio inventada.
+    key: 'capital_de_giro_liquido', label: 'Capital de Giro Líquido', formula: 'Ativo circ. − Passivo circ.',
+    format: 'brl', melhor: 'alto', dominioRelativo: true,
+    faixas: [{ ate: 0, nivel: 'critico' }, { ate: Infinity, nivel: 'bom' }],
+  },
+];
+
+const AF_NIVEL_LABEL = { bom: 'Bom', atencao: 'Atenção', critico: 'Crítico' };
+
+// Percentuais podem chegar como decimal (0.603) ou já em pontos (60.3). Acima de
+// 1.5 tratamos como pontos — nenhum indicador real de razão passa disso.
+function afPctParaPontos(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return null;
+  return Math.abs(n) <= 1.5 ? n * 100 : n;
 }
 
-function capacidadeClass(cap) {
-  const c = (cap || '').toLowerCase();
-  if (c.includes('alta'))     return 'af-cap--alta';
-  if (c.includes('moderada')) return 'af-cap--moderada';
-  if (c.includes('baixa'))    return 'af-cap--baixa';
-  if (c.includes('inapta'))   return 'af-cap--inapta';
-  return '';
+function afValorNormalizado(cfg, valorBruto) {
+  if (!hasIndicadorValue(valorBruto)) return null;
+  const n = Number(valorBruto);
+  if (!Number.isFinite(n)) return null;
+  return cfg.format === 'pct' ? afPctParaPontos(n) : n;
 }
 
-function buildDocumentoCard(doc) {
-  const ind = doc.indicadores || {};
-  const indicadoresDisponiveis = AF_KPIS_CONFIG
-    .map(cfg => ({ ...cfg, value: ind[cfg.key] }))
-    .filter(cfg => hasIndicadorValue(cfg.value));
-
-  const prioritarios = indicadoresDisponiveis.filter(cfg => cfg.priority);
-  const demais = indicadoresDisponiveis.filter(cfg => !cfg.priority);
-
-  function buildRows(lista) {
-    return lista.map(cfg => {
-      const val = cfg.value;
-      const display = fmtIndicador(val, cfg.format);
-      const isNeg = typeof val === 'number' && val < 0;
-      return `<tr class="${isNeg ? 'af-kpi-row--neg' : ''}">
-        <td class="af-kpi-label">${esc(cfg.label)}</td>
-        <td class="af-kpi-value mono">${esc(String(display))}</td>
-      </tr>`;
-    }).join('');
+function afNivelDoValor(cfg, valor) {
+  for (const f of cfg.faixas) {
+    if (valor <= f.ate) return f.nivel;
   }
+  return cfg.faixas[cfg.faixas.length - 1].nivel;
+}
 
-  let kpisHtml;
-  if (indicadoresDisponiveis.length === 0) {
-    kpisHtml = '<p class="af-no-data">Indicadores não extraídos deste documento.</p>';
-  } else {
-    kpisHtml = `<table class="af-kpis-table"><tbody>${buildRows(prioritarios)}</tbody></table>`;
-    if (demais.length > 0) {
-      kpisHtml += `<div class="af-kpis-divider">Outros indicadores</div><table class="af-kpis-table af-kpis-table--demais"><tbody>${buildRows(demais)}</tbody></table>`;
-    }
-  }
+// Capital de giro é monetário: a escala da barra depende da ordem de grandeza da
+// própria empresa, então o domínio é derivado do valor (e nunca degenera em 0).
+function afDominioDoIndicador(cfg, valor) {
+  if (!cfg.dominioRelativo) return cfg.dominio;
+  const escala = Math.max(Math.abs(valor), 1) * 2;
+  return [-escala * 0.25, escala];
+}
+
+// Converte as fronteiras (em espaco de VALOR) para percentuais da barra.
+// `valorFim` fica no segmento para o tick poder ser rotulado com o numero real.
+function afFaixasEmPercentual(cfg, dominio) {
+  const [min, max] = dominio;
+  const span = max - min || 1;
+  const pos = v => Math.max(0, Math.min(100, ((v - min) / span) * 100));
+  let anterior = min;
+  return cfg.faixas.map(f => {
+    const ate = Number.isFinite(f.ate) ? f.ate : max;
+    const seg = { nivel: f.nivel, inicio: pos(anterior), fim: pos(ate), valorFim: ate };
+    anterior = ate;
+    return seg;
+  });
+}
+
+function afFormataIndicador(cfg, valor) {
+  // Compacto: "R$ 5,6 MM" cabe na coluna de valor; fmtBRL completo quebraria
+  // em tres linhas e empurraria o chip de nivel para baixo.
+  if (cfg.format === 'brl') return fmtBRLCompacto(valor);
+  if (cfg.format === 'pct') return valor.toFixed(1).replace('.', ',') + '%';
+  return valor.toFixed(2).replace('.', ',');
+}
+
+function afFormataTick(cfg, valor) {
+  if (cfg.format === 'brl') return valor === 0 ? 'R$ 0' : fmtBRLCompacto(valor);
+  if (cfg.format === 'pct') return String(Math.round(valor)) + '%';
+  return String(valor).replace('.', ',');
+}
+
+// Valores grandes em rótulo de eixo/tick: "R$ 5,6 MM" em vez do valor completo.
+function fmtBRLCompacto(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '—';
+  const abs = Math.abs(n);
+  if (abs >= 1e6) return 'R$ ' + (n / 1e6).toFixed(1).replace('.', ',') + ' MM';
+  if (abs >= 1e3) return 'R$ ' + (n / 1e3).toFixed(0) + ' mil';
+  return fmtBRL(n);
+}
+
+// ── Cabeçalho de diagnóstico ────────────────────────────────────────────────
+// Consolida o que antes eram 4 blocos (banner de classificação, resumo
+// executivo, visão para SG e conclusão operacional) dizendo a mesma coisa.
+function buildAfDiagnosticoHtml(emp) {
+  const cf = emp.classificacao_financeira || {};
+  const lpc = emp.leitura_para_corretor || {};
+  const pn = emp.principais_numeros || {};
+
+  const resumo = lpc.resumo || cf.justificativa || '';
+  const base = lpc.base_da_leitura || '';
+  const confianca = String(lpc.nivel_confianca || '').toUpperCase();
+
+  const situacaoCls = classificacaoFinanceiraClass(cf.situacao);
+  const situacaoLabel = classificacaoFinanceiraLabel(cf.situacao);
+
+  const chips = [];
+  if (situacaoLabel) chips.push(`<span class="af-diag-chip ${situacaoCls}">Situação ${esc(situacaoLabel)}</span>`);
+  if (confianca) chips.push(`<span class="af-diag-confianca">Confiança da leitura: ${esc(confianca.toLowerCase())}</span>`);
+
+  const pl = Number(pn.patrimonio_liquido);
+  const temPl = Number.isFinite(pl) && pl > 0;
+  const capacidadeHtml = temPl
+    ? `
+      <div class="af-capacidade">
+        <p class="af-diag-label">Capacidade de garantia · referência</p>
+        <p class="af-capacidade-valor mono">${esc(fmtBRL(pl * AF_PCT_PL_GARANTIA))}</p>
+        <p class="af-capacidade-nota">${Math.round(AF_PCT_PL_GARANTIA * 100)}% do patrimônio líquido de ${esc(fmtBRL(pl))}. Referência usual de mercado para Seguro Garantia — cada seguradora aplica a própria política de limite.</p>
+      </div>`
+    : `
+      <div class="af-capacidade af-capacidade--indisponivel">
+        <p class="af-diag-label">Capacidade de garantia · referência</p>
+        <p class="af-capacidade-vazio">Não calculável</p>
+        <p class="af-capacidade-nota">Depende do patrimônio líquido, que não foi extraído dos documentos enviados.</p>
+      </div>`;
+
+  if (!chips.length && !resumo) return capacidadeHtml ? `<div class="af-diagnostico">${capacidadeHtml}</div>` : '';
 
   return `
-    <div class="af-doc-card">
-      <div class="af-doc-header">
-        <span class="af-doc-tipo-badge">${esc(doc.tipo || '—')}</span>
-        <span class="af-doc-periodo">${esc(doc.periodo || '—')}</span>
+    <div class="af-diagnostico">
+      <div class="af-diag-main">
+        ${chips.length ? `<div class="af-diag-chips">${chips.join('')}</div>` : ''}
+        ${resumo ? `<p class="af-diag-resumo">${esc(resumo)}</p>` : ''}
+        ${base ? `<p class="af-diag-base">${esc(base)}</p>` : ''}
       </div>
-      ${kpisHtml}
-      ${doc.observacoes ? `<div class="af-doc-obs"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="13" height="13"><circle cx="8" cy="8" r="6"/><path d="M8 7v4M8 5.5h.01" stroke-linecap="round"/></svg>${esc(doc.observacoes)}</div>` : ''}
+      ${capacidadeHtml}
     </div>`;
 }
 
+// ── Medidores dos indicadores-chave ─────────────────────────────────────────
+function buildAfMedidoresHtml(ic) {
+  const linhas = AF_INDICADORES_CHAVE.map(cfg => {
+    const item = ic[cfg.key];
+    const valor = afValorNormalizado(cfg, item && item.valor);
+    if (valor === null) return '';
+
+    const dominio = afDominioDoIndicador(cfg, valor);
+    const segs = afFaixasEmPercentual(cfg, dominio);
+    const [min, max] = dominio;
+    const span = max - min || 1;
+    const marcador = Math.max(0, Math.min(100, ((valor - min) / span) * 100));
+    const nivel = afNivelDoValor(cfg, valor);
+
+    const bandas = segs.map((s, i) => {
+      const largura = Math.max(0, s.fim - s.inicio);
+      const radius = i === 0 ? 'border-radius:4px 0 0 4px' : (i === segs.length - 1 ? 'border-radius:0 4px 4px 0' : '');
+      return `<div class="af-gauge-band af-gauge-band--${s.nivel}" style="width:${largura.toFixed(2)}%;${radius}"></div>`;
+    }).join('');
+
+    // Fronteiras internas rotuladas em número: a leitura não depende da cor.
+    const ticks = segs.slice(0, -1).map(s =>
+      `<span class="af-gauge-tick mono" style="left:${s.fim.toFixed(2)}%">${esc(afFormataTick(cfg, s.valorFim))}</span>`
+    ).join('');
+
+    return `
+      <div class="af-gauge-row">
+        <div class="af-gauge-meta">
+          <p class="af-gauge-label">${esc(cfg.label)}</p>
+          <p class="af-gauge-formula">${esc(cfg.formula)}</p>
+        </div>
+        <div class="af-gauge-valor">
+          <span class="af-gauge-num mono${cfg.format === 'brl' ? ' af-gauge-num--brl' : ''}">${esc(afFormataIndicador(cfg, valor))}</span>
+          <span class="af-gauge-nivel af-gauge-nivel--${nivel}">${esc(AF_NIVEL_LABEL[nivel])}</span>
+        </div>
+        <div class="af-gauge-plot">
+          <div class="af-gauge-track">
+            <div class="af-gauge-bands">${bandas}</div>
+            <div class="af-gauge-marker" style="left:${marcador.toFixed(2)}%" aria-hidden="true"></div>
+          </div>
+          <div class="af-gauge-ticks">${ticks}</div>
+          ${item.interpretacao ? `<p class="af-gauge-interp">${esc(item.interpretacao)}</p>` : ''}
+        </div>
+      </div>`;
+  }).filter(Boolean).join('');
+
+  if (!linhas) return '';
+
+  return `
+    <section class="af-block">
+      <div class="af-block-head">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" width="17" height="17" aria-hidden="true"><path d="M3 16V9M8 16V4M13 16v-5M18 16v-9" stroke-linecap="round"/></svg>
+        <h3 class="af-block-title">Indicadores-chave contra a faixa de referência</h3>
+      </div>
+      <p class="af-block-sub">A marca escura é o valor da empresa; os números sob a barra são as fronteiras de cada faixa.</p>
+      <div class="af-gauges">${linhas}</div>
+    </section>`;
+}
+
+// ── Evolução por período (small multiples) ──────────────────────────────────
+// Receita, lucro e PL têm ordens de grandeza diferentes: cada um ganha um painel
+// com escala própria. Nunca no mesmo eixo — a comparação seria enganosa.
+const AF_EVOLUCAO_SERIES = [
+  { key: 'receita_liquida', label: 'Receita Líquida' },
+  { key: 'lucro_liquido', label: 'Lucro Líquido' },
+  { key: 'patrimonio_liquido', label: 'Patrimônio Líquido' },
+];
+
+// Períodos são strings livres ("2024", "jan/2024"). Ordena por ano quando dá,
+// preservando a ordem de aparição como desempate.
+function afOrdenaPeriodos(periodos) {
+  return periodos.slice().sort((a, b) => {
+    const ay = (a.periodo.match(/\d{4}/) || [])[0];
+    const by = (b.periodo.match(/\d{4}/) || [])[0];
+    if (ay && by && ay !== by) return Number(ay) - Number(by);
+    return a.ordem - b.ordem;
+  });
+}
+
+function afSerieDeDocumentos(docs, key) {
+  const porPeriodo = new Map();
+  docs.forEach((d, i) => {
+    const periodo = String(d.periodo || '').trim();
+    if (!periodo) return;
+    const v = Number((d.indicadores || {})[key]);
+    if (!Number.isFinite(v)) return;
+    // Um mesmo período pode vir em dois documentos (Balanço + DRE); o primeiro
+    // que traz o indicador vale.
+    if (!porPeriodo.has(periodo)) porPeriodo.set(periodo, { periodo, valor: v, ordem: i });
+  });
+  return afOrdenaPeriodos([...porPeriodo.values()]);
+}
+
+function buildAfSparkline(pontos) {
+  const W = 300, H = 62, PAD_X = 8, TOP = 8, BOT = 54;
+  const vals = pontos.map(p => p.valor);
+  const min = Math.min(...vals), max = Math.max(...vals);
+  const span = (max - min) || Math.abs(max) || 1;
+  const stepX = pontos.length > 1 ? (W - PAD_X * 2) / (pontos.length - 1) : 0;
+  const coords = pontos.map((p, i) => {
+    const x = PAD_X + stepX * i;
+    const y = max === min ? (TOP + BOT) / 2 : BOT - ((p.valor - min) / span) * (BOT - TOP);
+    return { x: +x.toFixed(1), y: +y.toFixed(1) };
+  });
+  const linha = coords.map(c => `${c.x} ${c.y}`).join(' L ');
+  const area = `M ${linha} L ${coords[coords.length - 1].x} ${BOT} L ${coords[0].x} ${BOT} Z`;
+  const ultimo = coords[coords.length - 1];
+  const intermediarios = coords.slice(0, -1)
+    .map(c => `<circle cx="${c.x}" cy="${c.y}" r="2.5" class="af-spark-dot"/>`).join('');
+  const titulo = pontos.map(p => `${p.periodo}: ${fmtBRL(p.valor)}`).join(' · ');
+
+  return `
+    <svg class="af-spark" viewBox="0 0 ${W} ${H}" width="100%" height="${H}" role="img" aria-label="${esc(titulo)}">
+      <title>${esc(titulo)}</title>
+      <line x1="${PAD_X}" y1="${BOT}" x2="${W - PAD_X}" y2="${BOT}" class="af-spark-base"/>
+      <path d="${area}" class="af-spark-area"/>
+      <path d="M ${linha}" class="af-spark-line"/>
+      ${intermediarios}
+      <circle cx="${ultimo.x}" cy="${ultimo.y}" r="5" class="af-spark-last"/>
+    </svg>`;
+}
+
+function buildAfEvolucaoHtml(docs) {
+  const paineis = AF_EVOLUCAO_SERIES.map(s => {
+    const serie = afSerieDeDocumentos(docs, s.key);
+    if (serie.length < 2) return '';
+    const primeiro = serie[0], ultimo = serie[serie.length - 1];
+    const anterior = serie[serie.length - 2];
+    // Delta do último salto: é a leitura que interessa ("cresceu quanto no ano").
+    const base = Math.abs(anterior.valor);
+    const delta = base > 0 ? ((ultimo.valor - anterior.valor) / base) * 100 : null;
+    const deltaCls = delta === null ? '' : (delta >= 0 ? 'af-delta--pos' : 'af-delta--neg');
+    const deltaTxt = delta === null ? '' : (delta >= 0 ? '+' : '') + delta.toFixed(1).replace('.', ',') + '%';
+
+    return `
+      <div class="af-evo-card">
+        <div class="af-evo-head">
+          <p class="af-evo-label">${esc(s.label)}</p>
+          ${deltaTxt ? `<span class="af-delta ${deltaCls}">${esc(deltaTxt)}</span>` : ''}
+        </div>
+        ${buildAfSparkline(serie)}
+        <div class="af-evo-foot">
+          <span class="af-evo-periodo mono">${esc(primeiro.periodo)}</span>
+          <span class="af-evo-valor mono">${esc(fmtBRLCompacto(ultimo.valor))}</span>
+        </div>
+      </div>`;
+  }).filter(Boolean).join('');
+
+  if (!paineis) return '';
+
+  return `
+    <section class="af-block">
+      <div class="af-block-head">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" width="17" height="17" aria-hidden="true"><path d="M3 14l4.5-5 3.5 3L17 5" stroke-linecap="round" stroke-linejoin="round"/><path d="M13 5h4v4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <h3 class="af-block-title">Evolução por período</h3>
+      </div>
+      <p class="af-block-sub">Cada painel tem escala própria — as grandezas têm ordens de valor diferentes e não são comparáveis num mesmo eixo.</p>
+      <div class="af-evo-grid">${paineis}</div>
+    </section>`;
+}
+
+// ── Sinais em duas colunas ──────────────────────────────────────────────────
+function buildAfSinaisHtml(sinaisPos, sinaisNeg) {
+  const dedup = arr => (arr || []).filter(p => p && String(p).trim()).filter((p, i, a) => a.indexOf(p) === i);
+  const positivos = dedup(sinaisPos);
+  const negativos = dedup(sinaisNeg);
+  if (!positivos.length && !negativos.length) return '';
+
+  const col = (itens, tipo, titulo, icone) => itens.length ? `
+    <div class="af-sinais-col af-sinais-col--${tipo}">
+      <div class="af-sinais-head">${icone}<h3 class="af-block-title">${esc(titulo)}</h3></div>
+      <ul class="af-sinais-list">
+        ${itens.map(p => `<li><span class="af-sinal-marca" aria-hidden="true">${tipo === 'pos' ? '+' : '!'}</span><span>${esc(p)}</span></li>`).join('')}
+      </ul>
+    </div>` : '';
+
+  const iconePos = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/><path d="M5.4 8.2l1.9 1.9L11 6.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const iconeNeg = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15" aria-hidden="true"><path d="M8 2.2L14.4 13.4H1.6L8 2.2z" stroke-linejoin="round"/><path d="M8 6.6v3.1M8 11.6h.01" stroke-linecap="round"/></svg>';
+
+  return `<section class="af-sinais">${col(positivos, 'pos', 'O que sustenta o balanço', iconePos)}${col(negativos, 'neg', 'O que pede atenção', iconeNeg)}</section>`;
+}
+
+// ── Alertas de risco ────────────────────────────────────────────────────────
+function buildAfAlertasHtml(alertas) {
+  const itens = (alertas || []).filter(a => a && String(a).trim());
+  if (!itens.length) return '';
+  return `
+    <section class="af-block af-block--alertas">
+      <div class="af-block-head">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" width="17" height="17" aria-hidden="true"><path d="M10 2.6L18.4 17H1.6L10 2.6z" stroke-linejoin="round"/><path d="M10 8v3.6M10 14h.01" stroke-linecap="round"/></svg>
+        <h3 class="af-block-title">Alertas de risco</h3>
+      </div>
+      <ul class="af-alertas-list">${itens.map(a => `<li>${esc(a)}</li>`).join('')}</ul>
+    </section>`;
+}
+
+// ── O que falta para fechar a leitura ───────────────────────────────────────
+// Junta limitações dos documentos e documentos a pedir: para o corretor as duas
+// listas respondem a mesma pergunta prática — o que buscar com o cliente.
+function buildAfPendenciasHtml(limitacoes, documentos) {
+  const lim = (limitacoes || []).filter(i => i && String(i).trim());
+  const docs = (documentos || []).filter(i => i && String(i).trim());
+  if (!lim.length && !docs.length) return '';
+
+  return `
+    <section class="af-block af-block--pendencias">
+      <div class="af-block-head">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" width="17" height="17" aria-hidden="true"><path d="M7 3h7l4 4v11a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" stroke-linejoin="round"/><path d="M14 3v4h4" stroke-linejoin="round"/></svg>
+        <h3 class="af-block-title">Para fechar a leitura</h3>
+      </div>
+      ${docs.length ? `
+        <p class="af-pend-sub">Peça ao cliente</p>
+        <div class="af-pend-grid">${docs.map(d => `<div class="af-pend-card">${esc(d)}</div>`).join('')}</div>` : ''}
+      ${lim.length ? `
+        <p class="af-pend-sub">O que os documentos não permitem afirmar</p>
+        <ul class="af-pend-list">${lim.map(l => `<li>${esc(l)}</li>`).join('')}</ul>` : ''}
+    </section>`;
+}
+
+// ── Análise qualitativa (colapsável) ───────────────────────────────────────
+function buildAfQualitativaHtml(aq) {
+  const campos = [
+    { key: 'liquidez', label: 'Liquidez' },
+    { key: 'endividamento', label: 'Endividamento' },
+    { key: 'rentabilidade', label: 'Rentabilidade' },
+    { key: 'patrimonio_liquido', label: 'Patrimônio Líquido' },
+    { key: 'resultado', label: 'Resultado / Evolução' },
+    { key: 'capital_de_giro', label: 'Capital de Giro' },
+    { key: 'capacidade_financeira', label: 'Capacidade Financeira' },
+    { key: 'consistencia_contabil', label: 'Consistência Contábil' },
+  ].filter(c => aq[c.key] && String(aq[c.key]).trim());
+
+  if (!campos.length) return '';
+  return `
+    <details class="af-details">
+      <summary class="af-details-summary">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" width="14" height="14" aria-hidden="true"><path d="M4 6l4 4 4-4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span class="af-details-title">Leitura detalhada por dimensão</span>
+        <span class="af-details-meta">${campos.length} dimensõe${campos.length === 1 ? '' : 's'}</span>
+      </summary>
+      <div class="af-details-body">
+        <div class="af-qual-grid">
+          ${campos.map(c => `
+            <div class="af-qual-item">
+              <span class="af-qual-label">${esc(c.label)}</span>
+              <span class="af-qual-texto">${esc(aq[c.key])}</span>
+            </div>`).join('')}
+        </div>
+      </div>
+    </details>`;
+}
+
+// ── Indicadores extraídos por documento (colapsável) ───────────────────────
+// Uma coluna por documento: a mesma linha de indicador atravessa os períodos,
+// que é como o corretor compara. Antes era um card por documento, lado a lado.
+function buildAfDetalheDocumentosHtml(docs) {
+  const validos = (docs || []).filter(d => d && d.indicadores);
+  if (!validos.length) return '';
+
+  const linhas = AF_KPIS_CONFIG
+    .map(cfg => ({ cfg, vals: validos.map(d => d.indicadores[cfg.key]) }))
+    .filter(r => r.vals.some(hasIndicadorValue));
+
+  if (!linhas.length) return '';
+
+  const cabecalho = validos.map(d => {
+    const tipo = d.tipo || '—';
+    const periodo = d.periodo || '—';
+    return `<th class="af-doc-th"><span class="af-doc-th-tipo">${esc(tipo)}</span><span class="af-doc-th-periodo">${esc(periodo)}</span></th>`;
+  }).join('');
+
+  const corpo = linhas.map(({ cfg, vals }) => {
+    const celulas = vals.map(v => {
+      if (!hasIndicadorValue(v)) return '<td class="af-doc-td af-doc-td--vazio">—</td>';
+      const display = fmtIndicador(v, cfg.format);
+      const neg = typeof v === 'number' && v < 0;
+      return `<td class="af-doc-td mono${neg ? ' af-doc-td--neg' : ''}">${esc(String(display))}</td>`;
+    }).join('');
+    return `<tr><th class="af-doc-rowlabel" scope="row">${esc(cfg.label)}</th>${celulas}</tr>`;
+  }).join('');
+
+  const obs = validos.filter(d => d.observacoes && String(d.observacoes).trim());
+
+  return `
+    <details class="af-details">
+      <summary class="af-details-summary">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" width="14" height="14" aria-hidden="true"><path d="M4 6l4 4 4-4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span class="af-details-title">Indicadores extraídos, documento por documento</span>
+        <span class="af-details-meta">${validos.length} documento${validos.length === 1 ? '' : 's'}</span>
+      </summary>
+      <div class="af-details-body">
+        <div class="af-doc-table-wrap">
+          <table class="af-doc-table">
+            <thead><tr><th class="af-doc-th af-doc-th--corner">Indicador</th>${cabecalho}</tr></thead>
+            <tbody>${corpo}</tbody>
+          </table>
+        </div>
+        ${obs.length ? `<ul class="af-doc-obs-list">${obs.map(d => `<li><strong>${esc(d.tipo || '—')} ${esc(d.periodo || '')}</strong> — ${esc(d.observacoes)}</li>`).join('')}</ul>` : ''}
+        <p class="af-doc-nota">Célula com “—” significa que o indicador não existe naquele tipo de demonstrativo.</p>
+      </div>
+    </details>`;
+}
+
+// ── Card da empresa ─────────────────────────────────────────────────────────
 function buildEmpresaCard(emp, idx) {
-  const ac = emp.analise_credito || {};
-  const cf = emp.classificacao_financeira || {};
-  const vsg = emp.visao_para_seguro_garantia || {};
-  const conc = emp.conclusao_final || {};
-  const risco = ac.classificacao_risco || cf.nivel_risco || '—';
   const docs = emp.documentos || [];
-
-  const docsHtml = docs.length > 0
-    ? `<div class="af-docs-grid">${docs.map(buildDocumentoCard).join('')}</div>`
-    : '<p class="af-no-data">Nenhum documento identificado.</p>';
-
-  const capGarantia = ac.capacidade_seguro_garantia || '—';
-  const capFianca   = ac.capacidade_fianca_locaticia || '—';
-
-  const classifHtml = buildAfClassificacaoHtml(cf);
-  const principaisHtml = buildAfPrincipaisNumerosHtml(emp.principais_numeros || {});
-  const indicadoresHtml = buildAfIndicadoresCalcHtml(emp.indicadores_calculados || {});
-  const qualitativaHtml = buildAfQualitativaHtml(emp.analise_qualitativa || {});
-  const sinaisHtml = buildAfSinaisHtml(emp.sinais_positivos || [], emp.sinais_negativos || [], ac.pontos_positivos || [], ac.pontos_atencao || []);
-  const alertasHtml = buildAfListaCard(emp.alertas_de_risco || [], 'af-alertas-list', 'af-alerta-item--risk', 'Alertas de Risco');
-  const inconsistHtml = buildAfListaCard(emp.inconsistencias_ou_limitacoes || [], 'af-incons-list', 'af-incons-item', 'Inconsistências / Limitações');
-  const docsAdicionaisHtml = buildAfListaCard(emp.documentos_adicionais_recomendados || [], 'af-docs-adicionais-list', 'af-docs-adicionais-item', 'Documentos Adicionais Recomendados');
-  const visaoSgHtml = buildAfVisaoSgHtml(vsg);
-  const conclusaoHtml = buildAfConclusaoHtml(conc);
-
   const headerMeta = [
-    emp.periodo_analisado ? `Período: ${emp.periodo_analisado}` : '',
-    emp.moeda ? `Moeda: ${emp.moeda}` : '',
-    emp.observacao_escala && !emp.observacao_escala.toLowerCase().includes('reais') ? emp.observacao_escala : '',
+    emp.periodo_analisado ? `Exercícios ${emp.periodo_analisado}` : '',
+    emp.moeda || '',
+    emp.observacao_escala && !String(emp.observacao_escala).toLowerCase().includes('reais') ? emp.observacao_escala : '',
   ].filter(Boolean).join(' · ');
 
   return `
-    <section class="af-empresa-section dashboard-section" aria-label="${esc(emp.empresa || 'Empresa')}">
-      <div class="af-empresa-header">
-        <div class="af-empresa-identity">
-          <h2 class="af-empresa-nome">${esc(emp.empresa || 'Empresa não identificada')}</h2>
-          ${emp.cnpj ? `<span class="af-empresa-cnpj">CNPJ ${esc(emp.cnpj)}</span>` : ''}
-          ${headerMeta ? `<span class="af-empresa-meta">${esc(headerMeta)}</span>` : ''}
-        </div>
-        <span class="af-risco-badge ${riscoClass(risco)}">Risco ${esc(risco)}</span>
-      </div>
+    <section class="af-empresa dashboard-section" aria-label="${esc(emp.empresa || 'Empresa')}">
+      <header class="af-empresa-head">
+        <h2 class="af-empresa-nome">${esc(emp.empresa || 'Empresa não identificada')}</h2>
+        <p class="af-empresa-meta">
+          ${emp.cnpj ? `<span class="mono">${esc(emp.cnpj)}</span>` : ''}
+          ${emp.cnpj && headerMeta ? ' · ' : ''}${headerMeta ? esc(headerMeta) : ''}
+        </p>
+      </header>
 
-      ${classifHtml}
-
-      <div class="af-credito-card card">
-        <div class="af-capacidades-row">
-          <div class="af-cap-item ${capacidadeClass(capGarantia)}">
-            <div class="af-cap-header">
-              <span class="af-cap-label">Seguro Garantia</span>
-              <span class="af-cap-chip ${capacidadeClass(capGarantia)}">${esc(capGarantia)}</span>
-            </div>
-            ${ac.justificativa_garantia ? `<span class="af-cap-just">${esc(ac.justificativa_garantia)}</span>` : ''}
-          </div>
-          <div class="af-cap-item ${capacidadeClass(capFianca)}">
-            <div class="af-cap-header">
-              <span class="af-cap-label">Fiança Locatícia</span>
-              <span class="af-cap-chip ${capacidadeClass(capFianca)}">${esc(capFianca)}</span>
-            </div>
-            ${ac.justificativa_fianca ? `<span class="af-cap-just">${esc(ac.justificativa_fianca)}</span>` : ''}
-          </div>
-        </div>
-
-        ${ac.resumo_executivo ? `
-        <div class="af-resumo-block">
-          <p class="af-card-label">Resumo Executivo</p>
-          <p class="af-resumo-text">${esc(ac.resumo_executivo)}</p>
-        </div>` : ''}
-
-        ${ac.recomendacao_seguradora ? `
-        <div class="af-recomendacao-block">
-          <p class="af-card-label">Recomendação para Emissão</p>
-          <p class="af-recomendacao-text">${esc(ac.recomendacao_seguradora)}</p>
-        </div>` : ''}
-      </div>
-
-      ${principaisHtml}
-
-      ${indicadoresHtml}
-
-      <h3 class="af-subsection-title">Documentos Analisados por Período</h3>
-      ${docsHtml}
-
-      ${qualitativaHtml}
-
-      ${sinaisHtml}
-
-      ${alertasHtml}
-
-      ${inconsistHtml}
-
-      ${visaoSgHtml}
-
-      ${docsAdicionaisHtml}
-
-      ${conclusaoHtml}
+      ${buildAfDiagnosticoHtml(emp)}
+      ${buildAfMedidoresHtml(emp.indicadores_calculados || {})}
+      ${buildAfEvolucaoHtml(docs)}
+      ${buildAfSinaisHtml(emp.sinais_positivos, emp.sinais_negativos)}
+      ${buildAfAlertasHtml(emp.alertas_de_risco)}
+      ${buildAfPendenciasHtml(emp.inconsistencias_ou_limitacoes, emp.documentos_adicionais_recomendados)}
+      ${buildAfQualitativaHtml(emp.analise_qualitativa || {})}
+      ${buildAfDetalheDocumentosHtml(docs)}
     </section>`;
 }
 
@@ -5242,200 +5616,25 @@ function normalizeLimiteAvla(d) {
   return { statusKey: 'aprovado', modalidades, nomeTomador, cnpjTomador };
 }
 
+// Tres situacoes possiveis: Boa, Moderada, Ruim. Sem valor reconhecido, devolve
+// string vazia e o chamador nao renderiza o chip — melhor nao dizer nada do que
+// exibir um enquadramento que os documentos nao sustentam.
+// Os rotulos da escala antiga de cinco degraus continuam sendo lidos (analises em
+// cache no Redis por ate 6h): REGULAR vira moderada, FRACA/CRITICA viram ruim.
 function classificacaoFinanceiraClass(sit) {
-  const s = (sit || '').toLowerCase();
-  if (s === 'boa' || s.startsWith('boa'))          return 'af-classif--boa';
-  if (s.includes('regular'))                        return 'af-classif--regular';
-  if (s.includes('fraca'))                          return 'af-classif--fraca';
-  if (s.includes('cr') || s.includes('criti'))     return 'af-classif--critica';
-  return 'af-classif--inconclusiva';
+  const s = String(sit || '').toLowerCase();
+  if (!s) return '';
+  if (s.startsWith('boa'))                                    return 'af-classif--boa';
+  if (s.includes('moderad') || s.includes('regular'))         return 'af-classif--moderada';
+  if (s.includes('ruim') || s.includes('fraca') || s.includes('criti') || s.includes('crít')) return 'af-classif--ruim';
+  return '';
 }
 
-function buildAfClassificacaoHtml(cf) {
-  if (!cf || !cf.situacao) return '';
-  const cls = classificacaoFinanceiraClass(cf.situacao);
-  const riskLabel = cf.nivel_risco ? ` · Risco ${cf.nivel_risco}` : '';
-  return `
-    <div class="af-classif-banner ${cls}">
-      <span class="af-classif-situacao">${esc(cf.situacao)}${esc(riskLabel)}</span>
-      ${cf.justificativa ? `<span class="af-classif-just">${esc(cf.justificativa)}</span>` : ''}
-    </div>`;
+// Rotulo exibido no chip, normalizado para a escala de tres.
+function classificacaoFinanceiraLabel(sit) {
+  const cls = classificacaoFinanceiraClass(sit);
+  if (cls === 'af-classif--boa')      return 'Boa';
+  if (cls === 'af-classif--moderada') return 'Moderada';
+  if (cls === 'af-classif--ruim')     return 'Ruim';
+  return '';
 }
-
-function buildAfPrincipaisNumerosHtml(pn) {
-  const campos = [
-    { label: 'Ativo Total',             key: 'ativo_total' },
-    { label: 'Ativo Circulante',        key: 'ativo_circulante' },
-    { label: 'Passivo Total',           key: 'passivo_total' },
-    { label: 'Passivo Circulante',      key: 'passivo_circulante' },
-    { label: 'Patrimônio Líquido',      key: 'patrimonio_liquido' },
-    { label: 'Receita Bruta',           key: 'receita_bruta' },
-    { label: 'Receita Líquida',         key: 'receita_liquida' },
-    { label: 'Lucro Líquido',           key: 'lucro_liquido' },
-    { label: 'Caixa / Equivalentes',    key: 'caixa_e_equivalentes' },
-    { label: 'Clientes a Receber',      key: 'clientes_a_receber' },
-    { label: 'Estoques',                key: 'estoques' },
-    { label: 'Fornecedores',            key: 'fornecedores' },
-    { label: 'Empréstimos / Financ.',   key: 'emprestimos_e_financiamentos' },
-    { label: 'Obrigações Fiscais',      key: 'obrigacoes_fiscais' },
-    { label: 'Obrigações Trabalhistas', key: 'obrigacoes_trabalhistas' },
-  ].filter(c => hasIndicadorValue(pn[c.key]));
-
-  if (!campos.length) return '';
-  return `
-    <div class="af-principais-card">
-      <p class="af-subsection-title af-subsection-title--sm">Principais Números (período mais recente)</p>
-      <div class="af-principais-grid">
-        ${campos.map(c => {
-          const val = pn[c.key];
-          const isNeg = typeof val === 'number' && val < 0;
-          const display = typeof val === 'number' ? fmtBRL(val) : String(val);
-          return `<div class="af-principal-item${isNeg ? ' af-principal-item--neg' : ''}">
-            <span class="af-principal-label">${esc(c.label)}</span>
-            <span class="af-principal-valor">${esc(display)}</span>
-          </div>`;
-        }).join('')}
-      </div>
-    </div>`;
-}
-
-function buildAfIndicadoresCalcHtml(ic) {
-  const config = [
-    { key: 'liquidez_corrente',        label: 'Liquidez Corrente',       format: 'dec' },
-    { key: 'liquidez_seca',            label: 'Liquidez Seca',           format: 'dec' },
-    { key: 'capital_de_giro_liquido',  label: 'Capital de Giro Líq.',    format: 'brl' },
-    { key: 'endividamento_geral',      label: 'Endividamento Geral',     format: 'pct' },
-    { key: 'divida_sobre_pl',          label: 'Dívida / PL',             format: 'dec' },
-    { key: 'composicao_endividamento', label: 'Composição Endiv. CP',    format: 'pct' },
-    { key: 'margem_bruta',             label: 'Margem Bruta',            format: 'pct' },
-    { key: 'margem_operacional',       label: 'Margem Operacional',      format: 'pct' },
-    { key: 'margem_liquida',           label: 'Margem Líquida',          format: 'pct' },
-    { key: 'roe',                      label: 'ROE',                     format: 'pct' },
-    { key: 'roa',                      label: 'ROA',                     format: 'pct' },
-  ].filter(c => ic[c.key] && hasIndicadorValue(ic[c.key].valor));
-
-  if (!config.length) return '';
-
-  return `
-    <div class="af-indicadores-calc-card">
-      <p class="af-subsection-title af-subsection-title--sm">Indicadores Calculados</p>
-      <div class="af-ind-calc-grid">
-        ${config.map(c => {
-          const item = ic[c.key];
-          const val = item.valor;
-          const isNeg = typeof val === 'number' && val < 0;
-          let display;
-          if (typeof val === 'number') {
-            if (c.format === 'pct')      display = (val * (Math.abs(val) <= 1.5 ? 100 : 1)).toFixed(1).replace('.', ',') + '%';
-            else if (c.format === 'brl') display = fmtBRL(val);
-            else                         display = val.toFixed(2).replace('.', ',');
-          } else display = String(val);
-          return `
-            <div class="af-ind-calc-item${isNeg ? ' af-ind-calc-item--neg' : ''}">
-              <span class="af-ind-calc-label">${esc(c.label)}</span>
-              <span class="af-ind-calc-valor">${esc(display)}</span>
-              ${item.interpretacao ? `<span class="af-ind-calc-interp">${esc(item.interpretacao)}</span>` : ''}
-            </div>`;
-        }).join('')}
-      </div>
-    </div>`;
-}
-
-function buildAfQualitativaHtml(aq) {
-  const campos = [
-    { key: 'liquidez',              label: 'Liquidez' },
-    { key: 'endividamento',         label: 'Endividamento' },
-    { key: 'rentabilidade',         label: 'Rentabilidade' },
-    { key: 'patrimonio_liquido',    label: 'Patrimônio Líquido' },
-    { key: 'resultado',             label: 'Resultado / Evolução' },
-    { key: 'capital_de_giro',       label: 'Capital de Giro' },
-    { key: 'capacidade_financeira', label: 'Capacidade Financeira' },
-    { key: 'consistencia_contabil', label: 'Consistência Contábil' },
-  ].filter(c => aq[c.key] && String(aq[c.key]).trim());
-
-  if (!campos.length) return '';
-  return `
-    <div class="af-qualitativa-card">
-      <p class="af-subsection-title af-subsection-title--sm">Análise Qualitativa</p>
-      <div class="af-qualitativa-grid">
-        ${campos.map(c => `
-          <div class="af-qual-item">
-            <span class="af-qual-label">${esc(c.label)}</span>
-            <span class="af-qual-texto">${esc(aq[c.key])}</span>
-          </div>`).join('')}
-      </div>
-    </div>`;
-}
-
-function buildAfSinaisHtml(sinaisPos, sinaisNeg, pontosPos, pontosAtencao) {
-  const positivos = [...sinaisPos, ...pontosPos].filter((p, i, a) => p && a.indexOf(p) === i);
-  const negativos = [...sinaisNeg, ...pontosAtencao].filter((p, i, a) => p && a.indexOf(p) === i);
-  if (!positivos.length && !negativos.length) return '';
-
-  const posHtml = positivos.length
-    ? `<div class="af-pontos-card af-pontos-card--pos">
-        <p class="af-card-label">Sinais Positivos</p>
-        <ul class="af-pontos-list">${positivos.map(p => `<li>${esc(p)}</li>`).join('')}</ul>
-      </div>`
-    : '';
-  const negHtml = negativos.length
-    ? `<div class="af-pontos-card af-pontos-card--atencao">
-        <p class="af-card-label">Sinais Negativos / Pontos de Atenção</p>
-        <ul class="af-pontos-list">${negativos.map(p => `<li>${esc(p)}</li>`).join('')}</ul>
-      </div>`
-    : '';
-
-  return `<div class="af-pontos-grid">${posHtml}${negHtml}</div>`;
-}
-
-function buildAfListaCard(itens, listClass, itemClass, titulo) {
-  const validos = (itens || []).filter(i => i && String(i).trim());
-  if (!validos.length) return '';
-  return `
-    <div class="af-lista-generica-card">
-      <p class="af-subsection-title af-subsection-title--sm">${esc(titulo)}</p>
-      <ul class="${listClass}">
-        ${validos.map(i => `<li class="${itemClass}">${esc(i)}</li>`).join('')}
-      </ul>
-    </div>`;
-}
-
-function buildAfVisaoSgHtml(vsg) {
-  if (!vsg || (!vsg.capacidade_para_assumir_contratos && !vsg.recomendacao_operacional)) return '';
-  const c = (vsg.capacidade_para_assumir_contratos || '').toLowerCase();
-  const capCls = c.includes('boa') || c.includes('alta') ? 'af-vsg--boa'
-    : c.includes('moderada') ? 'af-vsg--moderada'
-    : c.includes('limitada') || c.includes('baixa') ? 'af-vsg--limitada'
-    : 'af-vsg--risco';
-
-  return `
-    <div class="af-visao-sg-card ${capCls}">
-      <p class="af-card-label">Visão para Seguro Garantia</p>
-      ${vsg.capacidade_para_assumir_contratos ? `<p class="af-vsg-capacidade">${esc(vsg.capacidade_para_assumir_contratos)}</p>` : ''}
-      ${(vsg.pontos_de_atencao_para_subscricao || []).filter(Boolean).length > 0 ? `
-        <ul class="af-vsg-pontos">
-          ${vsg.pontos_de_atencao_para_subscricao.filter(Boolean).map(p => `<li>${esc(p)}</li>`).join('')}
-        </ul>` : ''}
-      ${vsg.recomendacao_operacional ? `<p class="af-vsg-recomendacao">${esc(vsg.recomendacao_operacional)}</p>` : ''}
-    </div>`;
-}
-
-function buildAfConclusaoHtml(conc) {
-  if (!conc || !conc.resumo_da_conclusao) return '';
-  const nivel = String(conc.nivel_confianca_da_analise || '').toUpperCase();
-  const nivelCls = nivel === 'ALTO' ? 'af-conc--alto' : nivel === 'MEDIO' ? 'af-conc--medio' : 'af-conc--baixo';
-  return `
-    <div class="af-conclusao-final-card">
-      <p class="af-card-label">Conclusão Operacional</p>
-      <div class="af-conc-body">
-        ${conc.empresa_tem_bons_numeros !== null && conc.empresa_tem_bons_numeros !== undefined ? `
-          <div class="af-conc-flags">
-            <span class="af-conc-flag ${conc.empresa_tem_bons_numeros ? 'af-conc-flag--sim' : 'af-conc-flag--nao'}">${conc.empresa_tem_bons_numeros ? '✓ Bons números' : '✕ Bons números'}</span>
-            ${conc.empresa_tem_numeros_ruins !== null && conc.empresa_tem_numeros_ruins !== undefined ? `<span class="af-conc-flag ${conc.empresa_tem_numeros_ruins ? 'af-conc-flag--nao' : 'af-conc-flag--sim'}">${conc.empresa_tem_numeros_ruins ? '✕ Números ruins' : '✓ Sem números ruins críticos'}</span>` : ''}
-          </div>` : ''}
-        <p class="af-conc-texto">${esc(conc.resumo_da_conclusao)}</p>
-        ${nivel ? `<span class="af-conc-nivel ${nivelCls}">Confiança: ${esc(nivel)}</span>` : ''}
-      </div>
-    </div>`;
-}
-
