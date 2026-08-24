@@ -1710,6 +1710,68 @@ gratuito ao processar as taxas da Junto em lotes persistidos no Redis.
 
 ## 12. Observações de Deploy
 
+### 12.0 Dois projetos Cloudflare, um repositório
+
+**Este repositório alimenta DOIS Workers diferentes**, e confundi-los derruba produção
+(aconteceu em 24/08/2026 — ver 12.0a):
+
+| Projeto Cloudflare | O que publica | Config |
+|---|---|---|
+| **`tc-lavoro`** | o **front-end** (SPA estática) em `tc-lavoro.kyuri887.workers.dev` | modo *static assets*, servindo a raiz do repo — **não** tem script de Worker |
+| **`lucky-hat-b241`** | o **Worker de API** em `lucky-hat-b241.kyuri887.workers.dev` | `workers/wrangler.toml` (`name = "lucky-hat-b241"`, `main = "deepseek-memory-worker.js"`) |
+
+O nome no `workers/wrangler.toml` é `lucky-hat-b241`, **não** `tc-lavoro`. Nomes diferentes
+entre o config e o projeto que se está configurando é o sinal de que são coisas distintas.
+
+**Build do `tc-lavoro`** — Root directory `/`, e os parâmetros de static assets vão na linha
+de comando (não há `wrangler.toml` na raiz, de propósito — ver 12.0b):
+
+```
+Deploy command:  npx wrangler deploy --name tc-lavoro --assets=. --compatibility-date=2026-06-23
+Version command: npx wrangler versions upload --name tc-lavoro --assets=. --compatibility-date=2026-06-23
+```
+
+`Deploy command` roda em push na branch de produção (master) e publica. `Version command` roda
+em push nas outras branches e só sobe uma versão de preview, com 0% do tráfego — uma versão
+subida por ele **não vai ao ar** até ser promovida à mão.
+
+#### 12.0a Incidente de 24/08/2026 — API publicada em cima do portal
+
+O build do `tc-lavoro` falhava com `Missing entry-point to Worker script or to assets
+directory`. A correção aplicada foi apontar o Deploy command para `--config
+workers/wrangler.toml` — o config da **API**. Resultado: o `tc-lavoro` publicou o script
+`deepseek-memory-worker.js` no lugar dos arquivos estáticos, e o portal passou a responder
+`{"error":"Not found"}` (o 404 do `fetch` handler do Worker) em qualquer URL.
+
+Recuperação: rollback do `tc-lavoro` para a versão anterior no painel (Deployments → Version
+History → Rollback), seguido da correção do Deploy command para a forma da tabela acima.
+
+Duas coisas que teriam evitado o erro:
+
+- **O nome não batia.** `workers/wrangler.toml` diz `name = "lucky-hat-b241"`, mas o projeto
+  sendo configurado era `tc-lavoro`. Isso bastava para saber que o config era de outro Worker.
+- **O build falhava, mas o portal continuava no ar.** Um build de CI que falha sem afetar
+  produção é sinal de que aquele build não é o que sustenta o serviço — investigar o que o
+  projeto realmente publica antes de "corrigir" o comando.
+
+#### 12.0b Por que não há `wrangler.toml` na raiz
+
+Existiu um, com `name = "tc-lavoro"` e `assets = { directory = "." }`, removido no commit
+`44a617c`. Manter os parâmetros na linha de comando do projeto é deliberado: um
+`wrangler.toml` na raiz é encontrado por **qualquer** projeto que builde a partir de `/`, então
+o projeto da API poderia acabar publicando o site estático em cima do Worker — o mesmo estrago
+de 12.0a, invertido. Com os parâmetros no comando, o efeito fica contido em cada projeto.
+
+### 12.1 Publicação do Worker de API
+
+- `WORKER_VERSION` (topo de `workers/deepseek-memory-worker.js`) é o marcador de deploy: bump a
+  cada mudança que precise ser verificável em produção. `GET /health` devolve esse valor, e é
+  como se confirma que o código novo está no ar sem depender de rodar uma análise.
+- Um push de merge fast-forward para master **não gera build** se o commit já foi buildado numa
+  branch: o SHA é o mesmo e o Cloudflare não vê nada novo. Para forçar um build de master é
+  preciso um commit novo.
+
+
 - O front-end já está preparado para o Worker novo.
 - Para ativar memória Redis de fato em produção, é necessário publicar `workers/deepseek-memory-worker.js` no mesmo domínio do Worker atual ou atualizar `DEEPSEEK_WORKER_URL`.
 - Se o Worker novo ainda não estiver publicado, o front-end usa fallback automático para o endpoint legado `/`.
