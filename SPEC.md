@@ -1,7 +1,7 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.73
-> Atualizado em: 2026-08-24
+> Versao: 2.74
+> Atualizado em: 2026-08-26
 
 ## 1. Visão Geral
 
@@ -527,6 +527,9 @@ Modalidades, Limites por Modalidade, Taxas por Modalidade, Status. As classes CS
 correspondente). O XLSX ganhou cores para os 2 status novos (`erro_portal` no mesmo tom
 neutro do antigo `bloqueado`; `enviar_balancos` em tom ciano/accent, distinto dos demais).
 
+**Taxas por Modalidade é condicional desde a 2.74** — sai das duas saídas quando a flag
+"Sem taxa" está ativa (ver 4.9). As demais colunas e a ordem não mudam.
+
 ### 4.8 Salvar tomador e reabrir histórico (D1)
 
 Front-end conectado aos endpoints da seção 13 — **nenhuma mudança de schema ou endpoint**.
@@ -538,6 +541,44 @@ Front-end conectado aos endpoints da seção 13 — **nenhuma mudança de schema
 - **Funções em `deepseek.js`**: inalteradas — `salvarTcAnalise(payload)`, `listarTcAnalises({ cnpj } | { nome })`, `buscarTcAnalise(id)`, `apagarTcAnalise(id)`.
 - Nenhuma mudança no schema do banco (13.1) — só o conteúdo de `rows[]` ganhou os campos `seguradoraKey`/`origem` e perdeu `statusCcg`/`venc` (4.6), sempre dentro do mesmo `rows_json` de texto.
 - `.tc-save-bar-wrap` (botão "Salvar tomador" + status) continua oculto durante a exportação (`body.pdf-generating`) e na impressão nativa (`@media print`).
+
+### 4.9 Flag "Com taxa / Sem taxa" — saídas sem a coluna de taxas (2.74)
+
+Segmentado de duas opções na página de mercado (`#page-mkt`), logo acima da linha de botões
+de saída: **Com taxa** (`#tcTaxaComBtn`, padrão) e **Sem taxa** (`#tcTaxaSemBtn`), ambos
+chamando `setTcExibirTaxas(bool)`. O markup reaproveita `.mkt-filter-row`/`.mkt-filter-btn` do
+filtro "portais/todas" — mesmo gesto (duas opções exclusivas), mesma linguagem visual —
+dentro de um wrapper `.tc-taxa-flag-row` (rótulo + segmentado + nota explicativa).
+
+**É filtro de renderização, não de dado.** O estado vive em `_tcExibirTaxas` (booleano global
+em `app.js`, ao lado de `_mktFiltro`) e é lido no momento de gerar cada saída:
+
+| Saída | Função | O que muda com "Sem taxa" |
+|---|---|---|
+| Gerar tabela (PNG) | `buildTcEmailTableHtml()` | sem `<th>Taxas por Modalidade</th>` e sem as `<td class="tc-email-rate">`; o `colspan` do divisor de grupo cai de 6 para 5 |
+| Exportar XLSX | `exportTcEmailTableXlsx()` | coluna 4 deixa de existir e Status sobe de 5 para 4; `!ref`, `!cols`, merges do cabeçalho e bordas derivam de `LAST_COL`, nenhum índice fica hardcoded |
+| Gerar Dashboard | `generateDashboard()` | `#thColTaxa` recebe `hidden` e nenhuma `<td class="cell-taxa">` é emitida; o `colspan` do `.group-divider` cai de 5 para 4 |
+| Dashboard — Comparativo por Modalidade | `renderModalComparison()` | o card "Menor Taxa" (`#chartModalTaxaCard`) e o winner card `.wc-taxa` ficam ocultos |
+
+**Por que o comparativo também entra.** O gráfico "Menor Taxa" e o winner card são a outra
+superfície do dashboard que expõe taxa, e caem no mesmo PDF de `downloadComparativo()`.
+Esconder só a coluna da tabela executiva e deixar o gráfico de taxas ao lado anularia a flag —
+a intenção declarada é entregar o relatório sem taxa, não reorganizar a tabela.
+
+Sobrando um painel só, `.modal-charts-grid--solo` / `.winner-cards-grid--solo` levam a grade a
+uma coluna. Os dois seletores são qualificados por `.comparison-section` de propósito: o bloco
+`@media print` reaplica `grid-template-columns: 1fr 1fr` nessas mesmas grades, e sem o nível
+extra de especificidade o PDF voltaria a duas colunas com metade vazia.
+
+**O que a flag NÃO faz:**
+
+- não altera `rows[]` — `rows[].taxa` e `rows[].modalidades[].taxa` continuam preenchidos
+  (seção 4.6), então alternar a flag e reexportar não exige redigitar nada;
+- não altera o snapshot salvo em D1 (seção 13) — a flag não vai no `rows_json`, é preferência
+  de sessão, não dado do tomador;
+- não altera os cards da grade: a taxa continua sendo digitada no formulário do card e exibida
+  na apresentação somente-leitura (4.4d). Só as três saídas mudam;
+- não é por aba de tomador — como `_mktFiltro`, é uma preferência global de exibição.
 
 ## 5. Fluxos IA
 

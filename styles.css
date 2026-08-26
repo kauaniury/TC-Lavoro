@@ -1245,6 +1245,14 @@
   margin-bottom: var(--space-4);
 }
 
+/* Flag "Sem taxa" (SPEC 4.9): o comparativo fica só com o painel de limite.
+   Seletor com dois níveis de propósito — precisa vencer o `grid-template-columns:
+   1fr 1fr` que o bloco @media print reaplica nessas mesmas grades. */
+.comparison-section .winner-cards-grid--solo,
+.comparison-section .modal-charts-grid--solo {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .winner-card {
   position: relative;
   overflow: hidden;
@@ -6170,6 +6178,34 @@ body.mkt-focus-active { overflow: hidden; }
   border-color: var(--color-accent);
   color: var(--color-primary);
   background: var(--color-accent-light);
+}
+
+/* Flag "Com taxa / Sem taxa" — preferência de saída dos relatórios T&C.
+   Reaproveita o segmentado .mkt-filter-row/.mkt-filter-btn do filtro de grade:
+   mesmo gesto (duas opções exclusivas), mesma linguagem visual. */
+.tc-taxa-flag-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.tc-taxa-flag-label {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+
+.tc-taxa-flag-row .tc-taxa-flag-toggle {
+  margin-bottom: 0;
+}
+
+.tc-taxa-flag-hint {
+  flex: 1 1 260px;
+  min-width: 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
 }
 
 .tc-btn-row {

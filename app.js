@@ -112,6 +112,10 @@ let _mktTabCounter = 0;
 // 'portais' | 'todas' — filtro de exibição da grade (não é por aba de tomador,
 // é uma preferência global de qual subconjunto de cards mostrar).
 let _mktFiltro = 'portais';
+// Flag "Com taxa / Sem taxa" — preferência global de saída, não dado do tomador:
+// as taxas continuam sendo digitadas nos cards e gravadas em rows[].taxa; a flag
+// só decide se a coluna aparece na tabela PNG, no XLSX e no dashboard (SPEC 4.9).
+let _tcExibirTaxas = true;
 
 // â"€â"€ Sidebar mobile (drawer off-canvas — hover/focus-within não existe em touch)
 function openMobileSidebar() {
@@ -238,6 +242,14 @@ function generateDashboard() {
   document.getElementById('kMax').textContent = maxLimite >= 1e6 ? 'R$ ' + (maxLimite/1e6).toFixed(0) + 'MM' : fmtBRL(maxLimite);
   document.getElementById('kMaxSub').textContent = maxSeg || '—';
 
+  // Flag "Sem taxa" (SPEC 4.9): a coluna some do <thead> e nenhuma <td> de taxa
+  // é emitida — o colspan do separador de grupo acompanha, senão a faixa de
+  // status fica curta e a tabela desalinha.
+  const exibirTaxas = _tcExibirTaxas;
+  const thTaxa = document.getElementById('thColTaxa');
+  if (thTaxa) thTaxa.hidden = !exibirTaxas;
+  const colCount = exibirTaxas ? 5 : 4;
+
   const tbody = document.getElementById('tableBody');
   tbody.innerHTML = '';
   const tableEmpty = document.getElementById('tableEmpty');
@@ -253,7 +265,7 @@ function generateDashboard() {
       const sep = document.createElement('tr');
       sep.className = 'group-divider';
       sep.setAttribute('aria-hidden', 'true');
-      sep.innerHTML = `<td colspan="5"><span class="group-divider-label">${statusLabel(r.status)}</span></td>`;
+      sep.innerHTML = `<td colspan="${colCount}"><span class="group-divider-label">${statusLabel(r.status)}</span></td>`;
       tbody.appendChild(sep);
     }
     lastStatus = r.status;
@@ -276,7 +288,10 @@ function generateDashboard() {
         const taxaStr = (m.taxa !== null && m.taxa !== undefined && m.taxa !== '' && m.taxa !== 0 && m.taxa !== '0' && m.taxa !== '0%')
           ? formatTaxaDisplay(m.taxa)
           : '—';
-        tr.innerHTML = `${segCell}<td class="cell-modalidade">${esc(m.label)}</td><td class="cell-limite ${limiteStr === '—' ? 'cell-empty' : ''}">${limiteStr}</td><td class="cell-taxa ${taxaStr === '—' ? 'cell-taxa--empty' : ''}">${taxaStr}</td>`;
+        const taxaCell = exibirTaxas
+          ? `<td class="cell-taxa ${taxaStr === '—' ? 'cell-taxa--empty' : ''}">${taxaStr}</td>`
+          : '';
+        tr.innerHTML = `${segCell}<td class="cell-modalidade">${esc(m.label)}</td><td class="cell-limite ${limiteStr === '—' ? 'cell-empty' : ''}">${limiteStr}</td>${taxaCell}`;
         tbody.appendChild(tr);
       });
 
@@ -284,7 +299,8 @@ function generateDashboard() {
       // Concorrente / Declinado â€" single row, no modalidade data
       const tr = document.createElement('tr');
       tr.classList.add('row-last-in-group');
-      tr.innerHTML = `<td class="cell-seguradora">${esc(r.seguradora)}</td><td class="cell-status">${badge}</td><td class="cell-modalidade cell-empty">—</td><td class="cell-limite cell-empty">—</td><td class="cell-taxa cell-taxa--empty">—</td>`;
+      const taxaCell = exibirTaxas ? '<td class="cell-taxa cell-taxa--empty">—</td>' : '';
+      tr.innerHTML = `<td class="cell-seguradora">${esc(r.seguradora)}</td><td class="cell-status">${badge}</td><td class="cell-modalidade cell-empty">—</td><td class="cell-limite cell-empty">—</td>${taxaCell}`;
       tbody.appendChild(tr);
     }
   });
@@ -598,6 +614,11 @@ function renderModalComparison(label) {
   document.getElementById('modalSearchEmpty').style.display = 'none';
   document.body.classList.add('has-comparison');
 
+  // Flag "Sem taxa" (SPEC 4.9): o comparativo é a outra superfície do dashboard
+  // que expõe taxa (card "Menor Taxa" + gráfico). Esconder só a coluna da tabela
+  // executiva e deixar o gráfico de taxas no mesmo PDF anularia a flag.
+  const exibirTaxas = _tcExibirTaxas;
+
   const displayLabel = label.charAt(0) + label.slice(1).toLowerCase();
   document.getElementById('searchResultLabel').innerHTML = `Comparativo para modalidade: <span>${displayLabel}</span>`;
   document.getElementById('chartModalLimiteTitle').textContent = `Maior Limite — ${displayLabel}`;
@@ -610,15 +631,22 @@ function renderModalComparison(label) {
 
   // Dynamic heights based on item count (min 130px, 32px per bar)
   const limiteChartWrap = document.getElementById('chartModalLimite').parentElement;
+  const taxaChartCard   = document.getElementById('chartModalTaxa').closest('.chart-card');
   const taxaChartWrap   = document.getElementById('chartModalTaxa').parentElement;
   limiteChartWrap.style.height = Math.max(130, byLimite.length * 32) + 'px';
   taxaChartWrap.style.height   = Math.max(130, withTaxa.length * 32) + 'px';
+  if (taxaChartCard) taxaChartCard.hidden = !exibirTaxas;
+
+  // Sobrando um painel só, a grade de 2 colunas deixaria metade da largura vazia.
+  const chartsGrid = limiteChartWrap.closest('.modal-charts-grid');
+  if (chartsGrid) chartsGrid.classList.toggle('modal-charts-grid--solo', !exibirTaxas);
 
   // Winner cards
   const wCards = document.getElementById('winnerCards');
   const winLimite = byLimite[0];
   const winTaxa = withTaxa[0] || null;
 
+  wCards.classList.toggle('winner-cards-grid--solo', !exibirTaxas);
   wCards.innerHTML = `
     <div class="winner-card wc-limite">
       <div class="winner-card-eyebrow">Maior Limite Disponível</div>
@@ -626,13 +654,14 @@ function renderModalComparison(label) {
       <div class="winner-card-value">${fmtBRL(winLimite.value)}</div>
       <div><span class="winner-card-badge wc-b-limite">${displayLabel}</span></div>
     </div>
+  ` + (exibirTaxas ? `
     <div class="winner-card wc-taxa">
       <div class="winner-card-eyebrow">Menor Taxa</div>
       <div class="winner-card-seg">${winTaxa ? esc(winTaxa.seguradora) : '—'}</div>
       <div class="winner-card-value">${winTaxa ? formatTaxaDisplay(winTaxa.taxa) : 'Taxa não informada'}</div>
       <div><span class="winner-card-badge wc-b-taxa">${displayLabel}</span></div>
     </div>
-  `;
+  ` : '');
 
   const brandBars = ['#0b3b54','#114e6e','#1b6d95','#3f89ad','#7db6d2','#00b8f0','#0093c4','#16a34a'];
 
@@ -660,8 +689,10 @@ function renderModalComparison(label) {
   });
 
   // Chart: Taxa
-  if (chartModalTaxaInst) chartModalTaxaInst.destroy();
-  if (withTaxa.length > 0) {
+  if (chartModalTaxaInst) { chartModalTaxaInst.destroy(); chartModalTaxaInst = null; }
+  if (!exibirTaxas) {
+    // nada a desenhar: o card inteiro está oculto
+  } else if (withTaxa.length > 0) {
     chartModalTaxaInst = new Chart(document.getElementById('chartModalTaxa').getContext('2d'), {
       type: 'bar',
       data: {
@@ -3052,6 +3083,24 @@ function switchMktFiltro(modo) {
   updateTcSubNav(modo);
 }
 
+// ── Flag "Com taxa / Sem taxa" (SPEC 4.9)
+// Filtro de RENDERIZAÇÃO, não de dado: nada é removido de rows[].taxa nem dos
+// cards — só as três saídas (tabela PNG, XLSX, dashboard) deixam de emitir a
+// coluna. Assim é possível alternar a flag e reexportar sem redigitar taxa.
+function setTcExibirTaxas(exibir) {
+  _tcExibirTaxas = !!exibir;
+  const btnCom = document.getElementById('tcTaxaComBtn');
+  const btnSem = document.getElementById('tcTaxaSemBtn');
+  if (btnCom) {
+    btnCom.classList.toggle('mkt-filter-btn--active', _tcExibirTaxas);
+    btnCom.setAttribute('aria-pressed', String(_tcExibirTaxas));
+  }
+  if (btnSem) {
+    btnSem.classList.toggle('mkt-filter-btn--active', !_tcExibirTaxas);
+    btnSem.setAttribute('aria-pressed', String(!_tcExibirTaxas));
+  }
+}
+
 // ── T&C — sidebar em "pasta" (Seguradoras portais / Todas as seguradoras / Tomadores salvos)
 
 function toggleTcSidebarGroup() {
@@ -4393,6 +4442,11 @@ function tcEmpty(value) {
 function buildTcEmailTableHtml(data) {
   const rows = [...(data.rows || [])].sort((a, b) => (a.seguradora || '').localeCompare(b.seguradora || '', 'pt-BR'));
 
+  // Flag "Sem taxa" (SPEC 4.9): a coluna de taxas sai do <thead>, das <td> e do
+  // colspan do divisor de grupo — o divisor precisa cobrir a largura real.
+  const exibirTaxas = _tcExibirTaxas;
+  const colCount = exibirTaxas ? 6 : 5;
+
   const aprovadas    = rows.filter(r => r.status === 'aprovado');
   const declinadas   = rows.filter(r => r.status === 'declinado');
   const concorr      = rows.filter(r => r.status === 'concorrente');
@@ -4423,12 +4477,12 @@ function buildTcEmailTableHtml(data) {
           (first ? '<td class="tc-email-money"' + rs + vmid + '>' + (r.limite > 0 ? fmtBRL(r.limite) : '-') + '</td>' : '') +
           '<td class="tc-email-text">' + esc(m ? tcEmpty(m.label) : '-') + '</td>' +
           '<td class="tc-email-money">' + (m && m.value > 0 ? fmtBRL(m.value) : '-') + '</td>' +
-          '<td class="tc-email-rate">' + esc(m && m.taxa ? m.taxa : '-') + '</td>' +
+          (exibirTaxas ? '<td class="tc-email-rate">' + esc(m && m.taxa ? m.taxa : '-') + '</td>' : '') +
           (first ? '<td' + rs + vmid + '><span class="tc-email-status tc-email-status--' + esc(r.status) + '">' + esc(tcStatusText(r.status)) + '</span></td>' : '') +
         '</tr>'
       );
     });
-    tableRows.push('<tr class="tc-email-group-div"><td colspan="6"></td></tr>');
+    tableRows.push('<tr class="tc-email-group-div"><td colspan="' + colCount + '"></td></tr>');
   });
 
   const now = new Date();
@@ -4464,7 +4518,7 @@ function buildTcEmailTableHtml(data) {
         '<th>Capacidade Total</th>' +
         '<th>Modalidades</th>' +
         '<th>Limites por Modalidade</th>' +
-        '<th>Taxas por Modalidade</th>' +
+        (exibirTaxas ? '<th>Taxas por Modalidade</th>' : '') +
         '<th>Status</th>' +
       '</tr></thead>' +
       '<tbody>' + tableRows.join('') + '</tbody>' +
@@ -4525,6 +4579,14 @@ function exportTcEmailTableXlsx() {
     (a.seguradora || '').localeCompare(b.seguradora || '', 'pt-BR')
   );
 
+  // Flag "Sem taxa" (SPEC 4.9): a planilha perde a coluna de taxas e o Status
+  // sobe de 5 para 4. Tudo aqui é índice de coluna, então nada pode ficar
+  // hardcoded — merges do cabeçalho, !ref, !cols e bordas derivam de LAST_COL.
+  const exibirTaxas = _tcExibirTaxas;
+  const COL_TAXA   = exibirTaxas ? 4 : -1;
+  const COL_STATUS = exibirTaxas ? 5 : 4;
+  const LAST_COL   = COL_STATUS;
+
   const CL = {
     headerBg:   'F3F2EC',
     cellBg:     'FFFFFF',
@@ -4560,31 +4622,46 @@ function exportTcEmailTableXlsx() {
   // ── Título (linhas 0-1) ──────────────────────────────────────────────────
   const blankHdr = { fill: hdrFill };
 
-  setCell(R, 0, 'T&C', { font: { bold: true, sz: 14, color: { rgb: CL.darkText } }, fill: hdrFill, alignment: { horizontal: 'left', vertical: 'center' } });
-  for (let c = 1; c <= 3; c++) setCell(R, c, '', blankHdr);
-  mg(R, 0, R, 3);
-  setCell(R, 4, 'Tomador: ' + (data.tomador || '-'), { font: { bold: true, sz: 9, color: { rgb: CL.darkText } }, fill: hdrFill, alignment: { horizontal: 'right', vertical: 'center' } });
-  setCell(R, 5, '', blankHdr);
-  mg(R, 4, R, 5);
-  R++;
+  // Bloco esquerdo do cabeçalho ocupa até 2 colunas antes do fim; o direito, as
+  // duas últimas — as duas metades acompanham a presença da coluna de taxas.
+  const HDR_LEFT_END   = LAST_COL - 2;
+  const HDR_RIGHT_INI  = LAST_COL - 1;
 
-  setCell(R, 0, rows.length + ' seguradora' + (rows.length === 1 ? '' : 's'), { font: { sz: 9, color: { rgb: CL.mutedText } }, fill: hdrFill, alignment: { horizontal: 'left', vertical: 'center' } });
-  for (let c = 1; c <= 3; c++) setCell(R, c, '', blankHdr);
-  mg(R, 0, R, 3);
-  setCell(R, 4, 'CNPJ: ' + (data.cnpj || '-'), { font: { sz: 9, color: { rgb: CL.mutedText } }, fill: hdrFill, alignment: { horizontal: 'right', vertical: 'center' } });
-  setCell(R, 5, '', blankHdr);
-  mg(R, 4, R, 5);
-  R++;
+  function tituloLinha(textoEsq, estiloEsq, textoDir, estiloDir) {
+    setCell(R, 0, textoEsq, estiloEsq);
+    for (let c = 1; c <= HDR_LEFT_END; c++) setCell(R, c, '', blankHdr);
+    mg(R, 0, R, HDR_LEFT_END);
+    setCell(R, HDR_RIGHT_INI, textoDir, estiloDir);
+    for (let c = HDR_RIGHT_INI + 1; c <= LAST_COL; c++) setCell(R, c, '', blankHdr);
+    mg(R, HDR_RIGHT_INI, R, LAST_COL);
+    R++;
+  }
+
+  tituloLinha(
+    'T&C',
+    { font: { bold: true, sz: 14, color: { rgb: CL.darkText } }, fill: hdrFill, alignment: { horizontal: 'left', vertical: 'center' } },
+    'Tomador: ' + (data.tomador || '-'),
+    { font: { bold: true, sz: 9, color: { rgb: CL.darkText } }, fill: hdrFill, alignment: { horizontal: 'right', vertical: 'center' } }
+  );
+
+  tituloLinha(
+    rows.length + ' seguradora' + (rows.length === 1 ? '' : 's'),
+    { font: { sz: 9, color: { rgb: CL.mutedText } }, fill: hdrFill, alignment: { horizontal: 'left', vertical: 'center' } },
+    'CNPJ: ' + (data.cnpj || '-'),
+    { font: { sz: 9, color: { rgb: CL.mutedText } }, fill: hdrFill, alignment: { horizontal: 'right', vertical: 'center' } }
+  );
 
   // ── Cabeçalho da tabela (linha 2) ────────────────────────────────────────
-  const HDRS   = ['SEGURADORA', 'CAPACIDADE TOTAL', 'MODALIDADES', 'LIMITES POR MODALIDADE', 'TAXAS POR MODALIDADE', 'STATUS'];
-  const HALIGN = ['left', 'right', 'left', 'right', 'right', 'center'];
+  const HDRS   = ['SEGURADORA', 'CAPACIDADE TOTAL', 'MODALIDADES', 'LIMITES POR MODALIDADE'];
+  const HALIGN = ['left', 'right', 'left', 'right'];
+  if (exibirTaxas) { HDRS.push('TAXAS POR MODALIDADE'); HALIGN.push('right'); }
+  HDRS.push('STATUS'); HALIGN.push('center');
   HDRS.forEach((h, c) => {
     setCell(R, c, h, {
       font: { bold: true, sz: 8, color: { rgb: CL.darkText } },
       fill: hdrFill,
       alignment: { horizontal: HALIGN[c], vertical: 'center' },
-      border: { bottom: medBdr, right: c < 5 ? rgtBdr : undefined },
+      border: { bottom: medBdr, right: c < LAST_COL ? rgtBdr : undefined },
     });
   });
   R++;
@@ -4630,16 +4707,18 @@ function exportTcEmailTableXlsx() {
         border: { bottom: rowBtm, right: rgtBdr },
       });
 
-      // col 4 – Taxa
-      setCell(R, 4, (m && m.taxa) ? m.taxa : '-', {
-        font: { sz: 9, color: { rgb: CL.darkText } }, fill: whtFill,
-        alignment: { horizontal: 'right', vertical: 'center' },
-        border: { bottom: rowBtm, right: rgtBdr },
-      });
+      // col 4 – Taxa (ausente com a flag "Sem taxa")
+      if (COL_TAXA >= 0) {
+        setCell(R, COL_TAXA, (m && m.taxa) ? m.taxa : '-', {
+          font: { sz: 9, color: { rgb: CL.darkText } }, fill: whtFill,
+          alignment: { horizontal: 'right', vertical: 'center' },
+          border: { bottom: rowBtm, right: rgtBdr },
+        });
+      }
 
-      // col 5 – Status (com cor de fundo do badge)
+      // última coluna – Status (com cor de fundo do badge)
       const color = sc(r.status);
-      setCell(R, 5, idx === 0 ? tcStatusText(r.status) : '', {
+      setCell(R, COL_STATUS, idx === 0 ? tcStatusText(r.status) : '', {
         font: { bold: true, sz: 9, color: { rgb: color.fg } },
         fill: { patternType: 'solid', fgColor: { rgb: color.bg } },
         alignment: { horizontal: 'center', vertical: 'top' },
@@ -4651,17 +4730,16 @@ function exportTcEmailTableXlsx() {
 
     // Mescla colunas de grupo quando há mais de 1 modalidade
     if (span > 1) {
-      [0, 1, 5].forEach(col => mg(r0, col, r0 + span - 1, col));
+      [0, 1, COL_STATUS].forEach(col => mg(r0, col, r0 + span - 1, col));
     }
   });
 
-  ws['!ref']    = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: R - 1, c: 5 } });
+  ws['!ref']    = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: R - 1, c: LAST_COL } });
   ws['!merges'] = merges;
   ws['!rows']   = [{ hpt: 26 }, { hpt: 14 }, { hpt: 20 }];
-  ws['!cols']   = [
-    { wch: 22 }, { wch: 18 }, { wch: 24 }, { wch: 22 },
-    { wch: 18 }, { wch: 20 },
-  ];
+  ws['!cols']   = [{ wch: 22 }, { wch: 18 }, { wch: 24 }, { wch: 22 }]
+    .concat(exibirTaxas ? [{ wch: 18 }] : [])
+    .concat([{ wch: 20 }]);
 
   XLSX.utils.book_append_sheet(wb, ws, 'T&C');
   XLSX.writeFile(wb, 'tabela-tc.xlsx', { cellStyles: true, bookType: 'xlsx' });
