@@ -1,7 +1,7 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.75
-> Atualizado em: 2026-10-05
+> Versao: 2.76
+> Atualizado em: 2026-10-06
 
 ## 1. Visão Geral
 
@@ -312,7 +312,17 @@ O console no topo da página (`#mktTomadorInput`, `#mktCnpjInput`, botão "Consu
 A consulta roda sempre para as 10 seguradoras com API (`MKT_API_KEYS`), independente do filtro
 "portais"/"todas" estar ativo — as 10 já pertencem à lista de portal.
 
-### 4.3a Atualizar consulta sem cache
+### 4.3a Razao social automatica por CNPJ
+
+Ao digitar um CNPJ completo no campo `#mktCnpjInput`, `fmtTcCnpj()` agenda uma consulta com
+debounce de 450 ms. A UI chama `consultarRazaoSocialPorCnpj()` no `deepseek.js`, que usa o
+Worker como proxy para a BrasilAPI. O Worker consulta `GET https://brasilapi.com.br/api/cnpj/v1/{cnpj}`
+com timeout de 8 segundos e devolve somente `{ version, cnpj, razaoSocial }`, sem repassar os
+demais dados cadastrais da fonte externa ao navegador. A razao social preenche
+`#mktTomadorInput` somente se o usuario ainda nao digitou um nome manualmente na aba ativa;
+uma falha na consulta nao bloqueia a consulta de mercado nem o preenchimento manual.
+
+### 4.3b Atualizar consulta sem cache
 
 O botão-ícone `#mktBtnAtualizar`, ao lado de "Consultar mercado", chama
 `consultarMercadoUI({ forceRefresh: true })`. Ele limpa apenas os 10 cards automáticos da aba
@@ -715,6 +725,14 @@ Executa **um passo** do job — sempre exatamente uma chamada ao modelo, o que m
 #### `GET /v1/analysis-jobs/:jobId`
 
 Consulta status do job.
+
+#### `GET /v1/cnpj/{cnpj}`
+
+Consulta cadastral minima usada apenas para sugerir o nome do tomador no console do T&C.
+O Worker normaliza o CNPJ, exige 14 digitos e consulta a BrasilAPI com timeout de 8 segundos.
+Em sucesso, responde `{ version, cnpj, razaoSocial }`; nao devolve socios, endereco,
+telefone, situacao fiscal ou qualquer outro campo da API externa. CNPJ invalido responde 400,
+CNPJ nao encontrado responde 404 e indisponibilidade/falha de formato da fonte responde 502.
 
 #### `POST /v1/limits/query`
 

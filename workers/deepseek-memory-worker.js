@@ -5,7 +5,8 @@ const CORS_HEADERS = {
 };
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
-const WORKER_VERSION = '2026-10-05.1';
+const BRASIL_API_CNPJ_URL = 'https://brasilapi.com.br/api/cnpj/v1';
+const WORKER_VERSION = '2026-10-06.1';
 const PRIMARY_DEEPSEEK_MODEL = 'deepseek-chat';
 const FALLBACK_DEEPSEEK_MODEL = 'deepseek-chat';
 const JOB_TTL_SECONDS = 60 * 60 * 6;
@@ -95,6 +96,11 @@ export default {
         return withCors(await handleLimitsQuery(request, env));
       }
 
+      const cnpjMatch = url.pathname.match(/^\/v1\/cnpj\/([^/]+)$/);
+      if (request.method === 'GET' && cnpjMatch) {
+        return withCors(await handleLookupCnpj(cnpjMatch[1]));
+      }
+
       if (request.method === 'POST' && url.pathname === '/v1/tc/analises') {
         return withCors(await handleCreateTcAnalise(request, env));
       }
@@ -131,7 +137,7 @@ export default {
 
       return withCors(jsonResponse({ error: 'Not found' }, 404));
     } catch (err) {
-      return withCors(jsonResponse({ error: err.message || 'Internal error' }, 500));
+      return withCors(jsonResponse({ error: err.message || 'Internal error' }, Number.isInteger(err.status) ? err.status : 500));
     }
   },
 };
@@ -1504,6 +1510,51 @@ async function queryInsurer(env, cnpj, key) {
 
 function normalizeCnpj(value) {
   return String(value || '').replace(/\D/g, '');
+}
+
+async function handleLookupCnpj(value) {
+  const cnpj = normalizeCnpj(value);
+  if (cnpj.length !== 14) {
+    const error = new Error('Informe um CNPJ valido com 14 digitos.');
+    error.status = 400;
+    throw error;
+  }
+
+  let response;
+  try {
+    response = await fetchWithTimeout(`${BRASIL_API_CNPJ_URL}/${cnpj}`, {
+      headers: { Accept: 'application/json' },
+    }, 8000);
+  } catch {
+    const error = new Error('Nao foi possivel consultar a razao social agora.');
+    error.status = 502;
+    throw error;
+  }
+
+  if (!response.ok) {
+    const error = response.status === 404
+      ? new Error('CNPJ nao encontrado na API Brasil.')
+      : new Error('Nao foi possivel consultar a razao social agora.');
+    error.status = response.status === 400 || response.status === 404 ? response.status : 502;
+    throw error;
+  }
+
+  let data;
+  try {
+    data = await response.json();
+  } catch {
+    const error = new Error('A API Brasil retornou uma resposta invalida.');
+    error.status = 502;
+    throw error;
+  }
+  const razaoSocial = typeof data.razao_social === 'string' ? data.razao_social.trim() : '';
+  if (!razaoSocial) {
+    const error = new Error('A API Brasil nao retornou a razao social para este CNPJ.');
+    error.status = 502;
+    throw error;
+  }
+
+  return jsonResponse({ version: WORKER_VERSION, cnpj, razaoSocial });
 }
 
 function sleep(ms) {

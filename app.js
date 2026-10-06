@@ -116,6 +116,8 @@ let _mktFiltro = 'portais';
 // as taxas continuam sendo digitadas nos cards e gravadas em rows[].taxa; a flag
 // só decide se a coluna aparece na tabela PNG, no XLSX e no dashboard (SPEC 4.9).
 let _tcExibirTaxas = true;
+let _mktCnpjLookupTimer = null;
+let _mktCnpjLookupToken = 0;
 
 // â"€â"€ Sidebar mobile (drawer off-canvas — hover/focus-within não existe em touch)
 function openMobileSidebar() {
@@ -3608,6 +3610,7 @@ function saveMktTabState(tabId) {
 function rebuildMktGrid(tabId) {
   const tab = _mktTabs.find(t => t.id === tabId);
   if (!tab) return;
+  resetMktTomadorLookupStatus();
   const tomadorEl = document.getElementById('mktTomadorInput');
   const cnpjEl = document.getElementById('mktCnpjInput');
   if (tomadorEl) tomadorEl.value = tab.tomador || '';
@@ -4377,6 +4380,13 @@ function aplicarResultadosMercado(data) {
   const tab = _mktTabs.find(t => t.id === _mktActiveTabId);
   if (tomadorSugerido && tomadorInput && !(tab && tab.tomadorUserEdited)) {
     tomadorInput.value = tomadorSugerido;
+    if (tab) {
+      tab.tomador = tomadorSugerido;
+      const idx = _mktTabs.indexOf(tab);
+      tab.label = tomadorSugerido || ('Tomador ' + (idx + 1));
+      const labelEl = document.querySelector('#mktTabBtn-' + _mktActiveTabId + ' .tc-tab-label');
+      if (labelEl) labelEl.textContent = tab.label;
+    }
   }
 }
 
@@ -4437,8 +4447,65 @@ function formatTcCnpj(value) {
     .replace(/(\d{4})(\d)/, '$1-$2');
 }
 
+function setMktTomadorLookupStatus(message, variant = '') {
+  const statusEl = document.getElementById('mktTomadorLookupStatus');
+  if (!statusEl) return;
+  statusEl.textContent = message || '';
+  statusEl.className = 'mkt-tomador-lookup-status' + (variant ? ' mkt-tomador-lookup-status--' + variant : '');
+}
+
+function resetMktTomadorLookupStatus() {
+  if (_mktCnpjLookupTimer) {
+    clearTimeout(_mktCnpjLookupTimer);
+    _mktCnpjLookupTimer = null;
+  }
+  _mktCnpjLookupToken += 1;
+  setMktTomadorLookupStatus('');
+}
+
+function scheduleMktTomadorLookup(el) {
+  resetMktTomadorLookupStatus();
+  const cnpj = onlyDigits(el.value);
+  if (cnpj.length !== 14) return;
+
+  const token = _mktCnpjLookupToken;
+  const tabId = _mktActiveTabId;
+  setMktTomadorLookupStatus('Buscando razão social…', 'loading');
+  _mktCnpjLookupTimer = setTimeout(async () => {
+    _mktCnpjLookupTimer = null;
+    try {
+      const data = await consultarRazaoSocialPorCnpj(cnpj);
+      if (token !== _mktCnpjLookupToken || tabId !== _mktActiveTabId) return;
+
+      const tab = _mktTabs.find(item => item.id === tabId);
+      const currentInput = document.getElementById('mktCnpjInput');
+      if (!tab || !currentInput || onlyDigits(currentInput.value) !== cnpj) return;
+
+      const nome = String(data.razaoSocial || '').trim();
+      if (!nome) throw new Error('A API Brasil não retornou a razão social.');
+
+      if (!tab.tomadorUserEdited) {
+        const tomadorInput = document.getElementById('mktTomadorInput');
+        if (tomadorInput) tomadorInput.value = nome;
+        tab.tomador = nome;
+        const idx = _mktTabs.indexOf(tab);
+        tab.label = nome || ('Tomador ' + (idx + 1));
+        const labelEl = document.querySelector('#mktTabBtn-' + tabId + ' .tc-tab-label');
+        if (labelEl) labelEl.textContent = tab.label;
+        setMktTomadorLookupStatus('Razão social preenchida automaticamente.', 'ok');
+      } else {
+        setMktTomadorLookupStatus('CNPJ localizado. O nome informado manualmente foi preservado.', 'ok');
+      }
+    } catch (err) {
+      if (token !== _mktCnpjLookupToken || tabId !== _mktActiveTabId) return;
+      setMktTomadorLookupStatus('Não foi possível buscar a razão social. Você pode preencher o nome manualmente.', 'error');
+    }
+  }, 450);
+}
+
 function fmtTcCnpj(el) {
   el.value = formatTcCnpj(el.value);
+  if (el.id === 'mktCnpjInput') scheduleMktTomadorLookup(el);
 }
 
 function fmtTcMoney(el) {

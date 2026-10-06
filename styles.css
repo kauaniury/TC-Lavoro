@@ -5553,6 +5553,15 @@ details[open] .fl-clausula-chevron { transform: rotate(180deg); }
   color: var(--color-text-muted);
   line-height: var(--leading-normal);
 }
+.mkt-tomador-lookup-status {
+  min-height: var(--space-4);
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+}
+.mkt-tomador-lookup-status--loading { color: var(--color-accent-ink); }
+.mkt-tomador-lookup-status--ok { color: var(--color-success); }
+.mkt-tomador-lookup-status--error { color: var(--color-warning); }
 .mkt-console .error-msg { margin-top: var(--space-3); }
 
 @media (max-width: 760px) {

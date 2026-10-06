@@ -1272,6 +1272,18 @@ async function consultarLimitesSeguradoras(cnpj, seguradoras, onProgress, forceR
   }
 }
 
+async function consultarRazaoSocialPorCnpj(cnpj) {
+  const url = DEEPSEEK_WORKER_URL.replace(/\/+$/, '') + '/v1/cnpj/' + encodeURIComponent(cnpj);
+  const resp = await fetch(url, { headers: { Accept: 'application/json' } });
+  if (!resp.ok) {
+    const text = await resp.text();
+    let detail = '';
+    try { detail = JSON.parse(text).error || ''; } catch { /* resposta nao-JSON */ }
+    throw new Error(detail || `Falha ao consultar empresa (${resp.status}).`);
+  }
+  return resp.json();
+}
+
 // ── T&C — histórico de análises por tomador (D1, ver SPEC.md secao 13) ──────
 
 async function salvarTcAnalise(payload) {
