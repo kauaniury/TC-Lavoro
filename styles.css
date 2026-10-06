@@ -5916,6 +5916,43 @@ body.mkt-focus-active { overflow: hidden; }
   gap: var(--space-4);
   margin-top: var(--space-4);
 }
+.tc-salvos-summary {
+  margin: var(--space-6) 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+.tc-salvos-load-more {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--space-6);
+}
+.tc-salvos-load-more-btn {
+  min-height: 44px;
+  padding: 0 var(--space-6);
+  color: var(--color-primary);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+.tc-salvos-load-more-btn:hover:not(:disabled) {
+  color: var(--color-accent-ink);
+  background: var(--color-accent-light);
+  border-color: var(--color-border-brand);
+}
+.tc-salvos-load-more-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.tc-salvos-load-more-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
 .tc-salvo-card {
   background: var(--color-surface);
   border: 1px solid var(--color-border);

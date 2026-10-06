@@ -1,7 +1,7 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.74
-> Atualizado em: 2026-08-26
+> Versao: 2.75
+> Atualizado em: 2026-10-05
 
 ## 1. Visão Geral
 
@@ -532,13 +532,13 @@ neutro do antigo `bloqueado`; `enviar_balancos` em tom ciano/accent, distinto do
 
 ### 4.8 Salvar tomador e reabrir histórico (D1)
 
-Front-end conectado aos endpoints da seção 13 — **nenhuma mudança de schema ou endpoint**.
+Front-end conectado aos endpoints da seção 13 — o schema permanece estável e a listagem ganhou um endpoint específico para tomadores únicos.
 
 - **Botão "Salvar tomador"** (`#btnSalvarTomador`, dentro de `#page-dashboard`, logo abaixo do hero): `salvarTomadorAtual()` valida que `parsedData.cnpj` tem 14 dígitos (mesma normalização do Worker, `onlyDigits()` espelhando `normalizeCnpj()`), monta `{ cnpj, tomador, origem: 'manual', rows }` e chama `salvarTcAnalise()` (`deepseek.js`). `origem` é sempre `'manual'` agora — não existe mais o modo `'upload'` (ver 4.0); snapshots antigos com `origem: 'upload'` continuam válidos e exibem a etiqueta "Planilha (legado)" na lista (13.2/4.8), só não é mais um valor que a UI atual produz. Sem CNPJ válido, mostra erro em `#tcSaveStatus` sem chamar o Worker. `resetTcSaveStatus()` limpa a mensagem toda vez que um novo dashboard é gerado.
-- **Página "Tomadores salvos"** (`#page-tomadores-salvos`, tab `tomadores-salvos`, antiga "TCs salvos"): console de busca igual ao de antes (mesmas classes `.lim-console`/`.lim-console-*`, reaproveitadas), campo único `#tomadoresSalvosQueryInput` — **CNPJ ou nome do tomador**. `buscarTomadoresSalvos()` (renomeada de `buscarTcSalvos`) decide o modo no cliente: 14 dígitos → busca por CNPJ (`listarTcAnalises({ cnpj })`); senão → busca por nome (`listarTcAnalises({ nome })`). `renderTomadoresSalvosResultados()` (renomeada) monta um card (`.tc-salvo-card`) por análise, sempre mostrando o CNPJ além do nome (ver 13.2). Cada card tem:
+- **Página "Tomadores salvos"** (`#page-tomadores-salvos`, tab `tomadores-salvos`, antiga "TCs salvos"): console com campo único `#tomadoresSalvosQueryInput` — **CNPJ ou nome do tomador** — e carregamento automático da lista ao abrir a página. `carregarTomadoresSalvos()` chama `GET /v1/tc/tomadores` e renderiza um card (`.tc-salvo-card`) por CNPJ único, usando a análise mais recente como ponto de reabertura. A API devolve no máximo 50 tomadores por página; `#tomadoresSalvosLoadMore` carrega as páginas seguintes quando necessário. A busca continua em `buscarTomadoresSalvos()`: 14 dígitos → CNPJ (`listarTcAnalises({ cnpj })`); texto → nome (`listarTcAnalises({ nome })`), preservando o histórico de snapshots. `renderTomadoresSalvosResultados()` continua montando um card por análise nos resultados filtrados. Cada card tem:
   - **Abrir** → `abrirTomadorSalvo(id)` (renomeada e reescrita de `abrirTcSalvo`): chama `buscarTcAnalise(id)`, mapeia cada `row` do snapshot para uma chave do catálogo (`seguradoraKey` se presente e válido, senão `matchMktKeyByLabel`) ou para `extras[]` quando não casa, mapeia status legado (`mapLegacyRowStatus`, ver 4.6) e **abre uma NOVA aba de tomador** pré-preenchida (nunca sobrescreve a aba ativa — preserva qualquer trabalho em andamento nas outras abas). Navega para `#page-mkt` com o filtro **"todas"** (garante que toda seguradora restaurada apareça, mesmo que não seja de portal) — ao contrário do comportamento anterior, **não** pula direto para o dashboard: o usuário cai na tela de edição, pode ajustar, rodar uma nova consulta de mercado e só então gerar o dashboard/exportar.
   - **Remover** → `removerTomadorSalvo(id)` (renomeada de `removerTcSalvo`) confirma via `confirm()`, chama `apagarTcAnalise(id)` e atualiza a lista.
-- **Funções em `deepseek.js`**: inalteradas — `salvarTcAnalise(payload)`, `listarTcAnalises({ cnpj } | { nome })`, `buscarTcAnalise(id)`, `apagarTcAnalise(id)`.
+- **Funções em `deepseek.js`**: `salvarTcAnalise(payload)`, `listarTcAnalises({ cnpj } | { nome })`, `listarTcTomadores({ limit, offset })`, `buscarTcAnalise(id)`, `apagarTcAnalise(id)`.
 - Nenhuma mudança no schema do banco (13.1) — só o conteúdo de `rows[]` ganhou os campos `seguradoraKey`/`origem` e perdeu `statusCcg`/`venc` (4.6), sempre dentro do mesmo `rows_json` de texto.
 - `.tc-save-bar-wrap` (botão "Salvar tomador" + status) continua oculto durante a exportação (`body.pdf-generating`) e na impressão nativa (`@media print`).
 
@@ -1883,6 +1883,7 @@ CREATE TABLE tc_analises (
 
 | Endpoint | Papel |
 |---|---|
+| `GET /v1/tc/tomadores?limit=50&offset=0` | Lista tomadores únicos, sem os `rows[]`, usando a análise mais recente como referência para reabertura: `{ version, total, limit, offset, hasMore, tomadores: [{ id, cnpj, nome, ultimaAnaliseId, origem, ultimaAnaliseEm, atualizadoEm }] }` |
 | `POST /v1/tc/analises` | Cria um snapshot. Body: `{ cnpj, tomador, origem: 'upload'\|'manual', rows: [...] }`. Resposta 201: `{ version, id, criadoEm }` |
 | `GET /v1/tc/analises?cnpj=...` **ou** `?nome=...` | Lista histórico (mais recente primeiro), sem os `rows[]` completos: `{ version, cnpj, nome, analises: [{ id, cnpj, tomador, origem, criadoEm }] }` |
 | `GET /v1/tc/analises/:id` | Devolve o snapshot completo, incluindo `rows[]` já parseado de volta de JSON — pronto para recarregar em `parsedData` e renderizar o dashboard |
@@ -1892,13 +1893,16 @@ CREATE TABLE tc_analises (
 
 **Busca por CNPJ ou por nome (`handleListTcAnalises`):** exatamente um dos dois parâmetros é aceito por chamada — `cnpj` é normalizado e exige 14 dígitos (busca exata, direto em `tc_analises.cnpj`); `nome` faz `LIKE` parcial case-insensitive contra `tc_tomadores.nome` (via `JOIN tc_analises.tomador_id = tc_tomadores.id`), **não** contra `tc_analises.tomador` — `tc_tomadores` é a fonte canônica do nome, então a busca não duplica nem perde resultado por causa de pequenas variações de grafia entre snapshots do mesmo tomador. Sem nenhum parâmetro, erro `Informe um CNPJ ou o nome do tomador para buscar.`; `cnpj` presente e inválido continua sendo erro (`Informe um CNPJ valido com 14 digitos.`), mesmo com `nome` também presente. Ambos os modos aplicam `LIMIT 50` (`TC_SEARCH_RESULT_LIMIT`) — uma busca por nome genérico pode, em tese, casar com muito mais tomadores do que uma busca por CNPJ (sempre no máximo um). Testado com SQLite real (`node:sqlite`): CNPJ exato, nome parcial trazendo múltiplos CNPJs distintos, case-insensitividade, ausência de parâmetros e CNPJ inválido.
 
+**Listagem automática (`handleListTcTomadores`):** não recebe filtro textual; `limit` é opcional (padrão 50, máximo 100) e `offset` é opcional (padrão 0), ambos devem ser inteiros válidos. A consulta parte de `tc_tomadores`, exclui registros sem snapshots e seleciona a análise mais recente por `tomador_id`, ordenando os tomadores pela data dessa análise. Os `rows_json` nunca são devolvidos nessa listagem. `hasMore` indica se a UI deve oferecer a próxima página.
+
 ### 13.3 Front-end — conectado (ver seção 4.8 e 1.1z)
 
-Os endpoints acima estão ligados à UI: botão "Salvar tomador" no T&C Dashboard (`salvarTomadorAtual()`) e página "Tomadores salvos" (`#page-tomadores-salvos`, sub-item da pasta "Relatório T&C" na sidebar) para buscar, reabrir e remover snapshots por CNPJ. Detalhes de função e markup em 4.8; estrutura da sidebar em pasta em 1.1z.
+Os endpoints acima estão ligados à UI: botão "Salvar tomador" no T&C Dashboard (`salvarTomadorAtual()`) e página "Tomadores salvos" (`#page-tomadores-salvos`, sub-item da pasta "Relatório T&C" na sidebar), que lista automaticamente um card por tomador, permite filtrar por CNPJ/nome, reabrir a análise mais recente e remover snapshots. Detalhes de função e markup em 4.8; estrutura da sidebar em pasta em 1.1z.
 
 ### 13.4 Convenções e limitações conhecidas
 
 - Todo endpoint devolve `version: WORKER_VERSION`, como os demais fluxos.
 - Erros de validação (CNPJ inválido, `rows` que não é array, id inexistente) lançam `Error` comum e caem no mesmo catch-all do `fetch()` do Worker — sempre HTTP 500, igual ao restante do Worker hoje (`validateCreateJobBody`, CNPJ da consulta de mercado). Não é o código HTTP mais correto (um 400/404 seria mais preciso), mas é consistente com o padrão já existente; não foi introduzido um padrão novo só para este recurso.
 - Sem paginação em `GET /v1/tc/analises?cnpj=...` — o volume esperado (histórico de um único tomador) não justifica ainda.
+- `GET /v1/tc/tomadores` usa páginas de 50 itens (máximo de 100 por página), e a UI oferece "Carregar mais tomadores" quando necessário.
 - Sem autenticação própria — depende do que já existe fora deste Worker; **nenhuma mudança de auth foi feita como parte desta persistência.**

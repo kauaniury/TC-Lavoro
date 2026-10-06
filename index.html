@@ -877,7 +877,7 @@
       <div class="upload-header">
         <p class="upload-header-eyebrow">Relatório T&amp;C</p>
         <h1 class="upload-header-title">Tomadores salvos</h1>
-        <p class="upload-header-sub">Busque pelo CNPJ ou pelo nome do tomador para reabrir uma análise de mercado salva anteriormente.</p>
+        <p class="upload-header-sub">Veja todos os tomadores salvos ou filtre pelo CNPJ e pelo nome para reabrir uma análise de mercado.</p>
       </div>
 
       <div class="lim-console">
@@ -888,12 +888,12 @@
 
         <div class="lim-console-row">
           <div class="lim-console-field">
-            <span class="lim-console-tag" aria-hidden="true">BUSCAR</span>
-            <input type="text" id="tomadoresSalvosQueryInput" class="lim-console-input" placeholder="CNPJ ou nome do tomador" autocomplete="off" aria-label="CNPJ ou nome do tomador" onkeydown="if(event.key==='Enter'){event.preventDefault();buscarTomadoresSalvos();}">
+            <span class="lim-console-tag" aria-hidden="true">FILTRAR</span>
+            <input type="text" id="tomadoresSalvosQueryInput" class="lim-console-input" placeholder="CNPJ ou nome do tomador" autocomplete="off" aria-label="Filtrar por CNPJ ou nome do tomador" onkeydown="if(event.key==='Enter'){event.preventDefault();buscarTomadoresSalvos();}">
           </div>
           <button type="button" class="lim-console-submit" id="tomadoresSalvosBtnBuscar" onclick="buscarTomadoresSalvos()">
             <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" stroke-width="1.7"/><path d="M13 13l4 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
-            Buscar histórico
+            Filtrar histórico
           </button>
         </div>
 
@@ -904,16 +904,22 @@
 
       <div class="lim-loading" id="tomadoresSalvosLoading" hidden>
         <div class="af-spinner" aria-hidden="true"></div>
-        <p class="af-loading-text">Buscando histórico…</p>
+        <p class="af-loading-text">Carregando tomadores salvos…</p>
       </div>
+
+      <p class="tc-salvos-summary" id="tomadoresSalvosSummary" hidden aria-live="polite"></p>
 
       <div class="empty-state" id="tomadoresSalvosEmpty">
         <div class="search-empty-icon" aria-hidden="true">⌕</div>
-        <p class="empty-state-title">Busque um CNPJ ou nome</p>
-        <p class="empty-state-text">As análises salvas para o tomador aparecem aqui.</p>
+        <p class="empty-state-title">Nenhum tomador salvo ainda</p>
+        <p class="empty-state-text">As consultas salvas aparecerão aqui.</p>
       </div>
 
       <div class="tc-salvos-list" id="tomadoresSalvosResults" aria-live="polite"></div>
+
+      <div class="tc-salvos-load-more" id="tomadoresSalvosLoadMoreWrap" hidden>
+        <button type="button" class="tc-salvos-load-more-btn" id="tomadoresSalvosLoadMore" onclick="carregarMaisTomadoresSalvos()">Carregar mais tomadores</button>
+      </div>
     </div>
   </div>
 </main>

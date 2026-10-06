@@ -5,7 +5,7 @@ const CORS_HEADERS = {
 };
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
-const WORKER_VERSION = '2026-08-24.1';
+const WORKER_VERSION = '2026-10-05.1';
 const PRIMARY_DEEPSEEK_MODEL = 'deepseek-chat';
 const FALLBACK_DEEPSEEK_MODEL = 'deepseek-chat';
 const JOB_TTL_SECONDS = 60 * 60 * 6;
@@ -101,6 +101,10 @@ export default {
 
       if (request.method === 'GET' && url.pathname === '/v1/tc/analises') {
         return withCors(await handleListTcAnalises(url, env));
+      }
+
+      if (request.method === 'GET' && url.pathname === '/v1/tc/tomadores') {
+        return withCors(await handleListTcTomadores(url, env));
       }
 
       const tcMatch = url.pathname.match(/^\/v1\/tc\/analises\/(\d+)$/);
@@ -2120,6 +2124,8 @@ async function handleCreateTcAnalise(request, env) {
 
 const TC_SEARCH_RESULT_LIMIT = 50;
 const TC_NOME_QUERY_MAX_LENGTH = 200;
+const TC_TOMADORES_PAGE_SIZE = 50;
+const TC_TOMADORES_MAX_PAGE_SIZE = 100;
 
 // Busca por CNPJ (exata) ou por nome do tomador (parcial, via tc_tomadores —
 // e nao tc_analises.tomador direto, porque tc_tomadores e a fonte canonica do
@@ -2152,6 +2158,61 @@ async function handleListTcAnalises(url, env) {
     cnpj: cnpj || null,
     nome: nome || null,
     analises: results.map(r => ({ id: r.id, cnpj: r.cnpj, tomador: r.tomador, origem: r.origem, criadoEm: r.criado_em })),
+  });
+}
+
+// Lista um card por tomador, usando a análise mais recente apenas como ponto
+// de reabertura. Os snapshots antigos continuam disponíveis pela busca acima.
+async function handleListTcTomadores(url, env) {
+  const db = requireDb(env);
+  const limitParam = url.searchParams.get('limit');
+  const offsetParam = url.searchParams.get('offset');
+  const requestedLimit = limitParam === null ? TC_TOMADORES_PAGE_SIZE : Number(limitParam);
+  const offset = offsetParam === null ? 0 : Number(offsetParam);
+
+  if (!Number.isInteger(requestedLimit) || requestedLimit < 1 || requestedLimit > TC_TOMADORES_MAX_PAGE_SIZE) {
+    throw new Error(`limit deve ser um numero inteiro entre 1 e ${TC_TOMADORES_MAX_PAGE_SIZE}.`);
+  }
+  if (!Number.isInteger(offset) || offset < 0) {
+    throw new Error('offset deve ser um numero inteiro maior ou igual a zero.');
+  }
+
+  const countRow = await db.prepare(
+    `SELECT COUNT(*) AS total FROM tc_tomadores t
+     WHERE EXISTS (SELECT 1 FROM tc_analises a0 WHERE a0.tomador_id = t.id)`
+  ).first();
+
+  const { results } = await db.prepare(
+    `SELECT t.id, t.cnpj, t.nome, t.atualizado_em,
+            a.id AS ultima_analise_id, a.origem, a.criado_em
+     FROM tc_tomadores t
+     LEFT JOIN tc_analises a ON a.id = (
+       SELECT a2.id FROM tc_analises a2
+       WHERE a2.tomador_id = t.id
+       ORDER BY a2.criado_em DESC, a2.id DESC
+       LIMIT 1
+     )
+     WHERE EXISTS (SELECT 1 FROM tc_analises a0 WHERE a0.tomador_id = t.id)
+     ORDER BY COALESCE(a.criado_em, t.atualizado_em) DESC, t.id DESC
+     LIMIT ?1 OFFSET ?2`
+  ).bind(requestedLimit, offset).all();
+
+  const total = Number(countRow && countRow.total) || 0;
+  return jsonResponse({
+    version: WORKER_VERSION,
+    total,
+    limit: requestedLimit,
+    offset,
+    hasMore: offset + results.length < total,
+    tomadores: results.map(r => ({
+      id: r.id,
+      cnpj: r.cnpj,
+      nome: r.nome,
+      ultimaAnaliseId: r.ultima_analise_id,
+      origem: r.origem,
+      ultimaAnaliseEm: r.criado_em,
+      atualizadoEm: r.atualizado_em,
+    })),
   });
 }
 

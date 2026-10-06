@@ -1300,6 +1300,19 @@ async function listarTcAnalises(filtro) {
   return resp.json();
 }
 
+async function listarTcTomadores({ limit = 50, offset = 0 } = {}) {
+  const params = new URLSearchParams();
+  params.set('limit', String(limit));
+  params.set('offset', String(offset));
+
+  const resp = await fetch(DEEPSEEK_WORKER_URL.replace(/\/+$/, '') + '/v1/tc/tomadores?' + params.toString());
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`Falha ao listar tomadores (${resp.status}): ${text}`);
+  }
+  return resp.json();
+}
+
 async function buscarTcAnalise(id) {
   const resp = await fetch(DEEPSEEK_WORKER_URL.replace(/\/+$/, '') + '/v1/tc/analises/' + encodeURIComponent(id));
   if (!resp.ok) {

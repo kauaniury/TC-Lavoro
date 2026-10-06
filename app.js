@@ -3132,9 +3132,12 @@ function abrirMktModo(modo) {
 }
 
 function abrirTomadoresSalvosPage() {
+  const queryInput = document.getElementById('tomadoresSalvosQueryInput');
+  if (queryInput) queryInput.value = '';
   switchTab('tomadores-salvos');
   abrirTcSidebarGroup();
   updateTcSubNav('salvos');
+  carregarTomadoresSalvos();
 }
 
 // ── T&C — salvar tomador atual no histórico (D1)
@@ -3218,7 +3221,12 @@ async function salvarConsultaMercado() {
   }
 }
 
-// ── Tomadores salvos (buscar / abrir / remover histórico por CNPJ ou nome)
+// ── Tomadores salvos (lista automática + busca / abrir / remover histórico)
+
+const TC_TOMADORES_PAGE_SIZE = 50;
+let _tomadoresSalvosOffset = 0;
+let _tomadoresSalvosHasMore = false;
+let _tomadoresSalvosLoadToken = 0;
 
 function tomadoresSalvosShowError(msg) {
   const el = document.getElementById('tomadoresSalvosErrorMsg');
@@ -3231,27 +3239,105 @@ function tomadoresSalvosHideError() {
   if (el) el.classList.remove('show');
 }
 
+function tomadoresSalvosSetEmptyState(title, text) {
+  const empty = document.getElementById('tomadoresSalvosEmpty');
+  if (!empty) return;
+  const titleEl = empty.querySelector('.empty-state-title');
+  const textEl = empty.querySelector('.empty-state-text');
+  if (titleEl) titleEl.textContent = title;
+  if (textEl) textEl.textContent = text;
+}
+
+function tomadoresSalvosSetSummary(text, visible) {
+  const summary = document.getElementById('tomadoresSalvosSummary');
+  if (!summary) return;
+  summary.textContent = text || '';
+  summary.hidden = !visible;
+}
+
+async function carregarTomadoresSalvos({ append = false } = {}) {
+  tomadoresSalvosHideError();
+  const loading = document.getElementById('tomadoresSalvosLoading');
+  const empty = document.getElementById('tomadoresSalvosEmpty');
+  const results = document.getElementById('tomadoresSalvosResults');
+  const btn = document.getElementById('tomadoresSalvosBtnBuscar');
+  const loadMoreWrap = document.getElementById('tomadoresSalvosLoadMoreWrap');
+  const loadMoreBtn = document.getElementById('tomadoresSalvosLoadMore');
+  if (!loading || !empty || !results || !btn) return;
+
+  const token = ++_tomadoresSalvosLoadToken;
+  if (!append) {
+    _tomadoresSalvosOffset = 0;
+    _tomadoresSalvosHasMore = false;
+    results.innerHTML = '';
+    tomadoresSalvosSetSummary('', false);
+    if (loadMoreWrap) loadMoreWrap.hidden = true;
+  }
+
+  loading.hidden = false;
+  empty.hidden = true;
+  btn.disabled = true;
+  if (loadMoreBtn) loadMoreBtn.disabled = true;
+
+  try {
+    const data = await listarTcTomadores({
+      limit: TC_TOMADORES_PAGE_SIZE,
+      offset: _tomadoresSalvosOffset,
+    });
+    if (token !== _tomadoresSalvosLoadToken) return;
+
+    const lista = Array.isArray(data.tomadores) ? data.tomadores : [];
+    renderTomadoresSalvosTomadores(lista, { append });
+    _tomadoresSalvosOffset = Number(data.offset) + lista.length;
+    _tomadoresSalvosHasMore = Boolean(data.hasMore);
+    const total = Number(data.total) || 0;
+    tomadoresSalvosSetSummary(`${total} tomador${total === 1 ? '' : 'es'} salvo${total === 1 ? '' : 's'}`, total > 0);
+
+    if (loadMoreWrap) loadMoreWrap.hidden = !_tomadoresSalvosHasMore;
+  } catch (err) {
+    if (token !== _tomadoresSalvosLoadToken) return;
+    tomadoresSalvosShowError('Erro ao carregar tomadores salvos: ' + err.message);
+    if (!append) {
+      tomadoresSalvosSetEmptyState('Não foi possível carregar a lista', 'Tente novamente em alguns instantes.');
+      empty.hidden = false;
+    }
+    if (loadMoreWrap) loadMoreWrap.hidden = true;
+  } finally {
+    if (token === _tomadoresSalvosLoadToken) {
+      loading.hidden = true;
+      btn.disabled = false;
+      if (loadMoreBtn) loadMoreBtn.disabled = false;
+    }
+  }
+}
+
+function carregarMaisTomadoresSalvos() {
+  if (_tomadoresSalvosHasMore) carregarTomadoresSalvos({ append: true });
+}
+
 async function buscarTomadoresSalvos() {
   tomadoresSalvosHideError();
-  const raw = document.getElementById('tomadoresSalvosQueryInput').value.trim();
+  const input = document.getElementById('tomadoresSalvosQueryInput');
+  const raw = input ? input.value.trim() : '';
   const cnpjDigits = onlyDigits(raw);
   // Se o texto digitado tem 14 dígitos, trata como CNPJ (busca exata); senão,
   // trata o texto como nome do tomador (busca parcial, sem diferenciar maiúsculas).
   const isCnpj = cnpjDigits.length === 14;
 
-  if (!raw) {
-    tomadoresSalvosShowError('Informe um CNPJ ou o nome do tomador.');
-    return;
-  }
+  if (!raw) return carregarTomadoresSalvos();
 
   const loading = document.getElementById('tomadoresSalvosLoading');
   const empty = document.getElementById('tomadoresSalvosEmpty');
   const results = document.getElementById('tomadoresSalvosResults');
   const btn = document.getElementById('tomadoresSalvosBtnBuscar');
+  const loadMoreWrap = document.getElementById('tomadoresSalvosLoadMoreWrap');
 
+  const token = ++_tomadoresSalvosLoadToken;
   loading.hidden = false;
   empty.hidden = true;
   results.innerHTML = '';
+  tomadoresSalvosSetSummary('', false);
+  if (loadMoreWrap) loadMoreWrap.hidden = true;
   btn.disabled = true;
 
   try {
@@ -3259,12 +3345,16 @@ async function buscarTomadoresSalvos() {
       ? await listarTcAnalises({ cnpj: cnpjDigits })
       : await listarTcAnalises({ nome: raw });
     renderTomadoresSalvosResultados(data.analises || []);
+    const total = (data.analises || []).length;
+    tomadoresSalvosSetSummary(`${total} análise${total === 1 ? '' : 's'} encontrada${total === 1 ? '' : 's'}`, total > 0);
   } catch (err) {
     tomadoresSalvosShowError('Erro ao buscar histórico: ' + err.message);
     empty.hidden = false;
   } finally {
-    loading.hidden = true;
-    btn.disabled = false;
+    if (token === _tomadoresSalvosLoadToken) {
+      loading.hidden = true;
+      btn.disabled = false;
+    }
   }
 }
 
@@ -3274,10 +3364,7 @@ function renderTomadoresSalvosResultados(lista) {
 
   if (!lista.length) {
     empty.hidden = false;
-    const title = empty.querySelector('.empty-state-title');
-    const text = empty.querySelector('.empty-state-text');
-    if (title) title.textContent = 'Nenhuma análise salva';
-    if (text) text.textContent = 'Nenhum tomador encontrado para essa busca.';
+    tomadoresSalvosSetEmptyState('Nenhuma análise salva', 'Nenhum tomador encontrado para essa busca.');
     results.innerHTML = '';
     return;
   }
@@ -3304,6 +3391,45 @@ function renderTomadoresSalvosResultados(lista) {
       '</div>' +
     '</article>';
   }).join('');
+}
+
+function renderTomadoresSalvosTomadores(lista, { append = false } = {}) {
+  const empty = document.getElementById('tomadoresSalvosEmpty');
+  const results = document.getElementById('tomadoresSalvosResults');
+  if (!empty || !results) return;
+
+  if (!lista.length && !append) {
+    empty.hidden = false;
+    tomadoresSalvosSetEmptyState('Nenhum tomador salvo ainda', 'As consultas salvas aparecerão aqui.');
+    results.innerHTML = '';
+    return;
+  }
+
+  empty.hidden = true;
+  const cards = lista.map(item => {
+    const actionId = Number(item.ultimaAnaliseId);
+    if (!Number.isSafeInteger(actionId) || actionId < 1) return '';
+    const parsed = new Date(String(item.ultimaAnaliseEm || '').replace(' ', 'T') + 'Z');
+    const dataStr = isNaN(parsed)
+      ? (item.ultimaAnaliseEm || '-')
+      : parsed.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const isManual = item.origem === 'manual';
+    return '<article class="tc-salvo-card">' +
+      '<div class="tc-salvo-card-top">' +
+        '<p class="tc-salvo-nome">' + esc(item.nome || 'Tomador sem nome') + '</p>' +
+        '<span class="tc-salvo-origem ' + (isManual ? 'tc-salvo-origem--manual' : 'tc-salvo-origem--upload') + '">' + (isManual ? 'Consulta de mercado' : 'Planilha (legado)') + '</span>' +
+      '</div>' +
+      '<p class="tc-salvo-cnpj">' + esc(formatTcCnpj(item.cnpj || '')) + '</p>' +
+      '<p class="tc-salvo-data">Última análise em ' + esc(dataStr) + '</p>' +
+      '<div class="tc-salvo-actions">' +
+        '<button type="button" class="tc-salvo-btn-abrir" onclick="abrirTomadorSalvo(' + actionId + ')">Abrir</button>' +
+        '<button type="button" class="tc-salvo-btn-remover" onclick="removerTomadorSalvo(' + actionId + ')" aria-label="Remover última análise salva">Remover</button>' +
+      '</div>' +
+    '</article>';
+  }).join('');
+
+  if (append) results.insertAdjacentHTML('beforeend', cards);
+  else results.innerHTML = cards;
 }
 
 // Reabrir SEMPRE cria uma nova aba de tomador pré-preenchida (nunca sobrescreve
@@ -3366,7 +3492,7 @@ async function removerTomadorSalvo(id) {
   tomadoresSalvosHideError();
   try {
     await apagarTcAnalise(id);
-    buscarTomadoresSalvos();
+    await buscarTomadoresSalvos();
   } catch (err) {
     tomadoresSalvosShowError('Erro ao remover: ' + err.message);
   }
