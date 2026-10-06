@@ -3552,6 +3552,7 @@ function saveMktTabState(tabId) {
   const tab = _mktTabs.find(t => t.id === tabId);
   if (!tab) return;
   tab.tomador = (document.getElementById('mktTomadorInput') || {}).value || '';
+  if (!tab.tomador.trim()) tab.tomadorUserEdited = false;
   tab.cnpj = (document.getElementById('mktCnpjInput') || {}).value || '';
   const idx = _mktTabs.indexOf(tab);
   tab.label = tab.tomador || ('Tomador ' + (idx + 1));
@@ -3656,8 +3657,8 @@ function updateMktActiveTabLabel() {
   if (!_mktActiveTabId) return;
   const tab = _mktTabs.find(t => t.id === _mktActiveTabId);
   if (!tab) return;
-  tab.tomadorUserEdited = true;
   const tomadorVal = (document.getElementById('mktTomadorInput') || {}).value || '';
+  tab.tomadorUserEdited = Boolean(tomadorVal.trim());
   const idx = _mktTabs.indexOf(tab);
   tab.label = tomadorVal || ('Tomador ' + (idx + 1));
   const labelEl = document.querySelector('#mktTabBtn-' + _mktActiveTabId + ' .tc-tab-label');
@@ -4378,9 +4379,11 @@ function aplicarResultadosMercado(data) {
   // Sugestão de tomador vinda da API não apaga uma edição manual já feita.
   const tomadorInput = document.getElementById('mktTomadorInput');
   const tab = _mktTabs.find(t => t.id === _mktActiveTabId);
-  if (tomadorSugerido && tomadorInput && !(tab && tab.tomadorUserEdited)) {
+  const temNomeManual = Boolean(tab && tab.tomadorUserEdited && tomadorInput && tomadorInput.value.trim());
+  if (tomadorSugerido && tomadorInput && !temNomeManual) {
     tomadorInput.value = tomadorSugerido;
     if (tab) {
+      tab.tomadorUserEdited = false;
       tab.tomador = tomadorSugerido;
       const idx = _mktTabs.indexOf(tab);
       tab.label = tomadorSugerido || ('Tomador ' + (idx + 1));
@@ -4484,9 +4487,12 @@ function scheduleMktTomadorLookup(el) {
       const nome = String(data.razaoSocial || '').trim();
       if (!nome) throw new Error('A API Brasil não retornou a razão social.');
 
-      if (!tab.tomadorUserEdited) {
+      const nomeAtual = String(document.getElementById('mktTomadorInput')?.value || '').trim();
+      const temNomeManual = Boolean(tab.tomadorUserEdited && nomeAtual);
+      if (!temNomeManual) {
         const tomadorInput = document.getElementById('mktTomadorInput');
         if (tomadorInput) tomadorInput.value = nome;
+        tab.tomadorUserEdited = false;
         tab.tomador = nome;
         const idx = _mktTabs.indexOf(tab);
         tab.label = nome || ('Tomador ' + (idx + 1));

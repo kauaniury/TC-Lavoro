@@ -1,6 +1,6 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.76
+> Versao: 2.77
 > Atualizado em: 2026-10-06
 
 ## 1. Visão Geral
@@ -320,7 +320,9 @@ Worker como proxy para a BrasilAPI. O Worker consulta `GET https://brasilapi.com
 com timeout de 8 segundos e devolve somente `{ version, cnpj, razaoSocial }`, sem repassar os
 demais dados cadastrais da fonte externa ao navegador. A razao social preenche
 `#mktTomadorInput` somente se o usuario ainda nao digitou um nome manualmente na aba ativa;
-uma falha na consulta nao bloqueia a consulta de mercado nem o preenchimento manual.
+o estado de edicao manual so permanece ativo quando existe texto no campo, portanto apagar o
+nome libera o preenchimento automatico novamente. Uma falha na consulta nao bloqueia a consulta
+de mercado nem o preenchimento manual.
 
 ### 4.3b Atualizar consulta sem cache
 
