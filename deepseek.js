@@ -1,4 +1,5 @@
 const DEEPSEEK_WORKER_URL = 'https://lucky-hat-b241.kyuri887.workers.dev/';
+const BRASIL_API_CNPJ_URL = 'https://brasilapi.com.br/api/cnpj/v1';
 const DEEPSEEK_JOBS_URL = DEEPSEEK_WORKER_URL.replace(/\/+$/, '') + '/v1/analysis-jobs';
 const MAX_PDF_PAGES = 600;
 const TEXT_CHUNK_SIZE = 30000;
@@ -1273,15 +1274,21 @@ async function consultarLimitesSeguradoras(cnpj, seguradoras, onProgress, forceR
 }
 
 async function consultarRazaoSocialPorCnpj(cnpj) {
-  const url = DEEPSEEK_WORKER_URL.replace(/\/+$/, '') + '/v1/cnpj/' + encodeURIComponent(cnpj);
+  const url = BRASIL_API_CNPJ_URL + '/' + encodeURIComponent(cnpj);
   const resp = await fetch(url, { headers: { Accept: 'application/json' } });
   if (!resp.ok) {
     const text = await resp.text();
     let detail = '';
-    try { detail = JSON.parse(text).error || ''; } catch { /* resposta nao-JSON */ }
+    try {
+      const body = JSON.parse(text);
+      detail = body.message || body.error || '';
+    } catch { /* resposta nao-JSON */ }
     throw new Error(detail || `Falha ao consultar empresa (${resp.status}).`);
   }
-  return resp.json();
+  const data = await resp.json();
+  const razaoSocial = typeof data.razao_social === 'string' ? data.razao_social.trim() : '';
+  if (!razaoSocial) throw new Error('A BrasilAPI não retornou a razão social.');
+  return { cnpj: String(data.cnpj || cnpj), razaoSocial };
 }
 
 // ── T&C — histórico de análises por tomador (D1, ver SPEC.md secao 13) ──────

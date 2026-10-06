@@ -1,6 +1,6 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.77
+> Versao: 2.78
 > Atualizado em: 2026-10-06
 
 ## 1. Visão Geral
@@ -315,10 +315,11 @@ A consulta roda sempre para as 10 seguradoras com API (`MKT_API_KEYS`), independ
 ### 4.3a Razao social automatica por CNPJ
 
 Ao digitar um CNPJ completo no campo `#mktCnpjInput`, `fmtTcCnpj()` agenda uma consulta com
-debounce de 450 ms. A UI chama `consultarRazaoSocialPorCnpj()` no `deepseek.js`, que usa o
-Worker como proxy para a BrasilAPI. O Worker consulta `GET https://brasilapi.com.br/api/cnpj/v1/{cnpj}`
-com timeout de 8 segundos e devolve somente `{ version, cnpj, razaoSocial }`, sem repassar os
-demais dados cadastrais da fonte externa ao navegador. A razao social preenche
+debounce de 450 ms. A UI chama `consultarRazaoSocialPorCnpj()` no `deepseek.js`, que consulta
+diretamente o endpoint publico `GET https://brasilapi.com.br/api/cnpj/v1/{cnpj}`. Como essa
+consulta nao usa segredo nem dado sensivel alem do CNPJ informado, ela nao depende do Worker
+protegido pelo Cloudflare Access. O front-end extrai e usa somente `razao_social`, sem repassar
+os demais dados cadastrais da fonte externa ao restante da aplicacao. A razao social preenche
 `#mktTomadorInput` somente se o usuario ainda nao digitou um nome manualmente na aba ativa;
 o estado de edicao manual so permanece ativo quando existe texto no campo, portanto apagar o
 nome libera o preenchimento automatico novamente. Uma falha na consulta nao bloqueia a consulta
@@ -730,11 +731,10 @@ Consulta status do job.
 
 #### `GET /v1/cnpj/{cnpj}`
 
-Consulta cadastral minima usada apenas para sugerir o nome do tomador no console do T&C.
-O Worker normaliza o CNPJ, exige 14 digitos e consulta a BrasilAPI com timeout de 8 segundos.
-Em sucesso, responde `{ version, cnpj, razaoSocial }`; nao devolve socios, endereco,
-telefone, situacao fiscal ou qualquer outro campo da API externa. CNPJ invalido responde 400,
-CNPJ nao encontrado responde 404 e indisponibilidade/falha de formato da fonte responde 502.
+Endpoint legado de consulta cadastral minima no Worker. A UI atual nao o utiliza, pois a busca
+da razao social chama diretamente a BrasilAPI para nao depender do Cloudflare Access. O endpoint
+continua protegido junto com o Worker e, quando acessado por um cliente autorizado, normaliza o
+CNPJ e devolve somente `{ version, cnpj, razaoSocial }`.
 
 #### `POST /v1/limits/query`
 
