@@ -1,7 +1,7 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.78
-> Atualizado em: 2026-10-06
+> Versao: 2.79
+> Atualizado em: 2026-10-13
 
 ## 1. Visão Geral
 
@@ -1848,6 +1848,56 @@ Existiu um, com `name = "tc-lavoro"` e `assets = { directory = "." }`, removido 
 `wrangler.toml` na raiz é encontrado por **qualquer** projeto que builde a partir de `/`, então
 o projeto da API poderia acabar publicando o site estático em cima do Worker — o mesmo estrago
 de 12.0a, invertido. Com os parâmetros no comando, o efeito fica contido em cada projeto.
+
+#### 12.0c Migração para a conta Cloudflare corporativa (2.79)
+
+A API foi recriada na conta corporativa `Operacoes@lavoroseguros.com.br's Account` e é ela que
+o Hub usa em produção. A tabela de 12.0 descreve a configuração antiga, na conta pessoal
+(`Kyuri887@gmail.com's Account`), mantida só até a desativação descrita no fim desta seção.
+
+| Recurso | Conta pessoal (produção atual) | Conta corporativa |
+|---|---|---|
+| Worker de API | `lucky-hat-b241` | `lavoro-portal-seguradoras` — publicado, 20 secrets da seção 5.2 cadastrados |
+| D1 | `tc-lavoro-db` (`9a9d565d-…`) | `tc-lavoro-db` (`8cacfb22-7d1d-4cfc-908e-e278fdfc78e3`) — dados importados do export, 19 tomadores / 32 análises conferidos |
+| Front-end | `tc-lavoro` (build via GitHub) | **não será migrado** — o uso passa a ser só pelo Hub (Lovable) |
+| Cloudflare Access | 2 applications, 4 policies, service token `Lovable TC-Lavoro` | application `lavoro-portal-seguradoras` (destino: Worker, *production and preview URLs*) com **apenas** a policy `Lovable TC-Lavoro Service Auth` (Service Auth → service token `Lovable TC-Lavoro`) |
+
+URL da API na conta corporativa: `https://lavoro-portal-seguradoras.operacoes-744.workers.dev/`.
+
+`workers/wrangler.toml` já aponta para a conta corporativa (`name` e `database_id` novos).
+**Um `wrangler deploy` feito agora publica na corporativa**, não no `lucky-hat-b241`.
+
+**Ordem obrigatória: Access antes de `workers_dev = true`.** O Worker não tem autenticação
+própria (CORS `*`, ver 12.1 e 13.4): quem barra acesso externo é o Cloudflare Access. O
+primeiro deploy foi feito com `workers_dev = false`; a URL só foi ligada depois da application
+de Access criada, e foi conferido que um acesso sem token recebe `403 Forbidden` do Access.
+Se a application for removida ou perder o destino, desligar `workers_dev` antes de tudo.
+
+Só o Hub acessa a API: a application não inclui `Usuarios Autorizados`, então nenhum navegador
+de usuário passa pelo Access — o Hub chama pelo servidor com `CF-Access-Client-Id` /
+`CF-Access-Client-Secret`.
+
+**Validação (13/10/2026), com o service token:** `/health` 200, `/v1/tc/tomadores` com os 19
+tomadores, consulta de mercado completa com Junto, Fator, AVLA e família Onpoint respondendo
+(JNS autenticou; a recusa veio do motor de crédito para o CNPJ testado).
+
+**Hub (Lovable) já aponta para a conta corporativa.** O Hub nunca chama o Worker pelo browser:
+as rotas server-side `/api/tc-lavoro/*` e o motor de Garantia Judicial encaminham com as
+credenciais Access. Origem e credenciais ficam centralizadas em
+`src/lib/tc-lavoro/worker-config.server.ts` do Hub, lidas dos secrets `TC_LAVORO_WORKER_URL`,
+`TC_LAVORO_CF_ACCESS_CLIENT_ID` e `TC_LAVORO_CF_ACCESS_CLIENT_SECRET` (antes a URL estava
+fixa em quatro arquivos e as credenciais em `CF_ACCESS_CLIENT_*`). Trocar de Worker no futuro
+é só mudar esses secrets.
+
+**Front-end deste repositório descontinuado.** O portal `tc-lavoro` da conta pessoal deixa de
+ser usado; o Hub tem sua própria cópia em `public/analise-limite/`. `DEEPSEEK_WORKER_URL` em
+`deepseek.js` (5.1) segue apontando para `lucky-hat-b241` e deixa de funcionar quando ele for
+apagado — o Worker novo só aceita o service token, então o portal estático não teria acesso de
+qualquer forma.
+
+Desativação da conta pessoal: primeiro desligar `workers.dev` de `lucky-hat-b241` e
+`tc-lavoro` (reversível); apagar Workers, D1 e Access só após cerca de uma semana sem
+incidentes. Backup do D1 mantido fora do repositório.
 
 ### 12.1 Publicação do Worker de API
 

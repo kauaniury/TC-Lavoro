@@ -1,6 +1,12 @@
-name = "lucky-hat-b241"
+name = "lavoro-portal-seguradoras"
 main = "deepseek-memory-worker.js"
 compatibility_date = "2024-01-01"
+
+# O Worker nao tem autenticacao propria: a URL workers.dev so pode ficar
+# ligada com a Access application "lavoro-portal-seguradoras" protegendo o
+# Worker (ver SPEC.md 12.0c). Preview URLs ficam desligadas por nao serem usadas.
+workers_dev = true
+preview_urls = false
 
 [vars]
 # Secrets são configurados via dashboard ou wrangler secret put
@@ -13,4 +19,4 @@ compatibility_date = "2024-01-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "tc-lavoro-db"
-database_id = "9a9d565d-941e-4ea2-a8d4-9190a692fd85"
+database_id = "8cacfb22-7d1d-4cfc-908e-e278fdfc78e3"
