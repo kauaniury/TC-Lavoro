@@ -1,6 +1,6 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.82
+> Versao: 2.83
 > Atualizado em: 2026-10-15
 
 ## 1. Visão Geral
@@ -1711,6 +1711,12 @@ Resposta:
 | AXA (via Onpoint, rota dedicada `/axa/...`) | `axa` | mesma auth do Onpoint acima | idem |
 | Fator Seguradora | `fator` | OAuth2 `client_credentials` (Basic + `grant_type=client_credentials`) → Bearer | `FATOR_CLIENT_ID`, `FATOR_CLIENT_SECRET`, `FATOR_CORRETOR_ID`, `FATOR_NM_LOGIN` |
 | AVLA Seguros | `avla` | Bearer inicial → `POST /login` (`username`, `organizationUnitName`, `password`) → bearer oficial para `GET /getLimitsByDocument/{cnpj}?sourceApp=...`; reautentica uma vez em `401` | `AVLA_URL`, `AVLA_SOURCE`, `AVLA_LOGIN_BEARER_TOKEN`, `AVLA_USERNAME`, `AVLA_ORGANIZATION_UNIT_NAME`, `AVLA_PASSWORD` |
+
+Respostas HTML dos portais (por exemplo, páginas de `Acesso Negado`) não são consideradas
+respostas de negócio. O Worker converte esse retorno em uma mensagem técnica curta e não
+repassa o HTML bruto para a interface. Na Junto, a tentativa de cadastrar o tomador só
+ocorre quando a consulta de cadastro retorna `404`; bloqueios, erros `5xx` e demais
+respostas não-`404` interrompem a etapa sem repetir um `POST` de cadastro.
 
 Berkley usa o mesmo endpoint de produção (`/prod/garantia/api/plugv2/GetPolicyHolderLimitsAndRates`) e o
 mesmo `ONPOINT_BROKER_CNPJ`, mas envia `BERKLEY_APPKEY_V2` no header `application-key-v2`.

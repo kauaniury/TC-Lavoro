@@ -6,7 +6,7 @@ const CORS_HEADERS = {
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
 const BRASIL_API_CNPJ_URL = 'https://brasilapi.com.br/api/cnpj/v1';
-const WORKER_VERSION = '2026-10-15.1';
+const WORKER_VERSION = '2026-10-15.2';
 const PRIMARY_DEEPSEEK_MODEL = 'deepseek-chat';
 const FALLBACK_DEEPSEEK_MODEL = 'deepseek-chat';
 const JOB_TTL_SECONDS = 60 * 60 * 6;
@@ -1666,21 +1666,40 @@ async function parseJsonSafe(response) {
   try { return JSON.parse(text); } catch { return { rawText: text }; }
 }
 
+const UPSTREAM_HTML_ERROR = 'Portal da seguradora retornou HTML em vez de JSON (possível bloqueio de acesso ou endpoint indisponível).';
+
+function isHtmlPayload(payload) {
+  const text = typeof payload === 'string'
+    ? payload
+    : payload && typeof payload.rawText === 'string'
+      ? payload.rawText
+      : '';
+  return /<\s*!doctype\s+html\b|<\s*html\b|<\s*(head|body)\b/i.test(text);
+}
+
+function safeUpstreamMessage(value, fallback = null) {
+  if (value === undefined || value === null) return fallback;
+  const message = String(value).trim();
+  if (!message) return fallback;
+  return isHtmlPayload(message) ? UPSTREAM_HTML_ERROR : message;
+}
+
 function extractErrorMessage(payload, fallback) {
   if (!payload) return fallback;
-  if (payload.errorMessageTranslated) return payload.errorMessageTranslated;
-  if (payload.error_message_translated) return payload.error_message_translated;
-  if (Array.isArray(payload) && payload[0] && payload[0].message) return payload[0].message;
-  if (payload.message) return payload.message;
-  if (payload.nm_retorno) return payload.nm_retorno;
-  if (Array.isArray(payload.Errors) && payload.Errors.length) return payload.Errors.join(' ');
+  if (isHtmlPayload(payload)) return UPSTREAM_HTML_ERROR;
+  if (payload.errorMessageTranslated) return safeUpstreamMessage(payload.errorMessageTranslated, fallback);
+  if (payload.error_message_translated) return safeUpstreamMessage(payload.error_message_translated, fallback);
+  if (Array.isArray(payload) && payload[0] && payload[0].message) return safeUpstreamMessage(payload[0].message, fallback);
+  if (payload.message) return safeUpstreamMessage(payload.message, fallback);
+  if (payload.nm_retorno) return safeUpstreamMessage(payload.nm_retorno, fallback);
+  if (Array.isArray(payload.Errors) && payload.Errors.length) return safeUpstreamMessage(payload.Errors.join(' '), fallback);
   if (payload.errors && typeof payload.errors === 'object') {
     const msgs = Object.entries(payload.errors)
       .flatMap(([field, m]) => Array.isArray(m) ? m.map(x => `${field}: ${x}`) : []);
-    if (msgs.length) return msgs.join(' | ');
+    if (msgs.length) return safeUpstreamMessage(msgs.join(' | '), fallback);
   }
-  if (payload.title) return payload.title;
-  if (payload.rawText) return payload.rawText.slice(0, 300);
+  if (payload.title) return safeUpstreamMessage(payload.title, fallback);
+  if (payload.rawText) return safeUpstreamMessage(payload.rawText.slice(0, 300), fallback);
   return fallback;
 }
 
@@ -1823,6 +1842,14 @@ async function queryJunto(env, cnpj) {
   let modalitiesRes = await fetchAuthorized(`/policyholders/${cnpj}/modalities`);
 
   if (!policyholderRes.ok || !modalitiesRes.ok) {
+    const unexpectedFailure = [policyholderRes, modalitiesRes]
+      .find(response => !response.ok && response.status !== 404);
+    if (unexpectedFailure) {
+      throw new Error(extractErrorMessage(
+        await parseJsonSafe(unexpectedFailure),
+        `Junto consulta error ${unexpectedFailure.status}`,
+      ));
+    }
     // Tomador ainda nao cadastrado na Junto — cadastra e aguarda propagacao assincrona
     // (9000ms e o valor empirico documentado para esse fluxo) antes de repetir a consulta.
     const createRes = await fetchAuthorized(`/policyholders`, {
@@ -1918,6 +1945,14 @@ async function loadJuntoModalities(env, cnpj) {
   let policyholderRes = await fetchAuthorized(`/policyholders/${cnpj}`);
   let modalitiesRes = await fetchAuthorized(`/policyholders/${cnpj}/modalities`);
   if (!policyholderRes.ok || !modalitiesRes.ok) {
+    const unexpectedFailure = [policyholderRes, modalitiesRes]
+      .find(response => !response.ok && response.status !== 404);
+    if (unexpectedFailure) {
+      throw new Error(extractErrorMessage(
+        await parseJsonSafe(unexpectedFailure),
+        `Junto consulta error ${unexpectedFailure.status}`,
+      ));
+    }
     const createRes = await fetchAuthorized('/policyholders', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
