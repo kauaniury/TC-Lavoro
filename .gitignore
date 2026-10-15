@@ -10,3 +10,7 @@ design/relatorios-ia-lavoro.html
 guia-portal-tc-lavoro.html
 _img_*.png
 .wrangler/
+.env
+.env.*
+!.env.example
+*.dev.vars

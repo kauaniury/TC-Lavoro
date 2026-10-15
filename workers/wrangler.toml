@@ -1,4 +1,5 @@
 name = "lavoro-portal-seguradoras"
+account_id = "744703e95793e65ddfb83830673f0062"
 main = "deepseek-memory-worker.js"
 compatibility_date = "2024-01-01"
 

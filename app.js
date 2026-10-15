@@ -15,7 +15,7 @@ const MKT_SEGURADORAS = [
   { key: 'austral', label: 'AUSTRAL', apiKey: null, portal: false },
   { key: 'avla', label: 'AVLA', apiKey: 'avla', portal: true },
   { key: 'axa', label: 'AXA', apiKey: 'axa', portal: true },
-  { key: 'berkley', label: 'BERKLEY', apiKey: null, portal: true },
+  { key: 'berkley', label: 'BERKLEY', apiKey: 'berkley', portal: true },
   { key: 'btg', label: 'BTG', apiKey: null, portal: false },
   { key: 'cesce', label: 'CESCE', apiKey: null, portal: false },
   { key: 'chubb', label: 'CHUBB', apiKey: null, portal: false },
@@ -532,7 +532,10 @@ function handleModalSearch(query) {
     return;
   }
 
-  sugg.innerHTML = labels.map((l,i) => `<div class="suggestion-item" id="suggestion-${i}" role="option" aria-selected="false" data-idx="${i}" data-label="${l}" onmousedown="selectModal('${l}')">${l.charAt(0)+l.slice(1).toLowerCase()}</div>`).join('');
+  sugg.innerHTML = labels.map((l,i) => `<div class="suggestion-item" id="suggestion-${i}" role="option" aria-selected="false" data-idx="${i}" data-label="${esc(l)}">${esc(l.charAt(0)+l.slice(1).toLowerCase())}</div>`).join('');
+  sugg.querySelectorAll('.suggestion-item[data-label]').forEach(item => {
+    item.addEventListener('mousedown', () => selectModal(item.dataset.label || ''));
+  });
   sugg.classList.add('show');
   document.getElementById('modalSearchInput').setAttribute('aria-expanded', 'true');
 
@@ -622,7 +625,7 @@ function renderModalComparison(label) {
   const exibirTaxas = _tcExibirTaxas;
 
   const displayLabel = label.charAt(0) + label.slice(1).toLowerCase();
-  document.getElementById('searchResultLabel').innerHTML = `Comparativo para modalidade: <span>${displayLabel}</span>`;
+  document.getElementById('searchResultLabel').innerHTML = `Comparativo para modalidade: <span>${esc(displayLabel)}</span>`;
   document.getElementById('chartModalLimiteTitle').textContent = `Maior Limite — ${displayLabel}`;
   document.getElementById('chartModalTaxaTitle').textContent = `Menor Taxa — ${displayLabel}`;
 
@@ -731,7 +734,12 @@ function fmtBRL(v) {
   return 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 function esc(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
 }
 function statusLabel(status) {
   const cfg = MKT_STATUS_CONFIG[status];
@@ -4350,7 +4358,7 @@ async function consultarMercadoUI(opts = {}) {
   }
 }
 
-// Aplica os resultados das 10 seguradoras com API sobre os cards correspondentes
+// Aplica os resultados das 11 seguradoras com API sobre os cards correspondentes
 // — 100% reaproveitado de normalizeLimiteResultado (e normalizadores por
 // seguradora) já existentes, só muda o mapeamento final de status e o destino
 // (card em vez de página própria).
@@ -5779,7 +5787,7 @@ function normalizeLimiteResultado(r) {
   if (key === 'junto') return normalizeLimiteJunto(r.dados);
   if (key === 'fator') return normalizeLimiteFator(r.dados);
   if (key === 'avla') return normalizeLimiteAvla(r.dados);
-  if (['essor', 'sombrero', 'newe', 'mitsui', 'axa', 'now'].includes(key)) return normalizeLimiteOnpoint(r.dados);
+  if (['berkley', 'essor', 'sombrero', 'newe', 'mitsui', 'axa', 'now'].includes(key)) return normalizeLimiteOnpoint(r.dados);
   return { statusKey: 'erro', modalidades: [], mensagem: 'Seguradora desconhecida.' };
 }
 

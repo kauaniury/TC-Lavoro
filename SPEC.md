@@ -1,7 +1,7 @@
 # SPEC — TC Lavoro · Limites + IA Documental
 
-> Versao: 2.79
-> Atualizado em: 2026-10-13
+> Versao: 2.82
+> Atualizado em: 2026-10-15
 
 ## 1. Visão Geral
 
@@ -129,7 +129,9 @@ código de produção — os valores ali (paleta, tipografia, espaçamentos) sã
 - Secrets ficam somente no Cloudflare Worker.
 - Credenciais das APIs de seguradoras (`JNS_*`, `JUNTO_*`, `ONPOINT_*`, `FATOR_*`) seguem a mesma regra: só existem como secrets do Worker, nunca no front-end.
 - Toda navegação da SPA deve continuar usando apenas `switchTab('mkt' | 'dashboard' | 'analise-financeira' | 'seguro-garantia' | 'fianca-locaticia' | 'analise-apolice' | 'tomadores-salvos')`.
-- Toda string inserida em `innerHTML` deve passar por `esc()`.
+- Toda string inserida em `innerHTML` deve passar por `esc()`, incluindo aspas simples e
+  duplas quando o valor ocupar atributo HTML. Sugestões com texto dinâmico usam listeners
+  DOM, nunca interpolação desse texto em handlers inline.
 
 ### 3.2 Front-end
 
@@ -206,7 +208,7 @@ fornecida pelo usuário nas duas listas — portal e completa):
 - `label`: nome comercial exibido no card (ex.: chave `mitsui` exibe **"MITISUI"**, grafia
   pedida explicitamente pelo usuário — a chave interna `mitsui` já usada pela integração da
   seção 10 não mudou).
-- `apiKey`: chave interna da integração (`avla`, `jns`, `junto`, `essor`, `sombrero`, `newe`,
+- `apiKey`: chave interna da integração (`avla`, `jns`, `junto`, `berkley`, `essor`, `sombrero`, `newe`,
   `mitsui`, `axa`, `now`, `fator`) quando a seguradora tem consulta automática; `null` quando
   só permite preenchimento manual.
 - `portal`: `true` para as 18 seguradoras da lista "com portal" (aba "Seguradoras portais");
@@ -215,8 +217,9 @@ fornecida pelo usuário nas duas listas — portal e completa):
 35 entradas ao todo: AKAD, ALLIANZ, ALM, AUSTRAL, AVLA, AXA, BERKLEY, BTG, CESCE, CHUBB,
 DARWIN, DAYCOVAL, ESSOR, EZZE, FAIRFAX, FAIRWAY, FATOR, FINANGUARD, HDI, JNS, JUNTO, KOVR,
 LIBERTY, MAPFRE, MITISUI, NEWE, NOW SEGUROS, POTTENCIAL, SOMBRERO, SOMPO, SUDASEG, SWISS RE,
-THINKSEG, TOKIO, ZURICH. As 10 com `apiKey` são as mesmas já integradas na seção 10 — nenhuma
-API nova foi adicionada nesta versão. `MKT_API_KEYS` deriva as 10 chaves com `apiKey` não nulo.
+THINKSEG, TOKIO, ZURICH. As 11 com `apiKey` são as mesmas já integradas na seção 10 — a
+Berkley foi ativada nesta versão usando o endpoint de produção compartilhado com a Onpoint.
+`MKT_API_KEYS` deriva as 11 chaves com `apiKey` não nulo.
 
 **Logos dos cards.** `MKT_LOGO_MAP` associa cada `key` do catálogo ao respectivo arquivo local
 em `assets/`. `mktLogoHtml()` usa esse mapa no cabeçalho de todos os 35 cards, inclusive os da
@@ -309,8 +312,8 @@ O console no topo da página (`#mktTomadorInput`, `#mktCnpjInput`, botão "Consu
    se o usuário ainda não tiver digitado um nome manualmente** nessa aba
    (`tab.tomadorUserEdited`) — uma sugestão nunca apaga uma edição manual existente.
 
-A consulta roda sempre para as 10 seguradoras com API (`MKT_API_KEYS`), independente do filtro
-"portais"/"todas" estar ativo — as 10 já pertencem à lista de portal.
+A consulta roda sempre para as 11 seguradoras com API (`MKT_API_KEYS`), independente do filtro
+"portais"/"todas" estar ativo — as 11 já pertencem à lista de portal.
 
 ### 4.3a Razao social automatica por CNPJ
 
@@ -648,6 +651,7 @@ Secrets esperados no Worker:
 - `JNS_USERNAME`, `JNS_PASSWORD`, `JNS_TOKEN`
 - `JUNTO_CLIENT_ID`, `JUNTO_CLIENT_SECRET`
 - `ONPOINT_APPLICATION_KEY_V2`, `ONPOINT_BROKER_CNPJ`
+- `BERKLEY_APPKEY_V2`
 - `FATOR_CLIENT_ID`, `FATOR_CLIENT_SECRET`, `FATOR_CORRETOR_ID`, `FATOR_NM_LOGIN`
 - `AVLA_URL`, `AVLA_SOURCE`, `AVLA_LOGIN_BEARER_TOKEN`, `AVLA_USERNAME`, `AVLA_ORGANIZATION_UNIT_NAME`, `AVLA_PASSWORD`
 
@@ -1651,7 +1655,7 @@ Cada seguradora tem um formato de resposta próprio; `normalizeLimiteResultado(r
 |---|---|---|
 | `normalizeLimiteJns` | `jns` | `dados.product_limits[]` (após filtrar zerados) vazio → `sem_limite`/`instavel` (conforme `d.message`); senão `aprovado` com um item por produto (`product_name`, `limit_available`/`approvedLimit`, `tax`/`feePercent`, `product_branch`) |
 | `normalizeLimiteJunto` | `junto` | `dados` é array de modalidades com `submodalities[]`, cada uma já enriquecida pelo Worker com `limitAvailable`/`rate` reais (ver 10.2). Lista vazia (ou só zerados) → `sem_limite`; senão `aprovado` com `valor`/`taxa` reais quando disponíveis |
-| `normalizeLimiteOnpoint` | `essor`, `sombrero`, `newe`, `mitsui`, `axa`, `now` | Aceita `dados.Response[0]` (envelope padrão) **ou** `dados` já desembrulhado pelo Worker; se `CanSetupAProposal` e `LimitsAndRates[]` presentes (após `.filter(Boolean)` e filtro de zerados) → `aprovado`; senão lê `Reasons[]`/`Errors[]` e classifica via `classifyErrorMessage` (`bloqueado`, `nomeado`, `instavel`, `sem_resposta` ou `sem_limite`) |
+| `normalizeLimiteOnpoint` | `berkley`, `essor`, `sombrero`, `newe`, `mitsui`, `axa`, `now` | Aceita `dados.Response[0]` (envelope padrão) **ou** `dados` já desembrulhado pelo Worker; se `CanSetupAProposal` e `LimitsAndRates[]` presentes (após `.filter(Boolean)` e filtro de zerados) → `aprovado`; senão lê `Reasons[]`/`Errors[]` e classifica via `classifyErrorMessage` (`bloqueado`, `nomeado`, `instavel`, `sem_resposta` ou `sem_limite`) |
 | `normalizeLimiteFator` | `fator` | `cd_retorno !== 0` é sempre resposta de negócio (nunca erro técnico): `nm_retorno` é classificado via `classifyErrorMessage` — `nomeado` (mensagem original exibida, é acionável) se menciona corretor, senão `sem_limite` com a mensagem substituída pelo texto padrão `LIM_SEM_LIMITE_MSG` (o jargão bruto da Fator, ex. "tomador deve estar Aprovado e dentro da Data de Validade", não é repassado ao usuário). Quando `cd_retorno === 0`, parseia `DadosTomador[]` em modalidades (`NomeGrupoSubLimite`, `ValorLimiteDisponivel`, `ValorTaxa`), filtrando zerados; se a lista ficar vazia após o filtro, também usa `LIM_SEM_LIMITE_MSG` |
 | `normalizeLimiteAvla` | `avla` | Lê `nome` e `document` do tomador e converte `limites[]` em modalidades (`nome_modalidade`, `limite_disponivel`, `taxa`), filtrando limites zerados. Sem limite disponível, retorna `sem_limite` com a mensagem padrão. Em erro, o Worker extrai `errorMessageTranslated`: `LIMITS_NOT_FOUND` vira `sem_limite`; `Policyholder does not belong to the broker` vira `nomeado` (Concorrente) e preserva a mensagem para o botão “!”. |
 
@@ -1672,11 +1676,16 @@ Essas mensagens chegam via `r.status !== 'ok'` (HTTP não-2xx do lado da segurad
 
 Body:
 ```json
-{ "cnpj": "00000000000000", "seguradoras": ["avla","jns","junto","essor","sombrero","newe","mitsui","axa","now","fator"], "forceRefresh": false }
+{ "cnpj": "00000000000000", "seguradoras": ["avla","jns","junto","berkley","essor","sombrero","newe","mitsui","axa","now","fator"], "forceRefresh": false }
 ```
-`seguradoras` é opcional — se omitido, consulta todas as 10.
+`seguradoras` é opcional — se omitido, consulta todas as 11.
 `forceRefresh` é opcional e padrão `false`. Quando `true`, ignora e remove o resultado
 cacheado do mesmo CNPJ antes de consultar novamente as seguradoras.
+
+O Worker valida o CNPJ pelos dois dígitos verificadores, limita o corpo desta requisição a
+128 KiB, devolve HTTP 400 para JSON inválido ou lista sem seguradora válida, HTTP 413 para
+corpos acima do limite e remove chaves de seguradora duplicadas antes de montar a fila. O
+mesmo validador é usado no endpoint cadastral `/v1/cnpj/{cnpj}`.
 
 Resposta:
 ```json
@@ -1697,14 +1706,19 @@ Resposta:
 |---|---|---|---|
 | JNS Seguros | `jns` | login (`username`+`password`+`token`) → Bearer, timeout de 60s por chamada, retry automático em `401` e uma repetição da consulta quando o motor de crédito indicar falha transitória | `JNS_USERNAME`, `JNS_PASSWORD`, `JNS_TOKEN` |
 | Junto Seguros | `junto` | `clientId`+`clientSecret` → `accessToken`; cadastra o tomador automaticamente se `policyholders/{cnpj}` ainda não existir | `JUNTO_CLIENT_ID`, `JUNTO_CLIENT_SECRET` |
+| Berkley (via endpoint de produção compartilhado com Onpoint) | `berkley` | header `application-key-v2`, sem login | `BERKLEY_APPKEY_V2`, `ONPOINT_BROKER_CNPJ` |
 | Essor / Sombrero / NEWE / Mitsui Sumitomo / Now (via Onpoint) | `essor`, `sombrero`, `newe`, `mitsui`, `now` | header fixo `application-key-v2`, sem login | `ONPOINT_APPLICATION_KEY_V2`, `ONPOINT_BROKER_CNPJ` |
 | AXA (via Onpoint, rota dedicada `/axa/...`) | `axa` | mesma auth do Onpoint acima | idem |
 | Fator Seguradora | `fator` | OAuth2 `client_credentials` (Basic + `grant_type=client_credentials`) → Bearer | `FATOR_CLIENT_ID`, `FATOR_CLIENT_SECRET`, `FATOR_CORRETOR_ID`, `FATOR_NM_LOGIN` |
 | AVLA Seguros | `avla` | Bearer inicial → `POST /login` (`username`, `organizationUnitName`, `password`) → bearer oficial para `GET /getLimitsByDocument/{cnpj}?sourceApp=...`; reautentica uma vez em `401` | `AVLA_URL`, `AVLA_SOURCE`, `AVLA_LOGIN_BEARER_TOKEN`, `AVLA_USERNAME`, `AVLA_ORGANIZATION_UNIT_NAME`, `AVLA_PASSWORD` |
 
-Now Seguros usa a mesma credencial já cadastrada da Onpoint (`ONPOINT_APPLICATION_KEY_V2`/`ONPOINT_BROKER_CNPJ`) — nenhum secret novo foi adicionado, só mais um `InsuranceUniqueId` na família (ver 10.5).
+Berkley usa o mesmo endpoint de produção (`/prod/garantia/api/plugv2/GetPolicyHolderLimitsAndRates`) e o
+mesmo `ONPOINT_BROKER_CNPJ`, mas envia `BERKLEY_APPKEY_V2` no header `application-key-v2`.
+Seu `InsuranceUniqueId` é `731e3230-cd52-47c3-b111-279c4b6e095b`. Now Seguros usa a mesma
+credencial já cadastrada da Onpoint (`ONPOINT_APPLICATION_KEY_V2`/`ONPOINT_BROKER_CNPJ`) — nenhum
+secret novo foi adicionado, só mais um `InsuranceUniqueId` na família (ver 10.5).
 
-**Regra crítica — a consulta roda inteiramente em fila (`for...of`), nunca em paralelo.** `handleLimitsQuery` consulta as seguradoras solicitadas uma de cada vez, na ordem recebida, aguardando cada `queryInsurer` terminar antes de iniciar a próxima. Isso evita sobrecarregar qualquer integração — em especial a Onpoint, que agrupa `essor`/`sombrero`/`newe`/`mitsui`/`axa`/`now` no mesmo endpoint e rejeita chamadas concorrentes para o mesmo CNPJ — mas agora vale para todas as 10 seguradoras, não só a família Onpoint. Como consequência, o tempo total de resposta escala linearmente com o número de seguradoras consultadas.
+**Regra crítica — a consulta roda inteiramente em fila (`for...of`), nunca em paralelo.** `handleLimitsQuery` consulta as seguradoras solicitadas uma de cada vez, na ordem recebida, aguardando cada `queryInsurer` terminar antes de iniciar a próxima. Isso evita sobrecarregar qualquer integração — em especial a família Onpoint/Berkley, que usa o mesmo endpoint e rejeita chamadas concorrentes para o mesmo CNPJ — e vale para todas as 11 seguradoras. Como consequência, o tempo total de resposta escala linearmente com o número de seguradoras consultadas.
 
 **Fila, progresso e cache Redis por CNPJ.** Antes de iniciar as APIs, o Worker consulta
 `limits:result:{cnpj}:{seguradoras-ordenadas}` (TTL de 5 minutos). Em cache, devolve o mesmo
@@ -1771,12 +1785,15 @@ Tokens de login (AVLA, JNS, Junto, Fator) são cacheados no Redis para evitar no
 Em caso de `401`, o token é invalidado e a consulta refeita uma vez com login novo.
 
 A configuração de subrequests extra foi removida do `wrangler.toml`: o Worker funciona no teto
-gratuito ao processar as taxas da Junto em lotes persistidos no Redis.
+gratuito ao processar as taxas da Junto em lotes persistidos no Redis. Todas as chamadas REST
+ao Upstash passam pelo timeout compartilhado das integrações, evitando que uma indisponibilidade
+do Redis mantenha uma requisição do Worker aberta indefinidamente.
 
-### 10.5 Onpoint — IDs estáticos de seguradora
+### 10.5 Onpoint/Berkley — IDs estáticos de seguradora
 
 | Seguradora | `InsuranceUniqueId` |
 |---|---|
+| Berkley Seguros | `731e3230-cd52-47c3-b111-279c4b6e095b` |
 | Essor Seguros S.A. | `406fecd8-bfd7-4cba-a9bd-87efcfd38288` |
 | SOMBRERO SEGUROS S/A | `7e3b3e1a-e0db-4067-876f-350f73a38acd` |
 | NEWE Seguros S.A. | `d53bda2d-0710-4bff-b5be-51f2ab377362` |
@@ -1857,14 +1874,15 @@ o Hub usa em produção. A tabela de 12.0 descreve a configuração antiga, na c
 
 | Recurso | Conta pessoal (produção atual) | Conta corporativa |
 |---|---|---|
-| Worker de API | `lucky-hat-b241` | `lavoro-portal-seguradoras` — publicado, 20 secrets da seção 5.2 cadastrados |
+| Worker de API | `lucky-hat-b241` | `lavoro-portal-seguradoras` — publicado, 21 secrets da seção 5.2 cadastrados |
 | D1 | `tc-lavoro-db` (`9a9d565d-…`) | `tc-lavoro-db` (`8cacfb22-7d1d-4cfc-908e-e278fdfc78e3`) — dados importados do export, 19 tomadores / 32 análises conferidos |
 | Front-end | `tc-lavoro` (build via GitHub) | **não será migrado** — o uso passa a ser só pelo Hub (Lovable) |
 | Cloudflare Access | 2 applications, 4 policies, service token `Lovable TC-Lavoro` | application `lavoro-portal-seguradoras` (destino: Worker, *production and preview URLs*) com **apenas** a policy `Lovable TC-Lavoro Service Auth` (Service Auth → service token `Lovable TC-Lavoro`) |
 
 URL da API na conta corporativa: `https://lavoro-portal-seguradoras.operacoes-744.workers.dev/`.
 
-`workers/wrangler.toml` já aponta para a conta corporativa (`name` e `database_id` novos).
+`workers/wrangler.toml` já aponta explicitamente para a conta corporativa (`account_id`, `name`
+e `database_id` novos), evitando que o cache local do Wrangler selecione a conta pessoal.
 **Um `wrangler deploy` feito agora publica na corporativa**, não no `lucky-hat-b241`.
 
 **Ordem obrigatória: Access antes de `workers_dev = true`.** O Worker não tem autenticação

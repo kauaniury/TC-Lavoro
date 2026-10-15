@@ -6,7 +6,7 @@ const CORS_HEADERS = {
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
 const BRASIL_API_CNPJ_URL = 'https://brasilapi.com.br/api/cnpj/v1';
-const WORKER_VERSION = '2026-10-06.1';
+const WORKER_VERSION = '2026-10-15.1';
 const PRIMARY_DEEPSEEK_MODEL = 'deepseek-chat';
 const FALLBACK_DEEPSEEK_MODEL = 'deepseek-chat';
 const JOB_TTL_SECONDS = 60 * 60 * 6;
@@ -43,6 +43,7 @@ const FATOR_QUERY_URL = 'https://api-pdp.fatorseguradora.com.br/hbup/ConsultarLi
 const INSURER_LABELS = {
   jns: 'JNS Seguros',
   junto: 'Junto Seguros',
+  berkley: 'Berkley Seguros',
   essor: 'Essor Seguros',
   sombrero: 'Sombrero Seguros',
   newe: 'NEWE Seguros',
@@ -53,9 +54,12 @@ const INSURER_LABELS = {
   avla: 'AVLA Seguros',
 };
 const ALL_INSURER_KEYS = Object.keys(INSURER_LABELS);
-// Seguradoras que passam pelo endpoint compartilhado da Onpoint (dispatch em queryInsurer)
-const ONPOINT_FAMILY = ['essor', 'sombrero', 'newe', 'mitsui', 'axa', 'now'];
+// Seguradoras que passam pelo endpoint compartilhado de produção da Onpoint
+// (dispatch em queryInsurer). A Berkley usa o mesmo contrato HTTP, mas sua
+// própria chave de aplicação e seu InsuranceUniqueId.
+const ONPOINT_FAMILY = ['berkley', 'essor', 'sombrero', 'newe', 'mitsui', 'axa', 'now'];
 const ONPOINT_INSURERS = {
+  berkley: { name: 'Berkley Seguros', id: '731e3230-cd52-47c3-b111-279c4b6e095b', axaRoute: false, applicationKeyEnv: 'BERKLEY_APPKEY_V2' },
   essor: { name: 'Essor Seguros S.A.', id: '406fecd8-bfd7-4cba-a9bd-87efcfd38288', axaRoute: false },
   sombrero: { name: 'SOMBRERO SEGUROS S/A', id: '7e3b3e1a-e0db-4067-876f-350f73a38acd', axaRoute: false },
   newe: { name: 'NEWE Seguros S.A.', id: 'd53bda2d-0710-4bff-b5be-51f2ab377362', axaRoute: false },
@@ -83,7 +87,7 @@ export default {
       if (request.method === 'GET' && url.pathname === '/health') {
         return withCors(jsonResponse({
           ok: true,
-          worker: 'lucky-hat-b241',
+          worker: 'lavoro-portal-seguradoras',
           version: WORKER_VERSION,
         }));
       }
@@ -1276,15 +1280,23 @@ function shouldRetryWithFallbackModel(status, text, model) {
 // ── Consulta de Limites por Seguradora ──
 
 async function handleLimitsQuery(request, env) {
-  const body = await request.json();
+  const body = await readJsonObject(request, 128 * 1024);
   const cnpj = normalizeCnpj(body.cnpj);
-  if (cnpj.length !== 14) throw new Error('Informe um CNPJ valido com 14 digitos.');
+  if (!isValidCnpj(cnpj)) {
+    const error = new Error('Informe um CNPJ valido com 14 digitos.');
+    error.status = 400;
+    throw error;
+  }
   const forceRefresh = body.forceRefresh === true;
 
   const requested = Array.isArray(body.seguradoras) && body.seguradoras.length > 0
-    ? body.seguradoras.filter(key => ALL_INSURER_KEYS.includes(key))
+    ? [...new Set(body.seguradoras.filter(key => typeof key === 'string' && ALL_INSURER_KEYS.includes(key)))]
     : ALL_INSURER_KEYS;
-  if (requested.length === 0) throw new Error('Nenhuma seguradora valida informada.');
+  if (requested.length === 0) {
+    const error = new Error('Nenhuma seguradora valida informada.');
+    error.status = 400;
+    throw error;
+  }
 
   const cacheKey = limitsResultCacheKey(cnpj, requested);
   if (!forceRefresh) {
@@ -1512,9 +1524,66 @@ function normalizeCnpj(value) {
   return String(value || '').replace(/\D/g, '');
 }
 
+function isValidCnpj(value) {
+  const cnpj = normalizeCnpj(value);
+  if (cnpj.length !== 14 || /^(\d)\1{13}$/.test(cnpj)) return false;
+
+  const calculateDigit = (base) => {
+    let sum = 0;
+    let weight = base.length - 7;
+    for (const digit of base) {
+      sum += Number(digit) * weight;
+      weight = weight === 2 ? 9 : weight - 1;
+    }
+    const remainder = sum % 11;
+    return remainder < 2 ? 0 : 11 - remainder;
+  };
+
+  return calculateDigit(cnpj.slice(0, 12)) === Number(cnpj[12])
+    && calculateDigit(cnpj.slice(0, 13)) === Number(cnpj[13]);
+}
+
+async function readJsonObject(request, maxBytes) {
+  const contentLength = Number(request.headers.get('content-length'));
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+    const error = new Error('Corpo da requisicao excede o limite permitido.');
+    error.status = 413;
+    throw error;
+  }
+
+  let raw;
+  try {
+    raw = await request.text();
+  } catch {
+    const error = new Error('Nao foi possivel ler o corpo da requisicao.');
+    error.status = 400;
+    throw error;
+  }
+  if (raw.length > maxBytes) {
+    const error = new Error('Corpo da requisicao excede o limite permitido.');
+    error.status = 413;
+    throw error;
+  }
+
+  let body;
+  try {
+    body = JSON.parse(raw);
+  } catch {
+    const error = new Error('JSON invalido.');
+    error.status = 400;
+    throw error;
+  }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    const error = new Error('O corpo da requisicao deve ser um objeto JSON.');
+    error.status = 400;
+    throw error;
+  }
+  return body;
+}
+
 async function handleLookupCnpj(value) {
   const cnpj = normalizeCnpj(value);
-  if (cnpj.length !== 14) {
+  if (!isValidCnpj(cnpj)) {
     const error = new Error('Informe um CNPJ valido com 14 digitos.');
     error.status = 400;
     throw error;
@@ -1978,11 +2047,15 @@ async function queryOnpointRequest(env, cnpj, key, attempt = 1) {
   if (!insurer) throw new Error(`Seguradora Onpoint desconhecida: ${key}`);
 
   const base = insurer.axaRoute ? ONPOINT_AXA_BASE : ONPOINT_BASE;
+  const applicationKey = env[insurer.applicationKeyEnv || 'ONPOINT_APPLICATION_KEY_V2'];
+  if (!applicationKey) {
+    throw new Error(`${insurer.name}: credencial da API não configurada no Worker.`);
+  }
   const res = await fetchWithTimeout(`${base}/GetPolicyHolderLimitsAndRates`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'application-key-v2': env.ONPOINT_APPLICATION_KEY_V2,
+      'application-key-v2': applicationKey,
     },
     body: JSON.stringify({
       BrokerCnpj: env.ONPOINT_BROKER_CNPJ,
@@ -2386,7 +2459,7 @@ async function redisCall(env, command, path = '') {
   }
 
   const url = env.UPSTASH_REDIS_REST_URL.replace(/\/+$/, '') + path;
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${env.UPSTASH_REDIS_REST_TOKEN}`,
